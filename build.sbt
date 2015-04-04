@@ -14,8 +14,13 @@ homepage           := Some(url("https://github.com/Sciss/" + name.value))
 
 licenses           := Seq("GPL v3+" -> url("http://www.gnu.org/licenses/gpl-3.0.txt"))
 
+resolvers += "Oracle Repository" at "http://download.oracle.com/maven"
+
 libraryDependencies ++= Seq(
-  "de.sciss" %% "lucreconfluent-core" % "2.10.0-SNAPSHOT"
+  "de.sciss" %% "lucreconfluent"  % "2.10.0-SNAPSHOT",
+  "de.sciss" %% "lucreevent-expr" % "2.7.3",
+  "de.sciss" %% "lucrestm-bdb"    % "2.1.1",
+  "de.sciss" %% "fileutil"        % "1.1.1"
 )
 
 scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xfuture")
