@@ -11,14 +11,15 @@ import scala.collection.immutable.{IndexedSeq => Vec}
 
 object Algorithm {
   def apply(): Algorithm = {
-    val n = 20
+    // val n = 20
     val dbf = BerkeleyDB.tmp()
-    val system = ConfluentReactive(dbf)
     // system.rootWithDurable(...)
     new Algorithm {
+      val system = ConfluentReactive(dbf)
       implicit val rngSer = TxnRandom.Persistent.serializer[D]
-      system.rootWithDurable { implicit tx =>
+      val (handle, rng) = system.rootWithDurable { implicit tx =>
         implicit val dtx = system.durableTx(tx)
+        val id = tx.newID()
         Genome.empty
       } { implicit tx =>
         TxnRandom.Persistent[D]()
@@ -30,15 +31,25 @@ object Algorithm {
 //        Genome(n)
 //      } { implicit tx => _ => system.newCursor() }
 
-      def genome(implicit tx: S#Tx): Genome = ??? // handle()
+      def genome(implicit tx: S#Tx): Genome = handle()
     }
   }
 }
 trait Algorithm {
   def genome(implicit tx: S#Tx): Genome
 
-  def select()(implicit tx: S#Tx, r: TxnRandom[S#Tx]): Set[ChromosomeH] = {
-    val prev  = genome.chromosomes
+  def system: S
+
+  implicit def rng: TxnRandom.Persistent[D]
+
+  def init(n: Int)(implicit tx: S#Tx): Unit = {
+    genome.chromosomes() = Vector.fill(n)(ChromosomeH(8))
+  }
+
+  def select()(implicit tx: S#Tx): Set[ChromosomeH] = {
+    implicit val dtx = tx.durable
+
+    val prev  = genome.chromosomes.apply()
     val frac  = 0.2
     val pop   = prev.size
     val n     = (pop * frac + 0.5).toInt
@@ -56,7 +67,7 @@ trait Algorithm {
         }
         val sorted      = norm.sortBy(_._2)
         val acc         = sorted.scanLeft(0.0) { case (a, (_, f)) => a + f } .tail
-        val roulette    = r.nextDouble()
+        val roulette    = rng.nextDouble()
         val idxS        = acc.indexWhere(_ > roulette)
         val idx         = if (idxS >= 0) sorted(idxS)._1 else in.size - 1
         val (chosen, _) = inIdx(idx)
@@ -73,11 +84,11 @@ trait Algorithm {
 
   def elitism()(implicit tx: S#Tx): Vec[ChromosomeH] = {
     val n = 4
-    val sel = genome.chromosomes.sortBy(-_.fitness).take(n)
+    val sel = genome.chromosomes.apply().sortBy(-_.fitness).take(n)
     sel
   }
 
-  def mutate()(implicit tx: S#Tx, r: TxnRandom[S#Tx]): Unit = {
+  def mutate()(implicit tx: S#Tx): Unit = {
 
   }
 

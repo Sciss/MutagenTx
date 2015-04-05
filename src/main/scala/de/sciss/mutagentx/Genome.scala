@@ -4,36 +4,46 @@ import de.sciss.lucre.confluent
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.data.SkipList
 import de.sciss.lucre.stm.{TxnLike, Identifiable}
-import de.sciss.serial.{DataOutput, DataInput, Serializer}
+import de.sciss.serial.{Writable, DataOutput, DataInput, Serializer}
 
 import scala.collection.immutable.{IndexedSeq => Vec}
 
 object Genome {
-  def empty(implicit tx: S#Tx): Genome = new Genome {
-    def chromosomes = Vector.empty
+  def empty(implicit tx: S#Tx): Genome = {
+    val id = tx.newID()
+    val chromosomes = tx.newVar(id, Vec.empty[ChromosomeH])
+    new GenomeImpl(id, chromosomes)
   }
 
-  def apply(size: Int)(implicit tx: S#Tx, r: TxnRandom.Persistent[D]): Genome = new Genome {
-    val chromosomes   = Vector.fill(size)(ChromosomeH(8)(tx, r))
-    // private val rngH  = tx.durable.newHandle(r)
-    // def rng(implicit tx: D#Tx): TxnRandom[D#Tx] = rngH()
+  //  def apply(size: Int)(implicit tx: S#Tx, r: TxnRandom.Persistent[D]): Genome = new Genome {
+  //    val id            = tx.newID()
+  //    val chromosomes   = Vector.fill(size)(ChromosomeH(8)(tx, r))
+  //    // private val rngH  = tx.durable.newHandle(r)
+  //    // def rng(implicit tx: D#Tx): TxnRandom[D#Tx] = rngH()
+  //  }
+
+  private final class GenomeImpl(val id: S#ID, val chromosomes: S#Var[Vec[ChromosomeH]])
+    extends Genome {
+
+    def write(out: DataOutput): Unit = {
+      id.write(out)
+      chromosomes.write(out)
+    }
   }
 
   implicit object Ser extends Serializer[S#Tx, S#Acc, Genome] {
-    def write(g: Genome, out: DataOutput): Unit = {
-      ??? // Serializer.indexedSeq[D#Tx, D#Acc, ChromosomeH](ChromosomeH.Ser).write(g.chromosomes, out)
-      // g.rng.write(out)
-    }
+    def write(g: Genome, out: DataOutput): Unit = g.write(out)
 
-    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Genome = new Genome {
-      val chromosomes   = Serializer.indexedSeq[S#Tx, S#Acc, ChromosomeH](ChromosomeH.Ser).read(in, access)
-      ??? // private val rngH  = TxnRandom.Persistent.read[D]()
+    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Genome = {
+      val id            = tx.readID(in, access)
+      val chromosomes   = tx.readVar[Vec[ChromosomeH]](id, in)
+      new GenomeImpl(id, chromosomes)
     }
   }
 }
-trait Genome {
+trait Genome extends Writable {
   // def chromosomes: SkipList.Set[S, Chromosome]
-  def chromosomes: Vec[ChromosomeH]
+  def chromosomes: S#Var[Vec[ChromosomeH]]
   // def rng(implicit tx: D#Tx): TxnRandom.Persistent[D]
 }
 
