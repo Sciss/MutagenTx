@@ -15,6 +15,7 @@ package de.sciss.mutagentx
 
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
+import de.sciss.lucre.stm
 import de.sciss.lucre.stm.store.BerkeleyDB
 
 import scala.annotation.tailrec
@@ -130,21 +131,24 @@ trait Algorithm {
     * It assumes the invoking transaction is 'up-to-date' and will cause
     * the selection's cursors to step from this transaction's input access.
     */
-  def mutate(sq: Vec[ChromosomeH], n: Int, inputAccess: S#Acc): Vec[ChromosomeH] = {
-    var res = Vector.empty[ChromosomeH]
+  def mutate(sq: Vec[ChromosomeH], n: Int, inputAccess: S#Acc): Vec[(S#Acc, stm.Source[S#Tx, ChromosomeH])] = {
+    var res = Vector.empty[(S#Acc, stm.Source[S#Tx, ChromosomeH])]
     while (res.size < n) {
-      val chosen = sq(res.size % sq.size)
-      chosen.cursor.stepFrom(inputAccess) { implicit tx =>
+      val chosen  = sq(res.size % sq.size)
+      val csr     = chosen.cursor
+      val h = csr.stepFrom(inputAccess) { implicit tx =>
         implicit val dtx = tx.durable
         val b   = chosen.apply().bits
-        val n   = 2
+        // flip two bits
         val i1  = rng.nextInt(b.size)
         val i20 = rng.nextInt(b.size - 1)
         val i2  = if (i20 < i1) i20 else i20 + 1
         b(i1).transform(!_)
         b(i2).transform(!_)
+        tx.newHandle(chosen)
       }
-      ???
+      val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
+      res :+= (pos, h)
     }
     res
   }
