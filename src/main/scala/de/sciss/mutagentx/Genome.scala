@@ -13,15 +13,17 @@
 
 package de.sciss.mutagentx
 
+import de.sciss.lucre.confluent
 import de.sciss.serial.{DataInput, DataOutput, Serializer, Writable}
 
 import scala.collection.immutable.{IndexedSeq => Vec}
 
 object Genome {
   def empty(implicit tx: S#Tx): Genome = {
-    val id = tx.newID()
+    val id          = tx.newID()
     val chromosomes = tx.newVar(id, Vec.empty[ChromosomeH])
-    new GenomeImpl(id, chromosomes)
+    val cursor      = tx.system.newCursor()
+    new GenomeImpl(id, chromosomes, cursor)
   }
 
   //  def apply(size: Int)(implicit tx: S#Tx, r: TxnRandom.Persistent[D]): Genome = new Genome {
@@ -31,12 +33,14 @@ object Genome {
   //    // def rng(implicit tx: D#Tx): TxnRandom[D#Tx] = rngH()
   //  }
 
-  private final class GenomeImpl(val id: S#ID, val chromosomes: S#Var[Vec[ChromosomeH]])
+  private final class GenomeImpl(val id: S#ID, val chromosomes: S#Var[Vec[ChromosomeH]],
+                                 val cursor: confluent.Cursor[S, D])
     extends Genome {
 
     def write(out: DataOutput): Unit = {
-      id.write(out)
-      chromosomes.write(out)
+      id          .write(out)
+      chromosomes .write(out)
+      cursor      .write(out)
     }
   }
 
@@ -46,12 +50,13 @@ object Genome {
     def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Genome = {
       val id            = tx.readID(in, access)
       val chromosomes   = tx.readVar[Vec[ChromosomeH]](id, in)
-      new GenomeImpl(id, chromosomes)
+      val cursor        = tx.system.readCursor(in)
+      new GenomeImpl(id, chromosomes, cursor)
     }
   }
 }
 trait Genome extends Writable {
-  // def chromosomes: SkipList.Set[S, Chromosome]
   def chromosomes: S#Var[Vec[ChromosomeH]]
-  // def rng(implicit tx: D#Tx): TxnRandom.Persistent[D]
+
+  def cursor: confluent.Cursor[S, D]
 }

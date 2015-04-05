@@ -23,15 +23,15 @@ object ChromosomeH {
     val id      = tx.newID()
     val cursor  = tx.system.newCursor()
     val apply   = tx.newVar(id, Chromosome(numBits))
-    val fitness = 0.0 // XXX
+    val fitness = tx.newVar(id, 0.0)
   }
 
   implicit object Ser extends Serializer[S#Tx, S#Acc, ChromosomeH] {
     def write(c: ChromosomeH, out: DataOutput): Unit = {
-      c.id    .write(out)
-      c.cursor.write(out)
-      c.apply .write(out)
-      out.writeDouble(c.fitness)
+      c.id      .write(out)
+      c.cursor  .write(out)
+      c.apply   .write(out)
+      c.fitness .write(out)
     }
 
     def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): ChromosomeH = {
@@ -41,13 +41,14 @@ object ChromosomeH {
         val id      = tx.readID(in, access)
         val cursor  = confluent.Cursor.read[S, D](in)
         val apply   = tx.readVar[Chromosome](id, in)
-        val fitness = in.readDouble()
+        val fitness = tx.readVar[Double    ](id, in)
       }
     }
   }
 }
 trait ChromosomeH extends Identifiable[S#ID] {
-  def cursor: confluent.Cursor[S, D]
-  def apply: S#Var[Chromosome]
-  def fitness: Double
+  def cursor  : confluent.Cursor[S, D]
+
+  def apply   : S#Var[Chromosome]
+  def fitness : S#Var[Double    ]
 }

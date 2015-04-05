@@ -13,7 +13,6 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.stm.store.BerkeleyDB
 
@@ -27,14 +26,14 @@ object Algorithm {
     val dbf = BerkeleyDB.tmp()
     // system.rootWithDurable(...)
     new Algorithm {
-      val system = ConfluentReactive(dbf)
-      implicit val rngSer = TxnRandom.Persistent.serializer[D]
-      val (handle, rng) = system.rootWithDurable { implicit tx =>
+      implicit val system = ConfluentReactive(dbf)
+      // implicit val rngSer = TxnRandom.Persistent.serializer[D]
+      val (handle, global) = system.rootWithDurable { implicit tx =>
         implicit val dtx = system.durableTx(tx)
-        val id = tx.newID()
+        // val id = tx.newID()
         Genome.empty
       } { implicit tx =>
-        TxnRandom.Persistent[D]()
+        GlobalState()
       }
 
 //      val (handle, cursor) = system.cursorRoot { implicit tx =>
@@ -52,11 +51,31 @@ trait Algorithm {
 
   def system: S
 
-  implicit def rng: TxnRandom.Persistent[D]
+  val global: GlobalState
 
-  def init(n: Int)(implicit tx: S#Tx): Unit = {
+  import global.rng
+
+  def init(n: Int)(implicit tx: S#Tx): Unit =
     genome.chromosomes() = Vector.fill(n)(ChromosomeH(8))
+
+  def evaluate()(implicit tx: S#Tx): Unit =
+    genome.chromosomes().foreach { cH =>
+      val b = cH.apply().bits
+      val h = b.size / 2
+      val c = b.zipWithIndex.count { case (v, i) => v() == (i < h) }
+      cH.fitness() = c.toDouble / b.size
+    }
+
+  def print()(implicit tx: S#Tx): Unit = {
+    val s = mkString()
+    tx.afterCommit(println(s))
   }
+
+  def mkString()(implicit tx: S#Tx): String =
+    genome.chromosomes().zipWithIndex.map { case (cH, i) =>
+      val b = cH.apply().bits.map { v => if (v()) '1' else '0' } .mkString
+      f"$i%2d  ${cH.fitness()}%1.3f $b"
+    } .mkString("\n")
 
   def select()(implicit tx: S#Tx): Set[ChromosomeH] = {
     implicit val dtx = tx.durable
@@ -67,7 +86,7 @@ trait Algorithm {
     val n     = (pop * frac + 0.5).toInt
 
     @tailrec def loop(rem: Int, in: Set[ChromosomeH], out: Set[ChromosomeH]): Set[ChromosomeH] = if (rem == 0) out else {
-      val sum     = in.view.map(_.fitness).sum
+      val sum     = in.view.map(_.fitness()).sum
       val rem1    = rem - 1
       if (sum == 0.0) {
         val chosen = in.head
@@ -75,7 +94,7 @@ trait Algorithm {
       } else {
         val inIdx       = in.zipWithIndex[ChromosomeH, Vec[(ChromosomeH, Int)]](breakOut)
         val norm        = inIdx.map {
-          case (c, j) => (j, c.fitness / sum)
+          case (c, j) => (j, c.fitness() / sum)
         }
         val sorted      = norm.sortBy(_._2)
         val acc         = sorted.scanLeft(0.0) { case (a, (_, f)) => a + f } .tail
@@ -96,7 +115,7 @@ trait Algorithm {
 
   def elitism()(implicit tx: S#Tx): Vec[ChromosomeH] = {
     val n = 4
-    val sel = genome.chromosomes.apply().sortBy(-_.fitness).take(n)
+    val sel = genome.chromosomes.apply().sortBy(-_.fitness()).take(n)
     sel
   }
 
