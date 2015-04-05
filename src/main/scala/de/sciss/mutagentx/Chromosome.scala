@@ -14,8 +14,9 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.stm.Identifiable
-import de.sciss.serial.{DataInput, DataOutput, Serializer}
+import de.sciss.lucre.stm
+import de.sciss.lucre.stm.MutableSerializer
+import de.sciss.serial.{DataInput, DataOutput}
 
 import scala.collection.immutable.{IndexedSeq => Vec}
 
@@ -25,23 +26,27 @@ object Chromosome {
     val bits  = Vector.fill(numBits)(tx.newBooleanVar(id, r.nextBoolean()(tx.durable)))
   }
 
-  implicit object Ser extends Serializer[S#Tx, S#Acc, Chromosome] {
-    def write(c: Chromosome, out: DataOutput): Unit = {
-      c.id.write(out)
-      out.writeInt(c.bits.size)
-      c.bits.foreach(_.write(out))
-    }
-
-    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Chromosome = new Chromosome {
-      val id    = tx.readID(in, access)
+  implicit object Ser extends MutableSerializer[S, Chromosome] {
+    def readData(in: DataInput, id0: S#ID)(implicit tx: S#Tx): Chromosome = new Chromosome {
+      val id    = id0
       val bits  = Vector.fill(in.readInt())(tx.readVar[Boolean](id, in))
     }
   }
 }
-trait Chromosome extends Identifiable[S#ID] {
+trait Chromosome extends stm.Mutable.Impl[S] {
   def bits: Vec[S#Var[Boolean]]
 
   //  def vertices: SkipList.Set[S, Vertex]
   //  def edges   : SkipList.Set[S, Edge  ]
   //  def fitness : S#Var[Double]
+
+  override def toString(): String = s"Chromosome$id"
+
+  protected final def writeData(out: DataOutput): Unit = {
+    out.writeInt(bits.size)
+    bits.foreach(_.write(out))
+  }
+
+  protected final def disposeData()(implicit tx: S#Tx): Unit =
+    bits.foreach(_.dispose())
 }

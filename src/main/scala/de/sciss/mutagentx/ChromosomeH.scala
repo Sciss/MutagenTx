@@ -13,42 +13,43 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.confluent
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.stm.Identifiable
-import de.sciss.serial.{DataInput, DataOutput, Serializer}
+import de.sciss.lucre.stm
+import de.sciss.lucre.stm.MutableSerializer
+import de.sciss.serial.{DataInput, DataOutput}
 
 object ChromosomeH {
   def apply(numBits: Int)(implicit tx: S#Tx, r: TxnRandom[D#Tx]): ChromosomeH = new ChromosomeH {
     val id      = tx.newID()
-    val cursor  = tx.system.newCursor()
     val apply   = tx.newVar(id, Chromosome(numBits))
     val fitness = tx.newVar(id, 0.0)
   }
 
-  implicit object Ser extends Serializer[S#Tx, S#Acc, ChromosomeH] {
-    def write(c: ChromosomeH, out: DataOutput): Unit = {
-      c.id      .write(out)
-      c.cursor  .write(out)
-      c.apply   .write(out)
-      c.fitness .write(out)
-    }
-
-    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): ChromosomeH = {
+  implicit object Ser extends MutableSerializer[S, ChromosomeH] {
+    def readData(in: DataInput, id0: S#ID)(implicit tx: S#Tx): ChromosomeH = {
       implicit val dtx = tx.durable
       implicit val sys = tx.system
       new ChromosomeH {
-        val id      = tx.readID(in, access)
-        val cursor  = confluent.Cursor.read[S, D](in)
+        val id      = id0
         val apply   = tx.readVar[Chromosome](id, in)
         val fitness = tx.readVar[Double    ](id, in)
       }
     }
   }
 }
-trait ChromosomeH extends Identifiable[S#ID] {
-  def cursor  : confluent.Cursor[S, D]
-
+trait ChromosomeH extends stm.Mutable.Impl[S] {
   def apply   : S#Var[Chromosome]
   def fitness : S#Var[Double    ]
+
+  override def toString(): String = s"ChromosomeH$id"
+
+  protected final def writeData(out: DataOutput): Unit = {
+    apply   .write(out)
+    fitness .write(out)
+  }
+
+  protected final def disposeData()(implicit tx: S#Tx): Unit = {
+    apply  .dispose()
+    fitness.dispose()
+  }
 }

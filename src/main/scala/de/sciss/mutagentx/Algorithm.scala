@@ -13,9 +13,9 @@
 
 package de.sciss.mutagentx
 
+import de.sciss.lucre.confluent
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.stm
 import de.sciss.lucre.stm.store.BerkeleyDB
 
 import scala.annotation.tailrec
@@ -69,7 +69,7 @@ trait Algorithm {
   def mkString()(implicit tx: S#Tx): String =
     genome.chromosomes().zipWithIndex.map { case (cH, i) =>
       val b = cH.apply().bits.map { v => if (v()) '1' else '0' } .mkString
-      f"$i%2d  ${cH.fitness()}%1.3f  $b"
+      f"${i + 1}%2d  ${cH.fitness()}%1.3f  $b"
     } .mkString("\n")
 
   def select(all: Vec[ChromosomeH])(implicit tx: S#Tx): Set[ChromosomeH] = {
@@ -107,7 +107,7 @@ trait Algorithm {
   }
 
   def elitism(all: Vec[ChromosomeH])(implicit tx: S#Tx): Vec[ChromosomeH] = {
-    val n = 4
+    val n = 2
     val sel = all.sortBy(-_.fitness()).take(n)
     sel
   }
@@ -131,12 +131,12 @@ trait Algorithm {
     * It assumes the invoking transaction is 'up-to-date' and will cause
     * the selection's cursors to step from this transaction's input access.
     */
-  def mutate(sq: Vec[ChromosomeH], n: Int, inputAccess: S#Acc): Vec[(S#Acc, stm.Source[S#Tx, ChromosomeH])] = {
-    var res = Vector.empty[(S#Acc, stm.Source[S#Tx, ChromosomeH])]
+  def mutate(sq: Vec[ChromosomeH], n: Int, inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, ChromosomeH])] = {
+    var res = Vector.empty[(S#Acc, confluent.Source[S, ChromosomeH])]
     while (res.size < n) {
       val chosen  = sq(res.size % sq.size)
-      val csr     = chosen.cursor
-      val h = csr.stepFrom(inputAccess) { implicit tx =>
+      val csr     = global.forkCursor
+      val h0 = csr.stepFrom(inputAccess) { implicit tx =>
         implicit val dtx = tx.durable
         val b   = chosen.apply().bits
         // flip two bits
@@ -147,7 +147,9 @@ trait Algorithm {
         b(i2).transform(!_)
         tx.newHandle(chosen)
       }
+      val h = h0 // csr.step { implicit tx => tx.newHandle(h0()) }
       val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
+      println(s"$h - $pos")
       res :+= (pos, h)
     }
     res
@@ -170,7 +172,13 @@ trait Algorithm {
     }
 
     val nMut = pop - el.size
-    mutate(sel, nMut, inputAccess)
+    val mut  = mutate(sel, nMut, inputAccess)
+
+    global.cursor.step { implicit tx =>
+      genome.chromosomes() = el ++ mut.map { case (access, h) =>
+        h.meld(access)
+      }
+    }
 
     /*
 
