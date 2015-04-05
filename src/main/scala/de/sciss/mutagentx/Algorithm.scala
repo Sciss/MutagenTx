@@ -13,34 +13,27 @@
 
 package de.sciss.mutagentx
 
+import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.stm.store.BerkeleyDB
 
 import scala.annotation.tailrec
 import scala.collection.breakOut
+import scala.collection.generic.CanBuildFrom
 import scala.collection.immutable.{IndexedSeq => Vec}
+import scala.language.higherKinds
 
 object Algorithm {
   def apply(): Algorithm = {
-    // val n = 20
     val dbf = BerkeleyDB.tmp()
-    // system.rootWithDurable(...)
     new Algorithm {
       implicit val system = ConfluentReactive(dbf)
-      // implicit val rngSer = TxnRandom.Persistent.serializer[D]
       val (handle, global) = system.rootWithDurable { implicit tx =>
         implicit val dtx = system.durableTx(tx)
-        // val id = tx.newID()
         Genome.empty
       } { implicit tx =>
         GlobalState()
       }
-
-//      val (handle, cursor) = system.cursorRoot { implicit tx =>
-//        implicit val dtx  = system.durableTx(tx)
-//        implicit val r    = TxnRandom.Persistent[D]()
-//        Genome(n)
-//      } { implicit tx => _ => system.newCursor() }
 
       def genome(implicit tx: S#Tx): Genome = handle()
     }
@@ -62,6 +55,7 @@ trait Algorithm {
     genome.chromosomes().foreach { cH =>
       val b = cH.apply().bits
       val h = b.size / 2
+      // simple example function: lhs should be true, rhs should be false
       val c = b.zipWithIndex.count { case (v, i) => v() == (i < h) }
       cH.fitness() = c.toDouble / b.size
     }
@@ -74,15 +68,14 @@ trait Algorithm {
   def mkString()(implicit tx: S#Tx): String =
     genome.chromosomes().zipWithIndex.map { case (cH, i) =>
       val b = cH.apply().bits.map { v => if (v()) '1' else '0' } .mkString
-      f"$i%2d  ${cH.fitness()}%1.3f $b"
+      f"$i%2d  ${cH.fitness()}%1.3f  $b"
     } .mkString("\n")
 
-  def select()(implicit tx: S#Tx): Set[ChromosomeH] = {
+  def select(all: Vec[ChromosomeH])(implicit tx: S#Tx): Set[ChromosomeH] = {
     implicit val dtx = tx.durable
 
-    val prev  = genome.chromosomes.apply()
     val frac  = 0.2
-    val pop   = prev.size
+    val pop   = all.size
     val n     = (pop * frac + 0.5).toInt
 
     @tailrec def loop(rem: Int, in: Set[ChromosomeH], out: Set[ChromosomeH]): Set[ChromosomeH] = if (rem == 0) out else {
@@ -106,30 +99,74 @@ trait Algorithm {
       }
     }
 
-    val all   = prev.toSet
-    val sel   = loop(n, all, Set.empty)
+    val sel   = loop(n, all.toSet, Set.empty)
     // val remove  = all -- sel
     // remove.foreach(prev.remove)
     sel
   }
 
-  def elitism()(implicit tx: S#Tx): Vec[ChromosomeH] = {
+  def elitism(all: Vec[ChromosomeH])(implicit tx: S#Tx): Vec[ChromosomeH] = {
     val n = 4
-    val sel = genome.chromosomes.apply().sortBy(-_.fitness()).take(n)
+    val sel = all.sortBy(-_.fitness()).take(n)
     sel
   }
 
-  def mutate()(implicit tx: S#Tx): Unit = {
-
+  def scramble[A, CC[~] <: IndexedSeq[~], To](in: CC[A])(implicit tx: S#Tx, random: TxnRandom.Persistent[D],
+                                                         cbf: CanBuildFrom[CC[A], A, To]): To = {
+    val b = cbf(in)
+    var rem = in: IndexedSeq[A]
+    implicit val dtx = tx.durable
+    while (rem.nonEmpty) {
+      val idx = random.nextInt(rem.size)
+      val e = rem(idx)
+      rem = rem.patch(idx, Nil, 1)
+      b += e
+    }
+    b.result()
   }
 
-  // def rng(implicit tx: S#Tx): TxnRandom[S#Tx]
+  /** Produces a sequence of `n` items by mutating the input `sel` selection.
+    *
+    * It assumes the invoking transaction is 'up-to-date' and will cause
+    * the selection's cursors to step from this transaction's input access.
+    */
+  def mutate(sq: Vec[ChromosomeH], n: Int, inputAccess: S#Acc): Vec[ChromosomeH] = {
+    var res = Vector.empty[ChromosomeH]
+    while (res.size < n) {
+      val chosen = sq(res.size % sq.size)
+      chosen.cursor.stepFrom(inputAccess) { implicit tx =>
+        implicit val dtx = tx.durable
+        val b   = chosen.apply().bits
+        val n   = 2
+        val i1  = rng.nextInt(b.size)
+        val i20 = rng.nextInt(b.size - 1)
+        val i2  = if (i20 < i1) i20 else i20 + 1
+        b(i1).transform(!_)
+        b(i2).transform(!_)
+      }
+      ???
+    }
+    res
+  }
 
+  /** Performs one iteration of the algorithm, assuming that current population
+    * was already evaluated. Steps:
+    *
+    * - elitism
+    * - selection
+    * - breeding: mutation and cross-over
+    * - evaluation
+    */
   def iterate(): Unit = {
-//    val el  = elitism().toSet
-//    implicit val r = rng
-//    val sel = select()
+    val (el, sel, pop, inputAccess) = global.cursor.step { implicit tx =>
+      val all   = genome.chromosomes()
+      val _el   = elitism(all) // .toSet
+      val _sel  = select (all)
+      (_el, scramble(_sel.toIndexedSeq), all.size, tx.inputAccess)
+    }
 
+    val nMut = pop - el.size
+    mutate(sel, nMut, inputAccess)
 
     /*
 
