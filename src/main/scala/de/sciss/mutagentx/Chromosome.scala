@@ -1,9 +1,21 @@
+/*
+ *  Chromosome
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.data.SkipList
 import de.sciss.lucre.stm.Identifiable
-import de.sciss.serial.{DataOutput, DataInput, Serializer}
+import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
 import scala.collection.immutable.{IndexedSeq => Vec}
 

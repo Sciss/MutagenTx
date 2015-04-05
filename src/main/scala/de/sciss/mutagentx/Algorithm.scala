@@ -1,8 +1,20 @@
+/*
+ *  Algorithm
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 
+import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.confluent.{Confluent, TxnRandom}
-import de.sciss.lucre.expr
 import de.sciss.lucre.stm.store.BerkeleyDB
 
 import scala.annotation.tailrec

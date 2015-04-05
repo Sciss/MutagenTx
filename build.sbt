@@ -10,11 +10,11 @@ crossScalaVersions := Seq("2.11.6", "2.10.5")
 
 description        := "An experiment with genetic algorithms"
 
-homepage           := Some(url("https://github.com/Sciss/" + name.value))
+homepage           := Some(url(s"https://github.com/Sciss/${name.value}"))
 
 licenses           := Seq("GPL v3+" -> url("http://www.gnu.org/licenses/gpl-3.0.txt"))
 
-resolvers += "Oracle Repository" at "http://download.oracle.com/maven"
+resolvers          += "Oracle Repository" at "http://download.oracle.com/maven"
 
 libraryDependencies ++= Seq(
   "de.sciss" %% "lucreconfluent"  % "2.10.0-SNAPSHOT",
