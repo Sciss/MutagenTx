@@ -13,7 +13,7 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.confluent
+import de.sciss.lucre.{stm, confluent}
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.stm.store.BerkeleyDB
@@ -25,6 +25,8 @@ import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.language.higherKinds
 
 object Algorithm {
+  val DEBUG = false
+
   def apply(): Algorithm = {
     val dbf = BerkeleyDB.tmp()
     new Algorithm {
@@ -41,6 +43,8 @@ object Algorithm {
   }
 }
 trait Algorithm {
+  import Algorithm.DEBUG
+
   def genome(implicit tx: S#Tx): Genome
 
   def system: S
@@ -131,25 +135,29 @@ trait Algorithm {
     * It assumes the invoking transaction is 'up-to-date' and will cause
     * the selection's cursors to step from this transaction's input access.
     */
-  def mutate(sq: Vec[ChromosomeH], n: Int, inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, ChromosomeH])] = {
+  def mutate(sq: Vec[stm.Source[S#Tx, ChromosomeH]], n: Int, inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, ChromosomeH])] = {
     var res = Vector.empty[(S#Acc, confluent.Source[S, ChromosomeH])]
     while (res.size < n) {
-      val chosen  = sq(res.size % sq.size)
+      val chosenH = sq(res.size % sq.size)
       val csr     = global.forkCursor
       val h0 = csr.stepFrom(inputAccess) { implicit tx =>
         implicit val dtx = tx.durable
+        val chosen = chosenH()
         val b   = chosen.apply().bits
-        // flip two bits
+        // flip one or two bits
+        val two = rng.nextBoolean()
         val i1  = rng.nextInt(b.size)
-        val i20 = rng.nextInt(b.size - 1)
-        val i2  = if (i20 < i1) i20 else i20 + 1
         b(i1).transform(!_)
-        b(i2).transform(!_)
+        if (two) {
+          val i20 = rng.nextInt(b.size - 1)
+          val i2  = if (i20 < i1) i20 else i20 + 1
+          b(i2).transform(!_)
+        }
         tx.newHandle(chosen)
       }
       val h = h0 // csr.step { implicit tx => tx.newHandle(h0()) }
       val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
-      println(s"$h - $pos")
+      if (DEBUG) println(s"$h - $pos")
       res :+= (pos, h)
     }
     res
@@ -165,9 +173,10 @@ trait Algorithm {
     */
   def iterate(): Unit = {
     val (el, sel, pop, inputAccess) = global.cursor.step { implicit tx =>
+      if (DEBUG) println(s"iterate - inputAccess ${tx.inputAccess}")
       val all   = genome.chromosomes()
       val _el   = elitism(all) // .toSet
-      val _sel  = select (all)
+      val _sel  = select (all) .map(tx.newHandle(_))
       (_el, scramble(_sel.toIndexedSeq), all.size, tx.inputAccess)
     }
 
@@ -178,6 +187,7 @@ trait Algorithm {
       genome.chromosomes() = el ++ mut.map { case (access, h) =>
         h.meld(access)
       }
+      evaluate()
     }
 
     /*
