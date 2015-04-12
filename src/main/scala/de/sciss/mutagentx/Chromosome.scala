@@ -52,6 +52,16 @@ trait Chromosome extends stm.Mutable.Impl[S] {
 
   final def bits(implicit tx: S#Tx): Vec[Boolean] = head().fold(Vector.empty[Boolean])(_.to[Vector])
 
+  final def debugString(implicit tx: S#Tx): String = {
+    @tailrec def loop(nOpt: Option[Bit], res: Vec[S#ID]): Vec[S#ID] = nOpt match {
+      case Some(b) => loop(b.next(), res :+ b.id)
+      case _ => res
+    }
+
+    val ids = loop(head(), Vector.empty)
+    ids.mkString(s"c$id(", ", ", ")")
+  }
+
   final def size(implicit tx: S#Tx): Int = head().fold(0)(_.size)
 
   def apply(idx: Int)(implicit tx: S#Tx): Bit = {

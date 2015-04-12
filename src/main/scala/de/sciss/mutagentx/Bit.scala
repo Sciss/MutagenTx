@@ -78,7 +78,7 @@ trait Bit extends stm.Mutable.Impl[S] {
   //  def edges   : SkipList.Set[S, Edge  ]
   //  def fitness : S#Var[Double]
 
-  override def toString(): String = s"Bit$id"
+  override def toString(): String = s"Bit$id" // (bit = $bit, next = $next)"
 
   protected final def writeData(out: DataOutput): Unit = {
     bit .write(out)

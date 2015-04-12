@@ -72,8 +72,9 @@ trait Algorithm {
 
   def mkString()(implicit tx: S#Tx): String =
     genome.chromosomes().zipWithIndex.map { case (cH, i) =>
-      val b = cH.bits.map { v => if (v) '1' else '0' } .mkString
-      f"${i + 1}%2d  ${cH.fitness()}%1.3f  $b"
+      val b  = cH.bits.map { v => if (v) '1' else '0' } .mkString
+      val s0 = f"${i + 1}%2d  ${cH.fitness()}%1.3f  $b"
+      if (DEBUG) s"$s0  ${cH.debugString}" else s0
     } .mkString("\n")
 
   private val selectionFrac = 0.5
@@ -145,7 +146,7 @@ trait Algorithm {
       val chosen0H  = sq( idx0      % sq.size)
       val chosen1H  = sq((idx0 + 1) % sq.size)
       val csr       = global.forkCursor
-      val hs = csr.stepFrom(inputAccess) { implicit tx =>
+      val hs0 = csr.stepFrom(inputAccess) { implicit tx =>
         implicit val dtx = tx.durable
         val chosen0 = chosen0H()
         val chosen1 = chosen1H()
@@ -164,17 +165,22 @@ trait Algorithm {
         val p0v = p0()
         val p1v = p1()
 
+        if (DEBUG) println(s"cross ($chosen0, $chosen1) at $split")
+
         val _res0 = {
           p0() = p1v
+          // if (DEBUG) println(s"$p0() = $p1v")
           tx.newHandle(chosen0)
         }
         val _res1 = if (res.size + 1 == n) _res0 :: Nil else {
           p1() = p0v
+          // if (DEBUG) println(s"$p1() = $p0v")
           _res0 :: tx.newHandle(chosen1) :: Nil
         }
 
         _res1
       }
+      val hs  = hs0 // csr.step { implicit tx => hs0.map(h => tx.newHandle(h())) }
       val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
       if (DEBUG) println(s"$hs - $pos")
       hs.foreach(h => res :+= (pos, h))
@@ -208,7 +214,7 @@ trait Algorithm {
         }
         tx.newHandle(chosen)
       }
-      val h = h0 // csr.step { implicit tx => tx.newHandle(h0()) }
+      val h   = h0 // csr.step { implicit tx => tx.newHandle(h0()) }
       val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
       if (DEBUG) println(s"$h - $pos")
       res :+= (pos, h)
