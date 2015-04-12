@@ -25,7 +25,7 @@ import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.language.higherKinds
 
 object Algorithm {
-  val DEBUG = false
+  val DEBUG = true
 
   def apply(): Algorithm = {
     val dbf = BerkeleyDB.tmp()
@@ -76,12 +76,13 @@ trait Algorithm {
       f"${i + 1}%2d  ${cH.fitness()}%1.3f  $b"
     } .mkString("\n")
 
+  private val selectionFrac = 0.5
+
   def select(all: Vec[Chromosome])(implicit tx: S#Tx): Set[Chromosome] = {
     implicit val dtx = tx.durable
 
-    val frac  = 0.2
     val pop   = all.size
-    val n     = (pop * frac + 0.5).toInt
+    val n     = (pop * selectionFrac + 0.5).toInt
 
     @tailrec def loop(rem: Int, in: Set[Chromosome], out: Set[Chromosome]): Set[Chromosome] = if (rem == 0) out else {
       val sum     = in.view.map(_.fitness()).sum
@@ -110,9 +111,10 @@ trait Algorithm {
     sel
   }
 
+  private val numElitism = 0
+
   def elitism(all: Vec[Chromosome])(implicit tx: S#Tx): Vec[Chromosome] = {
-    val n = 2
-    val sel = all.sortBy(-_.fitness()).take(n)
+    val sel = all.sortBy(-_.fitness()).take(numElitism)
     sel
   }
 
@@ -139,26 +141,43 @@ trait Algorithm {
                 inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] = {
     var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
     while (res.size < n) {
-//      val idx0      = res.size << 1
-//      val chosen0H  = sq( idx0      % sq.size)
-//      val chosen1H  = sq((idx0 + 1) % sq.size)
-//      val csr       = global.forkCursor
-//      val h = csr.stepFrom(inputAccess) { implicit tx =>
-//        implicit val dtx = tx.durable
-//        val bits0   = chosen0H().head.bits
-//        val bits1   = chosen1H().head.bits
-//        val numBits = bits0.size
-//        require(numBits > 1)
-//        val split   = rng.nextInt(numBits - 1) + 1
-//        val bits    = bits0.take(split) ++ bits1.drop(split)
-//        val c       = Bit(bits)
-//        val cH      = Chromosome(c)
-//        tx.newHandle(cH)
-//      }
-//      val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
-//      if (DEBUG) println(s"$h - $pos")
-//      res :+= (pos, h)
-      ???
+      val idx0      = res.size << 1
+      val chosen0H  = sq( idx0      % sq.size)
+      val chosen1H  = sq((idx0 + 1) % sq.size)
+      val csr       = global.forkCursor
+      val hs = csr.stepFrom(inputAccess) { implicit tx =>
+        implicit val dtx = tx.durable
+        val chosen0 = chosen0H()
+        val chosen1 = chosen1H()
+        val numBits = chosen0.size
+        require(numBits > 1)
+        val split   = rng.nextInt(numBits - 1) + 1
+
+        @tailrec def loop(rem: Int, next0: S#Var[Option[Bit]], next1: S#Var[Option[Bit]]): (S#Var[Option[Bit]], S#Var[Option[Bit]]) =
+          if (rem == 0) (next0, next1) else {
+            val nn0 = next0().get
+            val nn1 = next1().get
+            loop(rem - 1, nn0.next, nn1.next)
+          }
+
+        val (p0, p1) = loop(split, chosen0.head, chosen1.head)
+        val p0v = p0()
+        val p1v = p1()
+
+        val _res0 = {
+          p0() = p1v
+          tx.newHandle(chosen0)
+        }
+        val _res1 = if (res.size + 1 == n) _res0 :: Nil else {
+          p1() = p0v
+          _res0 :: tx.newHandle(chosen1) :: Nil
+        }
+
+        _res1
+      }
+      val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
+      if (DEBUG) println(s"$hs - $pos")
+      hs.foreach(h => res :+= (pos, h))
     }
     res
   }
@@ -197,6 +216,8 @@ trait Algorithm {
     res
   }
 
+  private val mutationProb = 0.0
+
   /** Performs one iteration of the algorithm, assuming that current population
     * was already evaluated. Steps:
     *
@@ -215,9 +236,11 @@ trait Algorithm {
     }
 
     val nGen    = pop - el.size
-    val wMut    = 1.0 // 0.5
-    val nMut    = (wMut * nGen + 0.5).toInt
+    val nMut    = (mutationProb * nGen + 0.5).toInt
     val nCross  = nGen - nMut
+
+    // if (DEBUG) println(s"pop $pop, el ${el.size}, sel ${sel.size}, nMut $nMut, nCross $nCross")
+
     val mut     = mutate    (sel, nMut  , inputAccess)
     val cross   = crossover (sel, nCross, inputAccess)
 
@@ -227,22 +250,5 @@ trait Algorithm {
       }
       evaluate()
     }
-
-    /*
-
-
-      [c1, c2, c3, c4]
-
-      genome {
-         evolution: LinkedList[D, Vector[ChromosomeH]]
-      }
-
-      ChromosomeH {
-        cursor: confluent.Cursor[S]
-        vr: S#Var[Chromosome]
-      }
-
-
-     */
   }
 }
