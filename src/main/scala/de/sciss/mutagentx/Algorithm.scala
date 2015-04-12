@@ -54,14 +54,14 @@ trait Algorithm {
   import global.rng
 
   def init(n: Int)(implicit tx: S#Tx): Unit =
-    genome.chromosomes() = Vector.fill(n)(ChromosomeH(8))
+    genome.chromosomes() = Vector.fill(n)(Chromosome(8))
 
   def evaluate()(implicit tx: S#Tx): Unit =
     genome.chromosomes().foreach { cH =>
-      val b = cH.peer.bits
+      val b = cH.bits
       val h = b.size / 2
       // simple example function: lhs should be true, rhs should be false
-      val c = b.zipWithIndex.count { case (v, i) => v() == (i < h) }
+      val c = b.zipWithIndex.count { case (v, i) => v == (i < h) }
       cH.fitness() = c.toDouble / b.size
     }
 
@@ -72,25 +72,25 @@ trait Algorithm {
 
   def mkString()(implicit tx: S#Tx): String =
     genome.chromosomes().zipWithIndex.map { case (cH, i) =>
-      val b = cH.peer.bits.map { v => if (v()) '1' else '0' } .mkString
+      val b = cH.bits.map { v => if (v) '1' else '0' } .mkString
       f"${i + 1}%2d  ${cH.fitness()}%1.3f  $b"
     } .mkString("\n")
 
-  def select(all: Vec[ChromosomeH])(implicit tx: S#Tx): Set[ChromosomeH] = {
+  def select(all: Vec[Chromosome])(implicit tx: S#Tx): Set[Chromosome] = {
     implicit val dtx = tx.durable
 
     val frac  = 0.2
     val pop   = all.size
     val n     = (pop * frac + 0.5).toInt
 
-    @tailrec def loop(rem: Int, in: Set[ChromosomeH], out: Set[ChromosomeH]): Set[ChromosomeH] = if (rem == 0) out else {
+    @tailrec def loop(rem: Int, in: Set[Chromosome], out: Set[Chromosome]): Set[Chromosome] = if (rem == 0) out else {
       val sum     = in.view.map(_.fitness()).sum
       val rem1    = rem - 1
       if (sum == 0.0) {
         val chosen = in.head
         loop(rem1, in - chosen, out + chosen)
       } else {
-        val inIdx       = in.zipWithIndex[ChromosomeH, Vec[(ChromosomeH, Int)]](breakOut)
+        val inIdx       = in.zipWithIndex[Chromosome, Vec[(Chromosome, Int)]](breakOut)
         val norm        = inIdx.map {
           case (c, j) => (j, c.fitness() / sum)
         }
@@ -110,7 +110,7 @@ trait Algorithm {
     sel
   }
 
-  def elitism(all: Vec[ChromosomeH])(implicit tx: S#Tx): Vec[ChromosomeH] = {
+  def elitism(all: Vec[Chromosome])(implicit tx: S#Tx): Vec[Chromosome] = {
     val n = 2
     val sel = all.sortBy(-_.fitness()).take(n)
     sel
@@ -135,29 +135,30 @@ trait Algorithm {
     * It assumes the invoking transaction is 'up-to-date' and will cause
     * the selection's cursors to step from this transaction's input access.
     */
-  def crossover(sq: Vec[stm.Source[S#Tx, ChromosomeH]], n: Int,
-                inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, ChromosomeH])] = {
-    var res = Vector.empty[(S#Acc, confluent.Source[S, ChromosomeH])]
+  def crossover(sq: Vec[stm.Source[S#Tx, Chromosome]], n: Int,
+                inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] = {
+    var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
     while (res.size < n) {
-      val idx0      = res.size << 1
-      val chosen0H  = sq( idx0      % sq.size)
-      val chosen1H  = sq((idx0 + 1) % sq.size)
-      val csr       = global.forkCursor
-      val h = csr.stepFrom(inputAccess) { implicit tx =>
-        implicit val dtx = tx.durable
-        val bits0   = chosen0H().peer.bits
-        val bits1   = chosen1H().peer.bits
-        val numBits = bits0.size
-        require(numBits > 1)
-        val split   = rng.nextInt(numBits - 1) + 1
-        val bits    = bits0.take(split) ++ bits1.drop(split)
-        val c       = Chromosome(bits)
-        val cH      = ChromosomeH(c)
-        tx.newHandle(cH)
-      }
-      val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
-      if (DEBUG) println(s"$h - $pos")
-      res :+= (pos, h)
+//      val idx0      = res.size << 1
+//      val chosen0H  = sq( idx0      % sq.size)
+//      val chosen1H  = sq((idx0 + 1) % sq.size)
+//      val csr       = global.forkCursor
+//      val h = csr.stepFrom(inputAccess) { implicit tx =>
+//        implicit val dtx = tx.durable
+//        val bits0   = chosen0H().head.bits
+//        val bits1   = chosen1H().head.bits
+//        val numBits = bits0.size
+//        require(numBits > 1)
+//        val split   = rng.nextInt(numBits - 1) + 1
+//        val bits    = bits0.take(split) ++ bits1.drop(split)
+//        val c       = Bit(bits)
+//        val cH      = Chromosome(c)
+//        tx.newHandle(cH)
+//      }
+//      val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
+//      if (DEBUG) println(s"$h - $pos")
+//      res :+= (pos, h)
+      ???
     }
     res
   }
@@ -167,24 +168,24 @@ trait Algorithm {
     * It assumes the invoking transaction is 'up-to-date' and will cause
     * the selection's cursors to step from this transaction's input access.
     */
-  def mutate(sq: Vec[stm.Source[S#Tx, ChromosomeH]], n: Int,
-             inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, ChromosomeH])] = {
-    var res = Vector.empty[(S#Acc, confluent.Source[S, ChromosomeH])]
+  def mutate(sq: Vec[stm.Source[S#Tx, Chromosome]], n: Int,
+             inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] = {
+    var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
     while (res.size < n) {
       val chosenH = sq(res.size % sq.size)
       val csr     = global.forkCursor
       val h0 = csr.stepFrom(inputAccess) { implicit tx =>
         implicit val dtx = tx.durable
-        val chosen = chosenH()
-        val b   = chosen.peer.bits
+        val chosen  = chosenH()
+        val sz      = chosen.size
         // flip one or two bits
         val two = rng.nextBoolean()
-        val i1  = rng.nextInt(b.size)
-        b(i1).transform(!_)
+        val i1  = rng.nextInt(sz)
+        chosen(i1).bit.transform(!_)
         if (two) {
-          val i20 = rng.nextInt(b.size - 1)
+          val i20 = rng.nextInt(sz - 1)
           val i2  = if (i20 < i1) i20 else i20 + 1
-          b(i2).transform(!_)
+          chosen(i2).bit.transform(!_)
         }
         tx.newHandle(chosen)
       }
@@ -214,7 +215,7 @@ trait Algorithm {
     }
 
     val nGen    = pop - el.size
-    val wMut    = 0.5
+    val wMut    = 1.0 // 0.5
     val nMut    = (wMut * nGen + 0.5).toInt
     val nCross  = nGen - nMut
     val mut     = mutate    (sel, nMut  , inputAccess)

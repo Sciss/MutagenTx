@@ -21,7 +21,7 @@ import scala.collection.immutable.{IndexedSeq => Vec}
 object Genome {
   def empty(implicit tx: S#Tx): Genome = {
     val id          = tx.newID()
-    val chromosomes = tx.newVar(id, Vec.empty[ChromosomeH])
+    val chromosomes = tx.newVar(id, Vec.empty[Chromosome])
     val cursor      = tx.system.newCursor()
     new GenomeImpl(id, chromosomes, cursor)
   }
@@ -33,7 +33,7 @@ object Genome {
   //    // def rng(implicit tx: D#Tx): TxnRandom[D#Tx] = rngH()
   //  }
 
-  private final class GenomeImpl(val id: S#ID, val chromosomes: S#Var[Vec[ChromosomeH]],
+  private final class GenomeImpl(val id: S#ID, val chromosomes: S#Var[Vec[Chromosome]],
                                  val cursor: confluent.Cursor[S, D])
     extends Genome {
 
@@ -49,14 +49,14 @@ object Genome {
 
     def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Genome = {
       val id            = tx.readID(in, access)
-      val chromosomes   = tx.readVar[Vec[ChromosomeH]](id, in)
+      val chromosomes   = tx.readVar[Vec[Chromosome]](id, in)
       val cursor        = tx.system.readCursor(in)
       new GenomeImpl(id, chromosomes, cursor)
     }
   }
 }
 trait Genome extends Writable {
-  def chromosomes: S#Var[Vec[ChromosomeH]]
+  def chromosomes: S#Var[Vec[Chromosome]]
 
   def cursor: confluent.Cursor[S, D]
 }

@@ -1,5 +1,5 @@
 /*
- *  Chromosome
+ *  ChromosomeH
  *  (MutagenTx)
  *
  *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
@@ -18,42 +18,61 @@ import de.sciss.lucre.stm
 import de.sciss.lucre.stm.MutableSerializer
 import de.sciss.serial.{DataInput, DataOutput}
 
+import scala.annotation.tailrec
 import scala.collection.immutable.{IndexedSeq => Vec}
 
 object Chromosome {
   def apply(numBits: Int)(implicit tx: S#Tx, r: TxnRandom[D#Tx]): Chromosome = new Chromosome {
-    val id    = tx.newID()
-    val bits  = Vector.fill(numBits)(tx.newBooleanVar(id, r.nextBoolean()(tx.durable)))
+    val id      = tx.newID()
+    val head    = tx.newVar(id, Bit(numBits))
+    val fitness = tx.newVar(id, 0.0)
   }
 
-  def apply(b: Vec[S#Var[Boolean]])(implicit tx: S#Tx): Chromosome = new Chromosome {
-    val id    = tx.newID()
-    val bits  = b
+  def apply(c: Bit)(implicit tx: S#Tx): Chromosome = new Chromosome {
+    val id      = tx.newID()
+    val head    = tx.newVar(id, Option(c))
+    val fitness = tx.newVar(id, 0.0)
   }
-
-  def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Chromosome = Ser.read(in, access)
 
   implicit object Ser extends MutableSerializer[S, Chromosome] {
-    def readData(in: DataInput, id0: S#ID)(implicit tx: S#Tx): Chromosome = new Chromosome {
-      val id    = id0
-      val bits  = Vector.fill(in.readInt())(tx.readVar[Boolean](id, in))
+    def readData(in: DataInput, id0: S#ID)(implicit tx: S#Tx): Chromosome = {
+      implicit val dtx = tx.durable
+      implicit val sys = tx.system
+      new Chromosome {
+        val id      = id0
+        val head    = tx.readVar[Option[Bit]](id, in) // Bit.read(in, id0.path)
+        val fitness = tx.readVar[Double](id, in)
+      }
     }
   }
 }
 trait Chromosome extends stm.Mutable.Impl[S] {
-  def bits: Vec[S#Var[Boolean]]
+  def head    : S#Var[Option[Bit]]
+  def fitness : S#Var[Double]
 
-  //  def vertices: SkipList.Set[S, Vertex]
-  //  def edges   : SkipList.Set[S, Edge  ]
-  //  def fitness : S#Var[Double]
+  final def bits(implicit tx: S#Tx): Vec[Boolean] = head().fold(Vector.empty[Boolean])(_.to[Vector])
+
+  final def size(implicit tx: S#Tx): Int = head().fold(0)(_.size)
+
+  def apply(idx: Int)(implicit tx: S#Tx): Bit = {
+    require (idx >= 0)
+    @tailrec def loop(rem: Int, nOpt: Option[Bit]): Bit = {
+      val n = nOpt.getOrElse(throw new IndexOutOfBoundsException(idx.toString))
+      if (rem == 0) n else loop(rem - 1, n.next())
+    }
+
+    loop(idx, head())
+  }
 
   override def toString(): String = s"Chromosome$id"
 
   protected final def writeData(out: DataOutput): Unit = {
-    out.writeInt(bits.size)
-    bits.foreach(_.write(out))
+    head    .write(out)
+    fitness .write(out)
   }
 
-  protected final def disposeData()(implicit tx: S#Tx): Unit =
-    bits.foreach(_.dispose())
+  protected final def disposeData()(implicit tx: S#Tx): Unit = {
+    head   .dispose()
+    fitness.dispose()
+  }
 }
