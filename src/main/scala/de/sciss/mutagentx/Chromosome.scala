@@ -40,7 +40,7 @@ object Chromosome {
       implicit val sys = tx.system
       new Chromosome {
         val id      = id0
-        val head    = tx.readVar[Option[Bit]](id, in) // Bit.read(in, id0.path)
+        val head    = tx.readVar[Option[Bit]](id, in)
         val fitness = tx.readVar[Double](id, in)
       }
     }

@@ -14,7 +14,8 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.confluent
-import de.sciss.serial.{DataInput, DataOutput, Serializer, Writable}
+import de.sciss.lucre.stm.{Mutable, MutableSerializer}
+import de.sciss.serial.{DataInput, DataOutput}
 
 import scala.collection.immutable.{IndexedSeq => Vec}
 
@@ -26,36 +27,33 @@ object Genome {
     new GenomeImpl(id, chromosomes, cursor)
   }
 
-  //  def apply(size: Int)(implicit tx: S#Tx, r: TxnRandom.Persistent[D]): Genome = new Genome {
-  //    val id            = tx.newID()
-  //    val chromosomes   = Vector.fill(size)(ChromosomeH(8)(tx, r))
-  //    // private val rngH  = tx.durable.newHandle(r)
-  //    // def rng(implicit tx: D#Tx): TxnRandom[D#Tx] = rngH()
-  //  }
-
   private final class GenomeImpl(val id: S#ID, val chromosomes: S#Var[Vec[Chromosome]],
                                  val cursor: confluent.Cursor[S, D])
-    extends Genome {
+    extends Genome with Mutable.Impl[S] {
 
-    def write(out: DataOutput): Unit = {
-      id          .write(out)
+    override def toString() = s"Genome$id"
+
+    protected def writeData(out: DataOutput): Unit = {
       chromosomes .write(out)
       cursor      .write(out)
     }
+
+    protected def disposeData()(implicit tx: S#Tx): Unit = {
+      implicit val dtx = tx.durable
+      chromosomes .dispose()
+      cursor      .dispose()
+    }
   }
 
-  implicit object Ser extends Serializer[S#Tx, S#Acc, Genome] {
-    def write(g: Genome, out: DataOutput): Unit = g.write(out)
-
-    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Genome = {
-      val id            = tx.readID(in, access)
+  implicit object Ser extends MutableSerializer[S, Genome] {
+    protected def readData(in: DataInput, id: S#ID)(implicit tx: S#Tx): Genome = {
       val chromosomes   = tx.readVar[Vec[Chromosome]](id, in)
       val cursor        = tx.system.readCursor(in)
       new GenomeImpl(id, chromosomes, cursor)
     }
   }
 }
-trait Genome extends Writable {
+trait Genome extends Mutable[S#ID, S#Tx] {
   def chromosomes: S#Var[Vec[Chromosome]]
 
   def cursor: confluent.Cursor[S, D]
