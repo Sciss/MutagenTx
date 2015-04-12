@@ -26,6 +26,13 @@ object Chromosome {
     val bits  = Vector.fill(numBits)(tx.newBooleanVar(id, r.nextBoolean()(tx.durable)))
   }
 
+  def apply(b: Vec[S#Var[Boolean]])(implicit tx: S#Tx): Chromosome = new Chromosome {
+    val id    = tx.newID()
+    val bits  = b
+  }
+
+  def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Chromosome = Ser.read(in, access)
+
   implicit object Ser extends MutableSerializer[S, Chromosome] {
     def readData(in: DataInput, id0: S#ID)(implicit tx: S#Tx): Chromosome = new Chromosome {
       val id    = id0

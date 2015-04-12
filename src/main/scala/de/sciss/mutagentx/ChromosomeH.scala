@@ -21,7 +21,13 @@ import de.sciss.serial.{DataInput, DataOutput}
 object ChromosomeH {
   def apply(numBits: Int)(implicit tx: S#Tx, r: TxnRandom[D#Tx]): ChromosomeH = new ChromosomeH {
     val id      = tx.newID()
-    val apply   = tx.newVar(id, Chromosome(numBits))
+    val peer    = Chromosome(numBits)
+    val fitness = tx.newVar(id, 0.0)
+  }
+
+  def apply(c: Chromosome)(implicit tx: S#Tx): ChromosomeH = new ChromosomeH {
+    val id      = tx.newID()
+    val peer    = c
     val fitness = tx.newVar(id, 0.0)
   }
 
@@ -31,25 +37,25 @@ object ChromosomeH {
       implicit val sys = tx.system
       new ChromosomeH {
         val id      = id0
-        val apply   = tx.readVar[Chromosome](id, in)
-        val fitness = tx.readVar[Double    ](id, in)
+        val peer    = Chromosome.read(in, id0.path)
+        val fitness = tx.readVar[Double](id, in)
       }
     }
   }
 }
 trait ChromosomeH extends stm.Mutable.Impl[S] {
-  def apply   : S#Var[Chromosome]
-  def fitness : S#Var[Double    ]
+  def peer    : Chromosome
+  def fitness : S#Var[Double]
 
   override def toString(): String = s"ChromosomeH$id"
 
   protected final def writeData(out: DataOutput): Unit = {
-    apply   .write(out)
+    peer    .write(out)
     fitness .write(out)
   }
 
   protected final def disposeData()(implicit tx: S#Tx): Unit = {
-    apply  .dispose()
+    peer   .dispose()
     fitness.dispose()
   }
 }
