@@ -54,14 +54,14 @@ trait Bit extends stm.Mutable.Impl[S] {
   def to[Col[_]](implicit tx: S#Tx, cbf: CanBuildFrom[Nothing, Boolean, Col[Boolean]]): Col[Boolean] = {
     val b = cbf()
 
-    @tailrec def loop(nOpt: S#Var[Option[Bit]]): Unit = nOpt() match {
+    @tailrec def loop(nOpt: Option[Bit]): Unit = nOpt match {
       case Some(n) =>
         b += n.bit()
-        loop(n.next)
+        loop(n.next())
       case _ =>
     }
 
-    loop(next)
+    loop(Some(this))
     b.result()
   }
 

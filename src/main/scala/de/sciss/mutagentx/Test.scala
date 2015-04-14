@@ -5,7 +5,7 @@ object Test extends App {
   val POP   = 4
   val ITER  = 4
 
-  de.sciss.lucre.confluent.showLog = true
+  // de.sciss.lucre.confluent.showLog = true
 
   val a = Algorithm()
   a.global.cursor.step { implicit tx =>

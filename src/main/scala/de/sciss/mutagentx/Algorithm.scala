@@ -53,8 +53,10 @@ trait Algorithm {
 
   import global.rng
 
+  val NUM_BITS = 3
+
   def init(n: Int)(implicit tx: S#Tx): Unit =
-    genome.chromosomes() = Vector.fill(n)(Chromosome(8))
+    genome.chromosomes() = Vector.fill(n)(Chromosome(NUM_BITS))
 
   def evaluate()(implicit tx: S#Tx): Unit =
     genome.chromosomes().foreach { cH =>
