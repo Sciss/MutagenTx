@@ -1,13 +1,17 @@
 package de.sciss.mutagentx
 
-object Test extends App {
-  val DEBUG = true
-  val POP   = 4
-  val ITER  = 4
+import de.sciss.file._
+
+object TestCreate extends App {
+  val DEBUG = false
+  val POP   = 50
+  val ITER  = 100
 
   // de.sciss.lucre.confluent.showLog = true
 
-  val a = Algorithm()
+  val base = file("database")
+  require(base.isDirectory)
+  val a = Algorithm(base / "test")
   a.global.cursor.step { implicit tx =>
     a.init(n = POP)
     a.evaluate()
@@ -17,8 +21,10 @@ object Test extends App {
     println(s"----ITERATION $i ----")
     if (DEBUG) a.global.cursor.step { implicit tx => println(s"Input access = ${tx.inputAccess}") }
     a.iterate()
-    a.global.cursor.step { implicit tx =>
+    if (i % 10 == 0) a.global.cursor.step { implicit tx =>
       a.print()
     }
   }
+
+  a.system.close()
 }

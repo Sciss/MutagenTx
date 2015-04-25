@@ -13,6 +13,8 @@
 
 package de.sciss.mutagentx
 
+import de.sciss.file.File
+import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
 import de.sciss.lucre.{stm, confluent}
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
@@ -25,10 +27,19 @@ import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.language.higherKinds
 
 object Algorithm {
-  val DEBUG = true
+  val DEBUG = false
 
-  def apply(): Algorithm = {
+  def tmp(): Algorithm = {
     val dbf = BerkeleyDB.tmp()
+    create(dbf)
+  }
+
+  def apply(dir: File): Algorithm = {
+    val dbf = BerkeleyDB.factory(dir)
+    create(dbf)
+  }
+
+  private def create(dbf: DataStoreFactory[DataStore]): Algorithm = {
     new Algorithm {
       implicit val system = ConfluentReactive(dbf)
       val (handle, global) = system.rootWithDurable { implicit tx =>
@@ -53,7 +64,10 @@ trait Algorithm {
 
   import global.rng
 
-  val NUM_BITS = 3
+  val NUM_BITS = 32
+  private val mutationProb  = 0.5
+  private val selectionFrac = 0.25
+  private val numElitism = 2
 
   def init(n: Int)(implicit tx: S#Tx): Unit =
     genome.chromosomes() = Vector.fill(n)(Chromosome(NUM_BITS))
@@ -78,8 +92,6 @@ trait Algorithm {
       val s0 = f"${i + 1}%2d  ${cH.fitness()}%1.3f  $b"
       if (DEBUG) s"$s0  ${cH.debugString}" else s0
     } .mkString("\n")
-
-  private val selectionFrac = 0.5
 
   def select(all: Vec[Chromosome])(implicit tx: S#Tx): Set[Chromosome] = {
     implicit val dtx = tx.durable
@@ -113,8 +125,6 @@ trait Algorithm {
     // remove.foreach(prev.remove)
     sel
   }
-
-  private val numElitism = 0
 
   def elitism(all: Vec[Chromosome])(implicit tx: S#Tx): Vec[Chromosome] = {
     val sel = all.sortBy(-_.fitness()).take(numElitism)
@@ -224,7 +234,6 @@ trait Algorithm {
     res
   }
 
-  private val mutationProb = 0.0
 
   /** Performs one iteration of the algorithm, assuming that current population
     * was already evaluated. Steps:
