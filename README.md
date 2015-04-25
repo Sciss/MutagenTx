@@ -1,4 +1,5 @@
 # MutagenTx
 
 Experiments with genetic programming, persistent data structures, reverse tracing and visual transposition.
-(C)opyright 2015 Hanns Holger Rutz. All rights reserved. Published under the GNU General Public License (GPL) v3+. 
+Copyright (c) 2015 Hanns Holger Rutz. All rights reserved. 
+This software is published under the GNU General Public License v3+

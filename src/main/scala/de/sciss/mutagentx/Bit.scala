@@ -1,5 +1,5 @@
 /*
- *  Bit
+ *  Bit.scala
  *  (MutagenTx)
  *
  *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
@@ -16,7 +16,7 @@ package de.sciss.mutagentx
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.stm
 import de.sciss.lucre.stm.MutableSerializer
-import de.sciss.serial.{Serializer, DataInput, DataOutput}
+import de.sciss.serial.{DataInput, DataOutput}
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom

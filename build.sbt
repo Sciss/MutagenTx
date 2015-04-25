@@ -21,7 +21,8 @@ libraryDependencies ++= Seq(
   "de.sciss" %% "lucreevent-expr" % "2.7.3",
   "de.sciss" %% "lucrestm-bdb"    % "2.1.1",
   "de.sciss" %% "fileutil"        % "1.1.1",
-  "de.sciss" %  "prefuse-core"    % "1.0.0"
+  "de.sciss" %  "prefuse-core"    % "1.0.0",
+  "de.sciss" %% "lucreswing"      % "0.9.1"
 )
 
 scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xfuture")

@@ -1,5 +1,5 @@
 /*
- *  ChromosomeH
+ *  Chromosome.scala
  *  (MutagenTx)
  *
  *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
