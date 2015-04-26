@@ -13,6 +13,9 @@
 
 package de.sciss.mutagentx
 
+import java.text.SimpleDateFormat
+import java.util.{Date, Locale}
+
 import de.sciss.file._
 import de.sciss.mutagentx.visual.Visual
 
@@ -52,7 +55,14 @@ object TestAnalyze extends App {
       v.animationStep()
     }
 
-    val pBottom = new FlowPanel(ggPrevIter, ggRunAnim, ggStepAnim)
+    val ggSaveFrame = Button("Save Frame") {
+      val fmt   = new SimpleDateFormat("'mutagentx_'yyMMdd'_'HHmmss'.png'", Locale.US)
+      val name  = fmt.format(new Date)
+      val f     = userHome / "Pictures" / name
+      v.saveFrameAsPNG(f)
+    }
+
+    val pBottom = new FlowPanel(ggPrevIter, ggRunAnim, ggStepAnim, ggSaveFrame)
 
     new Frame {
       title     = "MutagenTx"
