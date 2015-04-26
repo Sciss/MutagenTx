@@ -1,0 +1,3 @@
+- DVD SD PAL 16:9 is 720 x 576, but pixel's are not square (1024 x 576 is 16:9 for square pixels)
+- test is players can just eat mp4 files? Then we could use Full HD, e.g.:
+- http://owenmundy.com/blog/2013/01/use-processing-and-ffmpeg-to-export-hd-video/

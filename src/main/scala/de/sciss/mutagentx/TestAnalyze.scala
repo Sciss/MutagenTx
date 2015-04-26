@@ -16,7 +16,8 @@ package de.sciss.mutagentx
 import de.sciss.file._
 import de.sciss.mutagentx.visual.Visual
 
-import scala.swing.{Button, BorderPanel, Frame, Swing}
+import scala.swing.event.ButtonClicked
+import scala.swing.{FlowPanel, ToggleButton, Button, BorderPanel, Frame, Swing}
 import Swing._
 
 object TestAnalyze extends App {
@@ -25,32 +26,51 @@ object TestAnalyze extends App {
   def run(): Unit = {
     val base = file("database")
     require(base.isDirectory)
-    val a   = Algorithm(base / "test")
+    val a = Algorithm(base / "test")
     val csr = a.global.cursor
-    val v   = csr.step { implicit tx => Visual(a) }
+    val v = csr.step { implicit tx => Visual(a) }
 
     Swing.onEDT {
-      val ggStepBack = Button("Step Back") {
-        v.previousIteration()
+      guiInit(v)
+    }
+  }
+
+  def guiInit(v: Visual): Unit = {
+    val ggPrevIter = Button("Prev Iter") {
+      v.previousIteration()
+    }
+
+    val ggRunAnim = new ToggleButton("Run Animation") {
+      listenTo(this)
+      reactions += {
+        case ButtonClicked(_) =>
+          v.runAnimation = selected
       }
-      new Frame {
-        title     = "MutagenTx"
-        contents  = new BorderPanel {
-          add(v.component, BorderPanel.Position.Center)
-          add(ggStepBack , BorderPanel.Position.South)
-        }
-        pack()
-        size      = (640, 480)
+    }
 
-        // v.display.panTo((-320, -240))
-        v.display.panTo((0, 0))
+    val ggStepAnim = Button("Step Anim") {
+      v.animationStep()
+    }
 
-        open()
+    val pBottom = new FlowPanel(ggPrevIter, ggRunAnim, ggStepAnim)
 
-        override def closeOperation(): Unit = {
-          a.system.close()
-          sys.exit(0)
-        }
+    new Frame {
+      title     = "MutagenTx"
+      contents  = new BorderPanel {
+        add(v.component, BorderPanel.Position.Center)
+        add(pBottom    , BorderPanel.Position.South)
+      }
+      pack()
+      // size      = (640, 480)
+
+      // v.display.panTo((-320, -240))
+      v.display.panTo((0, 0))
+
+      open()
+
+      override def closeOperation(): Unit = {
+        v.algorithm.system.close()
+        sys.exit(0)
       }
     }
 
