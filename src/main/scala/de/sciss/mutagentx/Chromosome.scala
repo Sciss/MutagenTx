@@ -64,6 +64,14 @@ trait Chromosome extends stm.Mutable.Impl[S] {
 
   final def size(implicit tx: S#Tx): Int = head().fold(0)(_.size)
 
+  def exists(p: Bit => Boolean)(implicit tx: S#Tx): Boolean = {
+    @tailrec def loop(opt: Option[Bit]): Boolean = opt match {
+      case Some(b) => if (p(b)) true else loop(b.next())
+      case None => false
+    }
+    loop(head())
+  }
+
   def apply(idx: Int)(implicit tx: S#Tx): Bit = {
     require (idx >= 0)
     @tailrec def loop(rem: Int, nOpt: Option[Bit]): Bit = {

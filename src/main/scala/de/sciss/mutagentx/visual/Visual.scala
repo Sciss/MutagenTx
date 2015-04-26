@@ -272,7 +272,11 @@ object Visual {
       deferTx(guiInit())
       val c = algo.genome.chromosomes().head
       // val numBits = c.size
+      insertChromosome(c)
+      this
+    }
 
+    private def insertChromosome(c: Chromosome)(implicit tx: S#Tx): Unit = {
       def loop(pred: Option[Bit], curr: Option[Bit]): Unit = {
         curr.foreach { b =>
           insertBit(b)
@@ -284,7 +288,6 @@ object Visual {
       }
 
       loop(None, c.head())
-      this
     }
 
     def display       : Display       = _dsp
@@ -366,7 +369,7 @@ object Visual {
     def previousIteration(): Unit = {
       val pos = cursorPos.single.transformAndGet(c => c.take(c.size - 2))
 
-      algo.global.cursor.stepFrom(pos) { implicit tx =>
+      algo.global.forkCursor.stepFrom(pos) { implicit tx =>
         implicit val itx = tx.peer
         val mapOld = map.snapshot
         map.clear()
@@ -381,6 +384,12 @@ object Visual {
             map.put(idNew, v)
           }
         }
+
+        val cs = algo.genome.chromosomes()
+        val ancestors = cs.filter { c =>
+          c.exists(b => map.contains(b.id))
+        }
+        ancestors.foreach(insertChromosome)
 
         if (toRemove.nonEmpty) deferVisTx {
           toRemove.foreach { v =>
