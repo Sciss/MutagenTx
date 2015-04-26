@@ -297,6 +297,11 @@ object Visual {
         }
       }
 
+      //      val csz = c.size
+      //      if (csz != 32) {
+      //        println(s"WARNING = $c size is $csz")
+      //      }
+
       loop(None, c.head())
     }
 
@@ -375,15 +380,18 @@ object Visual {
 
     private def checkOrInsertLink(pred: Bit, succ: Bit)(implicit tx: S#Tx): Unit = {
       implicit val itx = tx.peer
-      for {
+      val tup = for {
         predV <- map.get(pred.id)
         succV <- map.get(succ.id)
-      } {
+      } yield (predV, succV)
+
+      if (tup.isEmpty) {
+        println(s"WARNING: link misses vertices: $pred / $succ")
+      }
+
+      tup.foreach { case (predV, succV) =>
         val edge = VisualEdge(predV, succV, init = false)
-        predV.edgesOut.get(edge.key).fold[Unit] {
-          predV.edgesOut.put(edge.key, edge)
-          edge.init()
-        } (_.touch())
+        predV.edgesOut.get(edge.key).fold[Unit](edge.init())(_.touch())
       }
     }
 
@@ -413,6 +421,7 @@ object Visual {
           }
         }
 
+      // for (i <- 1 to 1) {
         val cs = algo.genome.chromosomes()
         val ancestors = cs.filter { c =>
           c.exists { b =>
@@ -422,6 +431,7 @@ object Visual {
         }
         println(s"Num-ancestors = ${ancestors.size}")
         ancestors.foreach(insertChromosome)
+      // }
 
         map.foreach { case (_, v) =>
           if (!v.isActive) toRemove += v
