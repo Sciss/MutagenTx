@@ -64,10 +64,10 @@ trait Algorithm {
 
   import global.rng
 
-  val NUM_BITS = 32
+  val NUM_BITS = 6 // 32
   private val mutationProb  = 0.5
   private val selectionFrac = 0.25
-  private val numElitism = 2
+  private val numElitism = 0 // 2
 
   def init(n: Int)(implicit tx: S#Tx): Unit =
     genome.chromosomes() = Vector.fill(n)(Chromosome(NUM_BITS))

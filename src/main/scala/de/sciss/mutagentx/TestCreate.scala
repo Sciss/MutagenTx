@@ -17,8 +17,8 @@ import de.sciss.file._
 
 object TestCreate extends App {
   val DEBUG = false
-  val POP   = 50
-  val ITER  = 100
+  val POP   = 10 // 50
+  val ITER  = 10 // 100
 
   // de.sciss.lucre.confluent.showLog = true
 

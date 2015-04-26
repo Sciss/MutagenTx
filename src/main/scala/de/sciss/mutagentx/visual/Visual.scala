@@ -332,7 +332,14 @@ object Visual {
       _vis.run(ACTION_COLOR)
 
     private def checkOrInsertBit(b: Bit)(implicit tx: S#Tx): Unit =
-      if (!map.contains(b.id)(tx.peer)) insertBit(b)
+      map.get(b.id)(tx.peer).fold {
+        insertBit(b)
+      } { v =>
+        val state = b.bit()
+        if (state != v.state) {
+          v.state = state // XXX animate -- how?
+        }
+      }
 
     private def insertBit(b: Bit)(implicit tx: S#Tx): Unit = {
       implicit val itx = tx.peer
@@ -375,6 +382,11 @@ object Visual {
 
     def dispose()(implicit tx: S#Tx): Unit = ()
 
+    private def shrink(in: S#Acc): S#Acc = {
+      val prevIdx = in.take(in.size - 3)
+      prevIdx :+ prevIdx.term
+    }
+
     def previousIteration(): Unit = {
       val pos = cursorPos.single.transformAndGet(c => c.take(c.size - 2))
 
@@ -385,7 +397,7 @@ object Visual {
         var toRemove = Set.empty[VisualBit]
         mapOld.foreach { case (idOld, v) =>
           val pathOld = idOld.path
-          val pathNew = pathOld.take(pathOld.size - 2)
+          val pathNew = shrink(pathOld)
           if (pathNew.isEmpty) {
             toRemove += v
           } else {
@@ -396,7 +408,10 @@ object Visual {
 
         val cs = algo.genome.chromosomes()
         val ancestors = cs.filter { c =>
-          c.exists(b => map.contains(b.id))
+          c.exists { b =>
+            val bid = b.id
+            map.contains(bid)
+          }
         }
         ancestors.foreach(insertChromosome)
 
