@@ -16,7 +16,7 @@ package de.sciss.mutagentx
 import de.sciss.file._
 import de.sciss.mutagentx.visual.Visual
 
-import scala.swing.{Frame, MainFrame, Swing}
+import scala.swing.{Button, BorderPanel, Frame, Swing}
 import Swing._
 
 object TestAnalyze extends App {
@@ -30,9 +30,15 @@ object TestAnalyze extends App {
     val v   = csr.step { implicit tx => Visual(a) }
 
     Swing.onEDT {
+      val ggStepBack = Button("Step Back") {
+        v.previousIteration()
+      }
       new Frame {
         title     = "MutagenTx"
-        contents  = v.component
+        contents  = new BorderPanel {
+          add(v.component, BorderPanel.Position.Center)
+          add(ggStepBack , BorderPanel.Position.South)
+        }
         pack()
         size      = (640, 480)
 

@@ -18,7 +18,7 @@ import java.awt.geom.{AffineTransform, Arc2D, Line2D, GeneralPath, Ellipse2D, Re
 import java.awt.{Font, BasicStroke, Shape, LayoutManager, Color, RenderingHints}
 import javax.swing.JPanel
 
-import de.sciss.lucre.stm.{TxnLike, IdentifierMap}
+import de.sciss.lucre.stm.TxnLike
 import de.sciss.lucre.swing.{View, defer, deferTx, requireEDT}
 import de.sciss.lucre.swing.impl.ComponentHolder
 import prefuse.action.{RepaintAction, ActionList}
@@ -34,14 +34,15 @@ import prefuse.visual.expression.InGroupPredicate
 import prefuse.{Constants, Display, Visualization}
 
 import scala.collection.immutable.{IndexedSeq => Vec}
-import scala.concurrent.stm.TxnLocal
+import scala.concurrent.stm.{TMap, Ref, TxnLocal}
 import scala.swing.{Dimension, Rectangle, Graphics2D, Component}
 import scala.util.control.NonFatal
 
 object Visual {
   def apply(a: Algorithm)(implicit tx: S#Tx): Visual = {
-    val map = tx.newInMemoryIDMap[VisualBit]
-    new Impl(map).init(a)
+    val map = TMap.empty[S#ID, VisualBit]
+    implicit val dtx = tx.durable
+    new Impl(map, a, a.global.cursor.position).init()
   }
 
   private lazy val _initFont: Font = {
@@ -257,15 +258,19 @@ object Visual {
     var state: Boolean
   }
 
-  private final class Impl(map: IdentifierMap[S#ID, S#Tx, VisualBit]) extends Visual with ComponentHolder[Component] {
+  private final class Impl(map: TMap[S#ID, VisualBit], algo: Algorithm, cursorPos0: S#Acc)
+    extends Visual with ComponentHolder[Component] {
+
     private var _vis: Visualization = _
     private var _dsp: Display       = _
     private var _g  : PGraph        = _
     private var _vg : VisualGraph   = _
 
-    def init(a: Algorithm)(implicit tx: S#Tx): this.type = {
+    private val cursorPos = Ref(cursorPos0)
+
+    def init()(implicit tx: S#Tx): this.type = {
       deferTx(guiInit())
-      val c       = a.genome.chromosomes().head
+      val c = algo.genome.chromosomes().head
       // val numBits = c.size
 
       def loop(pred: Option[Bit], curr: Option[Bit]): Unit = {
@@ -317,6 +322,7 @@ object Visual {
       _vis.run(ACTION_COLOR)
 
     private def insertBit(b: Bit)(implicit tx: S#Tx): Unit = {
+      implicit val itx = tx.peer
       val v = VisualBit(this, b)
       map.put(b.id, v)
       deferVisTx(insertBitGUI(v, locO = None))
@@ -344,10 +350,45 @@ object Visual {
     }
 
     private def insertLink(pred: Bit, succ: Bit)(implicit tx: S#Tx): Unit = {
-      // ...
+      implicit val itx = tx.peer
+      for {
+        predV <- map.get(pred.id)
+        succV <- map.get(succ.id)
+      } {
+        deferVisTx {
+          /* _pEdge = */ _g.addEdge(predV.pNode, succV.pNode)
+        }
+      }
     }
 
     def dispose()(implicit tx: S#Tx): Unit = ()
+
+    def previousIteration(): Unit = {
+      val pos = cursorPos.single.transformAndGet(c => c.take(c.size - 2))
+
+      algo.global.cursor.stepFrom(pos) { implicit tx =>
+        implicit val itx = tx.peer
+        val mapOld = map.snapshot
+        map.clear()
+        var toRemove = Set.empty[VisualBit]
+        mapOld.foreach { case (idOld, v) =>
+          val pathOld = idOld.path
+          val pathNew = pathOld.take(pathOld.size - 2)
+          if (pathNew.isEmpty) {
+            toRemove += v
+          } else {
+            val idNew = idOld.copy(pathNew)
+            map.put(idNew, v)
+          }
+        }
+
+        if (toRemove.nonEmpty) deferVisTx {
+          toRemove.foreach { v =>
+            _g.removeNode(v.pNode)
+          }
+        }
+      }
+    }
 
     private def guiInit(): Unit = {
       _vis = new Visualization
@@ -458,4 +499,6 @@ trait Visual extends View[S] {
     * on the EDT after the commit of the transaction.
     */
   def deferVisTx(thunk: => Unit)(implicit tx: TxnLike): Unit
+
+  def previousIteration(): Unit
 }

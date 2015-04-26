@@ -38,3 +38,20 @@ have the shape of an arrow.
   might appear 'peripherally'.
 - indeed than the periphery could be allowed to drift as long as it pleases and would be automatically
   discarded if it exits the view port, solving the problem of incremental growth of the graph.
+
+## Algorithm: Step backwards
+
+- basically what we want is to "grow" elements anywhere they "connect" to the current state.
+- example: `(c, t1)` is cross-over from `(a, t0)` and `(b, t0)`
+- we don't know where `a` and `b` are in the genome. Perhaps also the head element of `c`
+  got mutated at the same time. I.e. it may be that neither `a.head` nor `b.head` equals `c.head`
+- therefore, the only solution is an exhaustive traversal through the whole genome
+- so what is the identity of `c` that we're supposed to focus on (e.g. with the view-port),
+  it appears it _does not exist_ as such. That's interesting. We've got to draw an arbitrary boundary.
+- i.e. under _melding_, identities multiply both in the forward and backward direction of time
+- we could either focus on a random part in the case of a cross-over, or we could give up the
+  focus altogether, letting bits disappear via the dynamic layout and the view port
+- if we discover new "neighbourhood" of an existing element, we can either lazily expand only
+  to the next linked element in each update, or we can traverse the whole chromosome; in
+  the latter case, we need to either scan the chromosome multiple times or maintain a link-back list
+  
