@@ -7,7 +7,7 @@ import de.sciss.lucre.stm.Disposable
 import prefuse.data.{Node => PNode, Edge => PEdge}
 import prefuse.visual.VisualItem
 
-import scala.concurrent.stm.TSet
+import scala.concurrent.stm.{TMap, Ref, TSet}
 import scala.swing.Graphics2D
 
 /** The common trait of all visible objects on the
@@ -16,31 +16,30 @@ import scala.swing.Graphics2D
   * The next sub-type is `VisualNode` that is represented by a graph node.
   */
 trait VisualData extends Disposable[S#Tx] {
-  // ---- methods to be called on the EDT ----
+  def main: Visual
+
+  def isActive(implicit tx: S#Tx): Boolean
+
+  def touch()(implicit tx: S#Tx): Unit
+}
+
+trait VisualNode extends VisualData {
+  def pNode: PNode
+  def edgesIn : TMap[(VisualNode, VisualNode), VisualEdge]
+  def edgesOut: TMap[(VisualNode, VisualNode), VisualEdge]
 
   /** GUI property: whether the node is allowed to move around
     * as part of the dynamic layout (`false`) or not (`true`).
     */
   var fixed: Boolean
 
+  /** Asks the receiver to paint its GUI representation. */
+  def render(g: Graphics2D, vi: VisualItem): Unit
+
   /** Called from drag-control: updates the
     * current geometric shape of the corresponding visual item.
     */
   def update(shp: Shape): Unit
-
-  /** Asks the receiver to paint its GUI representation. */
-  def render(g: Graphics2D, vi: VisualItem): Unit
-
-  //  /** GUI property: name displayed. */
-  //  def name: String
-
-  def main: Visual
-}
-
-trait VisualNode extends VisualData {
-  def pNode: PNode
-  def edgesIn : TSet[VisualEdge]
-  def edgesOut: TSet[VisualEdge]
 }
 
 object VisualEdge {
@@ -54,31 +53,34 @@ object VisualEdge {
     def init()(implicit tx: S#Tx): this.type
   }
 
-  private final case class Impl(source: VisualNode, sink: VisualNode) extends Init {
+  private final case class Impl(source: VisualNode, sink: VisualNode) extends Init with VisualDataImpl {
     private var _pEdge: PEdge = _
 
     override def productPrefix: String = "VisualEdge"
 
-    private def main = source.main
+    def main = source.main
 
     def pEdge: PEdge = {
       if (_pEdge == null) throw new IllegalStateException(s"Component $this has no initialized GUI")
       _pEdge
     }
 
+    def key = (source, sink)
+
     def init()(implicit tx: S#Tx): this.type = {
       implicit val itx = tx.peer
-      source.edgesOut.add(this)
-      sink  .edgesIn .add(this)
+      source.edgesOut.put(key, this)
+      sink  .edgesIn .put(key, this)
+      touch()
       main.deferVisTx(mkPEdge())
       this
     }
 
     def dispose()(implicit tx: S#Tx): Unit = {
       implicit val itx = tx.peer
-      source.edgesOut.remove(this)
-      sink  .edgesIn .remove(this)
-      main.deferVisTx(main.graph.removeEdge(_pEdge))
+      source.edgesOut.remove(key)
+      sink  .edgesIn .remove(key)
+      main.deferVisTx(main.graph.removeEdge(pEdge))
     }
 
     private def mkPEdge(): Unit = {
@@ -93,8 +95,10 @@ object VisualEdge {
     }
   }
 }
-trait VisualEdge extends Disposable[S#Tx] {
+trait VisualEdge extends VisualData {
   def source: VisualNode
   def sink  : VisualNode
+
+  def key: (VisualNode, VisualNode)
   def pEdge : PEdge
 }

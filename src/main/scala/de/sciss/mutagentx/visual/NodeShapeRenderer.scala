@@ -31,7 +31,7 @@ class NuagesShapeRenderer(size: Int)
   }
 
   override def render(g: Graphics2D, vi: VisualItem): Unit = {
-    val data = vi.get(Visual.COL_MUTA).asInstanceOf[VisualData]
+    val data = vi.get(Visual.COL_MUTA).asInstanceOf[VisualNode]
     if (data == null) return
     data.update(getShape(vi))
     data.render(g, vi)

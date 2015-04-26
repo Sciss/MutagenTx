@@ -102,18 +102,19 @@ object Visual {
 
     // final val threeDigits   = new MathContext(3, RoundingMode.HALF_UP)
   }
-  private trait VisualNodeImpl extends VisualNode {
+  private trait VisualNodeImpl extends VisualNode with VisualDataImpl {
     import VisualNodeImpl._
 
     private[this] var _pNode: PNode = _
 
-    val edgesIn  = TSet.empty[VisualEdge]
-    val edgesOut = TSet.empty[VisualEdge]
+    val edgesIn  = TMap.empty[(VisualNode, VisualNode), VisualEdge]
+    val edgesOut = TMap.empty[(VisualNode, VisualNode), VisualEdge]
 
     def dispose()(implicit tx: S#Tx): Unit = {
       implicit val itx = tx.peer
-      edgesIn .foreach(_.dispose())
-      edgesOut.foreach(_.dispose())
+      edgesIn .foreach(_._2.dispose())
+      edgesOut.foreach(_._2.dispose())
+      main.deferVisTx(main.graph.removeNode(pNode))
     }
 
     final def pNode: PNode = {
@@ -121,7 +122,12 @@ object Visual {
       _pNode
     }
 
-    protected final def mkPNode(): Unit = {
+    def init()(implicit tx: S#Tx): Unit = {
+      touch()
+      main.deferVisTx(mkPNode())
+    }
+
+    private def mkPNode(): Unit = {
       if (_pNode != null) throw new IllegalStateException(s"Component $this has already been initialized")
       _pNode  = main.graph.addNode()
       val vis = main.visualization
@@ -246,6 +252,8 @@ object Visual {
       var state = b.bit()
       val main  = _main
 
+      val active = Ref(tx.inputAccess.term.toInt)
+
       protected def boundsResized(): Unit = ()
 
       protected def renderDetail(g: Graphics2D, vi: VisualItem): Unit =
@@ -253,12 +261,7 @@ object Visual {
 
       def name = if (state) "1" else "0"
 
-      private def initGUI(): Unit = {
-        requireEDT()
-        mkPNode()
-      }
-
-      _main.deferVisTx(initGUI())
+      init()
     }
   }
   private trait VisualBit extends VisualNode {
@@ -288,7 +291,7 @@ object Visual {
         curr.foreach { b =>
           checkOrInsertBit(b)
           pred.foreach { p =>
-            insertLink(p, b)
+            checkOrInsertLink(p, b)
           }
           loop(pred = curr, curr = b.next())
         }
@@ -337,8 +340,9 @@ object Visual {
       } { v =>
         val state = b.bit()
         if (state != v.state) {
-          v.state = state // XXX animate -- how?
+          v.state = state // XXX animate -- how? THREADING
         }
+        v.touch()
       }
 
     private def insertBit(b: Bit)(implicit tx: S#Tx): Unit = {
@@ -369,14 +373,17 @@ object Visual {
       initNodeGUI(v, v, locO)
     }
 
-    private def insertLink(pred: Bit, succ: Bit)(implicit tx: S#Tx): Unit = {
+    private def checkOrInsertLink(pred: Bit, succ: Bit)(implicit tx: S#Tx): Unit = {
       implicit val itx = tx.peer
       for {
         predV <- map.get(pred.id)
         succV <- map.get(succ.id)
       } {
         val edge = VisualEdge(predV, succV, init = false)
-        if (!predV.edgesOut.contains(edge)) edge.init()
+        predV.edgesOut.get(edge.key).fold[Unit] {
+          predV.edgesOut.put(edge.key, edge)
+          edge.init()
+        } (_.touch())
       }
     }
 
@@ -394,7 +401,7 @@ object Visual {
         implicit val itx = tx.peer
         val mapOld = map.snapshot
         map.clear()
-        var toRemove = Set.empty[VisualBit]
+        var toRemove = Set.empty[VisualData]
         mapOld.foreach { case (idOld, v) =>
           val pathOld = idOld.path
           val pathNew = shrink(pathOld)
@@ -415,11 +422,17 @@ object Visual {
         }
         ancestors.foreach(insertChromosome)
 
-        if (toRemove.nonEmpty) deferVisTx {
-          toRemove.foreach { v =>
-            _g.removeNode(v.pNode)
+        map.foreach { case (_, v) =>
+          if (!v.isActive) toRemove += v
+
+          def checkEdges(es: TMap[_, VisualEdge]): Unit = es.foreach {
+            case (_, e) => if (!e.isActive) toRemove += e
           }
+
+          checkEdges(v.edgesIn)
+          checkEdges(v.edgesOut)
         }
+        toRemove.foreach(_.dispose())
       }
     }
 
