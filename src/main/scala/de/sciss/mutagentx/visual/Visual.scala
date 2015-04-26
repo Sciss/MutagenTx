@@ -420,6 +420,7 @@ object Visual {
             map.contains(bid)
           }
         }
+        println(s"Num-ancestors = ${ancestors.size}")
         ancestors.foreach(insertChromosome)
 
         map.foreach { case (_, v) =>
