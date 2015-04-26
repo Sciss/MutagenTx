@@ -34,7 +34,7 @@ import prefuse.visual.expression.InGroupPredicate
 import prefuse.{Constants, Display, Visualization}
 
 import scala.collection.immutable.{IndexedSeq => Vec}
-import scala.concurrent.stm.{TMap, Ref, TxnLocal}
+import scala.concurrent.stm.{TSet, TMap, Ref, TxnLocal}
 import scala.swing.{Dimension, Rectangle, Graphics2D, Component}
 import scala.util.control.NonFatal
 
@@ -67,7 +67,7 @@ object Visual {
   def condensedFont_=(value: Font): Unit =
     _condensedFont = value
 
-  private final val GROUP_GRAPH   = "graph"
+  final val GROUP_GRAPH   = "graph"
   final val COL_MUTA      = "muta"
   private final val GROUP_NODES   = "graph.nodes"
   private final val GROUP_EDGES   = "graph.edges"
@@ -107,7 +107,14 @@ object Visual {
 
     private[this] var _pNode: PNode = _
 
-    protected def main: Visual
+    val edgesIn  = TSet.empty[VisualEdge]
+    val edgesOut = TSet.empty[VisualEdge]
+
+    def dispose()(implicit tx: S#Tx): Unit = {
+      implicit val itx = tx.peer
+      edgesIn .foreach(_.dispose())
+      edgesOut.foreach(_.dispose())
+    }
 
     final def pNode: PNode = {
       if (_pNode == null) throw new IllegalStateException(s"Component $this has no initialized GUI")
@@ -176,8 +183,8 @@ object Visual {
     private[this] var lastLabel: String = _
     private[this] var labelShape: Shape = _
 
-    protected def drawName(g: Graphics2D, vi: VisualItem, fontSize: Float): Unit =
-      drawLabel(g, vi, fontSize, name)
+    //    protected def drawName(g: Graphics2D, vi: VisualItem, fontSize: Float): Unit =
+    //      drawLabel(g, vi, fontSize, name)
 
     protected def drawLabel(g: Graphics2D, vi: VisualItem, fontSize: Float, text: String): Unit = {
       if (_fontSize != fontSize) {
@@ -242,7 +249,7 @@ object Visual {
       protected def boundsResized(): Unit = ()
 
       protected def renderDetail(g: Graphics2D, vi: VisualItem): Unit =
-        drawName(g, vi, diam * vi.getSize.toFloat * 0.5f)
+        drawLabel(g, vi, diam * vi.getSize.toFloat * 0.5f, name)
 
       def name = if (state) "1" else "0"
 
@@ -279,7 +286,7 @@ object Visual {
     private def insertChromosome(c: Chromosome)(implicit tx: S#Tx): Unit = {
       def loop(pred: Option[Bit], curr: Option[Bit]): Unit = {
         curr.foreach { b =>
-          insertBit(b)
+          checkOrInsertBit(b)
           pred.foreach { p =>
             insertLink(p, b)
           }
@@ -324,6 +331,9 @@ object Visual {
     @inline private def startAnimation(): Unit =
       _vis.run(ACTION_COLOR)
 
+    private def checkOrInsertBit(b: Bit)(implicit tx: S#Tx): Unit =
+      if (!map.contains(b.id)(tx.peer)) insertBit(b)
+
     private def insertBit(b: Bit)(implicit tx: S#Tx): Unit = {
       implicit val itx = tx.peer
       val v = VisualBit(this, b)
@@ -358,9 +368,8 @@ object Visual {
         predV <- map.get(pred.id)
         succV <- map.get(succ.id)
       } {
-        deferVisTx {
-          /* _pEdge = */ _g.addEdge(predV.pNode, succV.pNode)
-        }
+        val edge = VisualEdge(predV, succV, init = false)
+        if (!predV.edgesOut.contains(edge)) edge.init()
       }
     }
 
