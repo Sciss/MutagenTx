@@ -7,3 +7,4 @@ project/boot/
 dependency-graph.sbt
 auto/
 database/
+render/

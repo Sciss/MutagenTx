@@ -17,13 +17,15 @@ package visual
 import java.awt.geom.Point2D
 import java.awt.image.BufferedImage
 import java.awt.{Color, Font, LayoutManager, RenderingHints}
+import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 import javax.swing.JPanel
 
-import de.sciss.file.File
+import de.sciss.file._
 import de.sciss.lucre.stm.TxnLike
 import de.sciss.lucre.swing.impl.ComponentHolder
 import de.sciss.lucre.swing.{View, defer, deferTx, requireEDT}
+import de.sciss.processor.Processor
 import prefuse.action.assignment.ColorAction
 import prefuse.action.layout.graph.ForceDirectedLayout
 import prefuse.action.{ActionList, RepaintAction}
@@ -37,8 +39,11 @@ import prefuse.visual.{VisualGraph, VisualItem}
 import prefuse.{Constants, Display, Visualization}
 
 import scala.collection.immutable.{IndexedSeq => Vec}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Promise, ExecutionContext, blocking}
 import scala.concurrent.stm.{Ref, TMap, TxnLocal}
-import scala.swing.{Component, Dimension, Graphics2D, Rectangle}
+import scala.swing.{Swing, Component, Dimension, Graphics2D, Rectangle}
+import scala.util.Try
 import scala.util.control.NonFatal
 
 object Visual {
@@ -93,6 +98,7 @@ object Visual {
     private[this] var _vg : VisualGraph         = _
     private[this] var _lay: ForceDirectedLayout = _
     private[this] var actionColor: ActionList   = _
+    private[this] var _runAnim = false
 
     private val cursorPos = Ref(cursorPos0)
 
@@ -223,6 +229,7 @@ object Visual {
 
     def previousIteration(): Unit = {
       val pos = cursorPos.single.transformAndGet(c => c.take(c.size - 2))
+      if (pos.isEmpty) return
 
       algorithm.global.forkCursor.stepFrom(pos) { implicit tx =>
         implicit val itx = tx.peer
@@ -325,9 +332,6 @@ object Visual {
 
       _lay = new ForceDirectedLayout(GROUP_GRAPH)
 
-      // quick repaint
-      mkActionColor()
-
       // ------------------------------------------------
 
       // initialize the display
@@ -354,12 +358,11 @@ object Visual {
       p.setLayout(new Layout(_dsp))
       p.add(_dsp)
 
-      _vis.run(ACTION_COLOR)
+      mkAnimation()
+      // _vis.run(ACTION_COLOR)
 
       component = Component.wrap(p)
     }
-
-    private var _runAnim = false
 
     def runAnimation: Boolean = _runAnim
     def runAnimation_=(value: Boolean): Unit = if (_runAnim != value) {
@@ -369,26 +372,24 @@ object Visual {
         _vis.removeAction(ACTION_COLOR)
         _vis.removeAction(ACTION_LAYOUT)
         _runAnim = value
-        mkActionColor()
-        val actionLayout = if (value) {
+        mkAnimation()
+      }
+    }
+
+    private def mkAnimation(): Unit = {
+      mkActionColor() // create really new instance, because `alwaysRunsAfter` installs listener on this
+      val actionLayout = if (_runAnim) {
           new ActionList(Activity.INFINITY, LAYOUT_TIME)
         } else {
-          val res = new ActionList()
-          // res.add(actionColor)
-          res
+          new ActionList()
         }
-        actionLayout.add(_lay)
-        // actionLayout.add(new PrefuseAggregateLayout(AGGR_PROC))
-        actionLayout.add(new RepaintAction())
-        actionLayout.setVisualization(_vis)
-        // if (value) {
-          _vis.putAction(ACTION_LAYOUT, actionLayout)
-          _vis.alwaysRunAfter(ACTION_COLOR, ACTION_LAYOUT)
-        //        } else {
-        //          _vis.putAction(ACTION_COLOR, actionLayout)
-        //        }
-        startAnimation()
-      }
+      actionLayout.add(_lay)
+      // actionLayout.add(new PrefuseAggregateLayout(AGGR_PROC))
+      actionLayout.add(new RepaintAction())
+      actionLayout.setVisualization(_vis)
+      _vis.putAction(ACTION_LAYOUT, actionLayout)
+      _vis.alwaysRunAfter(ACTION_COLOR, ACTION_LAYOUT)
+      startAnimation()
     }
 
     def animationStep(): Unit = {
@@ -398,17 +399,65 @@ object Visual {
       }
     }
 
-    def saveFrameAsPNG(file: File): Unit = {
+    def saveFrameAsPNG(file: File): Unit = saveFrameAsPNG(file, width = _dsp.getWidth, height = _dsp.getHeight)
+
+    private def saveFrameAsPNG(file: File, width: Int, height: Int): Unit = {
       requireEDT()
-      val dim   = _dsp.getSize(null)
-      val bImg  = new BufferedImage(dim.width, dim.height, BufferedImage.TYPE_INT_RGB)
+      val bImg  = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
       val g     = bImg.createGraphics()
       try {
         _dsp.damageReport() // force complete redrawing
-        _dsp.paintDisplay(g, dim)
+        _dsp.paintDisplay(g, new Dimension(width, height))
         ImageIO.write(bImg, "png", file)
       } finally {
         g.dispose()
+      }
+    }
+
+    private def execOnEDT[A](code: => A)(implicit exec: ExecutionContext): A = {
+      val p = Promise[A]()
+      Swing.onEDT {
+        val res = Try(code)
+        p.complete(res)
+      }
+      blocking(Await.result(p.future, Duration(5, TimeUnit.SECONDS)))
+    }
+
+    def saveFrameSeriesAsPNG(settings: VideoSettings): Processor[Unit] = {
+      import settings._
+      import ExecutionContext.Implicits.global
+      val numVersions = cursorPos.single.get.size / 2
+
+      def toFrames(sec: Double) = (sec * framesPerSecond + 0.5).toInt
+
+      val framesPerIter = toFrames(secondsPerIteration)
+      val framesDecay   = toFrames(secondsDecay)
+      val framesSkip    = toFrames(secondsSkip)
+      val numFrames   = numVersions * framesPerIter + framesDecay
+      runAnimation    = false
+      val child       = baseFile.base
+      val parent      = baseFile.parent
+      Processor[Unit]("saveFrameSeriesAsPNG") { p =>
+        var frame = 0
+        while (frame < numFrames) {
+          val frameSave = frame - framesSkip
+          if (frameSave >= 0) {
+            val f = parent / f"$child$frameSave%05d.png"
+            execOnEDT {
+              saveFrameAsPNG(f, width = width, height = height)
+            }
+          }
+          execOnEDT {
+            animationStep()
+          }
+          frame += 1
+          println(frame)
+          p.progress = frame.toDouble / numFrames
+          p.checkAborted()
+          if (frame % framesPerIter == 0) execOnEDT {
+            previousIteration()
+          }
+        }
       }
     }
   }
@@ -448,4 +497,6 @@ trait Visual extends View[S] {
   var runAnimation: Boolean
 
   def saveFrameAsPNG(file: File): Unit
+
+  def saveFrameSeriesAsPNG(settings: VideoSettings): Processor[Unit]
 }

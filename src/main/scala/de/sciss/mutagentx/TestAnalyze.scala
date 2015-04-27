@@ -17,10 +17,11 @@ import java.text.SimpleDateFormat
 import java.util.{Date, Locale}
 
 import de.sciss.file._
-import de.sciss.mutagentx.visual.Visual
+import de.sciss.mutagentx.visual.{VideoSettings, Visual}
+import de.sciss.processor.Processor
 
 import scala.swing.event.ButtonClicked
-import scala.swing.{FlowPanel, ToggleButton, Button, BorderPanel, Frame, Swing}
+import scala.swing.{ProgressBar, FlowPanel, ToggleButton, Button, BorderPanel, Frame, Swing}
 import Swing._
 
 object TestAnalyze extends App {
@@ -62,7 +63,31 @@ object TestAnalyze extends App {
       v.saveFrameAsPNG(f)
     }
 
-    val pBottom = new FlowPanel(ggPrevIter, ggRunAnim, ggStepAnim, ggSaveFrame)
+    var seriesProc = Option.empty[Processor[Unit]]
+
+    val ggProgress = new ProgressBar
+
+    val ggSaveFrameSeries = Button("Save Movie...") {
+      seriesProc.fold[Unit] {
+        val dir       = file("render")
+        require(dir.isDirectory)
+        val cfg       = VideoSettings()
+        cfg.secondsSkip = 60
+        cfg.secondsDecay = 60
+        cfg.baseFile  = dir / "movie"
+        val p         = v.saveFrameSeriesAsPNG(cfg)
+        seriesProc    = Some(p)
+        p.addListener {
+          case prog @ Processor.Progress(_, _) => onEDT(ggProgress.value = prog.toInt)
+        }
+
+      } { p =>
+        p.abort()
+        seriesProc = None
+      }
+    }
+
+    val pBottom = new FlowPanel(ggPrevIter, ggRunAnim, ggStepAnim, ggSaveFrame, ggSaveFrameSeries, ggProgress)
 
     new Frame {
       title     = "MutagenTx"
