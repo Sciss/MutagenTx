@@ -17,13 +17,15 @@ licenses           := Seq("GPL v3+" -> url("http://www.gnu.org/licenses/gpl-3.0.
 resolvers          += "Oracle Repository" at "http://download.oracle.com/maven"
 
 libraryDependencies ++= Seq(
-  "de.sciss" %% "lucreconfluent"  % "2.10.0-SNAPSHOT",
-  "de.sciss" %% "lucreevent-expr" % "2.7.3",
-  "de.sciss" %% "lucrestm-bdb"    % "2.1.1",
-  "de.sciss" %% "fileutil"        % "1.1.1",
-  "de.sciss" %  "prefuse-core"    % "1.0.0",
-  "de.sciss" %% "lucreswing"      % "0.9.1",
-  "de.sciss" %% "processor"       % "0.4.0"
+  "de.sciss"      %% "lucreconfluent"   % "2.10.0-SNAPSHOT",
+  "de.sciss"      %% "lucreevent-expr"  % "2.7.3",
+  "de.sciss"      %% "lucrestm-bdb"     % "2.1.1",
+  "de.sciss"      %% "fileutil"         % "1.1.1",
+  "de.sciss"      %  "prefuse-core"     % "1.0.0",
+  "de.sciss"      %% "lucreswing"       % "0.9.1",
+  "de.sciss"      %% "processor"        % "0.4.0",
+  "org.scalatest" %% "scalatest"        % "2.2.4" % "test",
+  "de.sciss"      %% "topology"         % "1.0.0" % "test"
 )
 
 scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xfuture")

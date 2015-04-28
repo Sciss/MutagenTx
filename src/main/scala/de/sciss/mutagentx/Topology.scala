@@ -41,7 +41,7 @@ object Topology {
 
   def read[V <: Identifiable[S#ID], E <: Edge[V]](in: DataInput, access: S#Acc)
                                                  (implicit tx: S#Tx, vertexSer: Serializer[S#Tx, S#Acc, V],
-  edgeSer  : Serializer[S#Tx, S#Acc, E]) =
+                                                                     edgeSer  : Serializer[S#Tx, S#Acc, E]) =
     serializer[V, E].read(in, access)
 
   private final class Ser[V <: Identifiable[S#ID], E <: Edge[V]](implicit vertexSer: Serializer[S#Tx, S#Acc, V],
