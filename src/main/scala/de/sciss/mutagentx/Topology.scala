@@ -13,14 +13,13 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.data
-import de.sciss.lucre.data.SkipList
 import de.sciss.lucre.expr
-import de.sciss.serial.Serializer
+import de.sciss.lucre.stm.{Identifiable, IdentifierMap, Mutable}
+import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
 import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.collection.mutable.{Set => MSet, Stack => MStack}
-import scala.util.{Success, Failure, Try}
+import scala.util.{Failure, Success, Try}
 
 object Topology {
   /** Creates an empty topology with no vertices or edges.
@@ -28,13 +27,37 @@ object Topology {
     * @tparam V   vertex type
     * @tparam E   edge type
     */
-  def empty[V, E <: Edge[V]](implicit tx: S#Tx, vertexSer: Serializer[S#Tx, S#Acc, V],
-                             edgeSer: Serializer[S#Tx, S#Acc, E]) = {
+  def empty[V <: Identifiable[S#ID], E <: Edge[V]](implicit tx: S#Tx,
+                                                   vertexSer: Serializer[S#Tx, S#Acc, V],
+                                                   edgeSer  : Serializer[S#Tx, S#Acc, E]) = {
     val id = tx.newID()
-    implicit val vertexOrd: data.Ordering[S#Tx, V] = ???
-    implicit val edgeOrd  : data.Ordering[S#Tx, E] = ???
-    new Topology(id, expr.List.Modifiable[S, V], SkipList.Set.empty[S, E], tx.newIntVar(id, 0),
-      SkipList.Map.empty[S, V, Set[E]])
+    new Topology(id, expr.List.Modifiable[S, V], expr.List.Modifiable[S, E], tx.newIntVar(id, 0),
+      tx.newDurableIDMap[Set[E]])
+  }
+
+  implicit def serializer[V <: Identifiable[S#ID], E <: Edge[V]](implicit vertexSer: Serializer[S#Tx, S#Acc, V],
+                                                                          edgeSer  : Serializer[S#Tx, S#Acc, E])
+    : Serializer[S#Tx, S#Acc, Topology[V, E]] = new Ser[V, E]
+
+  def read[V <: Identifiable[S#ID], E <: Edge[V]](in: DataInput, access: S#Acc)
+                                                 (implicit tx: S#Tx, vertexSer: Serializer[S#Tx, S#Acc, V],
+  edgeSer  : Serializer[S#Tx, S#Acc, E]) =
+    serializer[V, E].read(in, access)
+
+  private final class Ser[V <: Identifiable[S#ID], E <: Edge[V]](implicit vertexSer: Serializer[S#Tx, S#Acc, V],
+                                                                          edgeSer  : Serializer[S#Tx, S#Acc, E])
+    extends Serializer[S#Tx, S#Acc, Topology[V, E]] {
+
+    def write(top: Topology[V, E], out: DataOutput): Unit = top.write(out)
+
+    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Topology[V, E] = {
+      val id          = tx.readID(in, access)
+      val vertices    = expr.List.Modifiable.read[S, V](in, access)
+      val edges       = expr.List.Modifiable.read[S, E](in, access)
+      val unconnected = tx.readIntVar(id, in)
+      val edgeMap     = tx.readDurableIDMap[Set[E]](in)
+      new Topology(id, vertices, edges, unconnected, edgeMap)
+    }
   }
 
   trait Edge[+V] {
@@ -71,18 +94,32 @@ object Topology {
   * @tparam V             vertex type
   * @tparam E             edge type
   */
-final class Topology[V, E <: Topology.Edge[V]] private (val id: S#ID,
+final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (val id: S#ID,
                                                         val vertices: expr.List.Modifiable[S, V, Unit],
-                                                        val edges: SkipList.Set[S, E],
+                                                        val edges   : expr.List.Modifiable[S, E, Unit],
                                                         val unconnected: S#Var[Int],
-                                                        val edgeMap: SkipList.Map[S, V, Set[E]])
-  /* extends Ordering[V] */ {
+                                                        val edgeMap: IdentifierMap[S#ID, S#Tx, Set[E]])
+  extends Mutable.Impl[S] {
 
-  import Topology.{Move, CycleDetected, MoveAfter, MoveBefore}
+  import Topology.{CycleDetected, Move, MoveAfter, MoveBefore}
 
   private type T = Topology[V, E]
 
-  override def toString = s"Topology($id)" // s"Topology($vertices, $edges)($unconnected, $edgeMap)"
+  override def toString() = s"Topology($id)" // s"Topology($vertices, $edges)($unconnected, $edgeMap)"
+
+  protected def disposeData()(implicit tx: S#Tx): Unit = {
+    vertices    .dispose()
+    edges       .dispose()
+    unconnected .dispose()
+    edgeMap     .dispose()
+  }
+
+  protected def writeData(out: DataOutput): Unit = {
+    vertices    .write(out)
+    edges       .write(out)
+    unconnected .write(out)
+    edgeMap     .write(out)
+  }
 
   /** For two connected vertices `a` and `b`, returns `-1` if `a` is before `b`, or `1` if `a` follows `b`,
     *  or `0` if both are equal. Throws an exception if `a` or `b` is unconnected.
@@ -118,8 +155,8 @@ final class Topology[V, E <: Topology.Edge[V]] private (val id: S#ID,
     if (loBound == upBound) Failure(new CycleDetected)
 
     def succeed(): Unit = {
-      edgeMap.add(source -> (edgeMap.get(source).getOrElse(Set.empty) + e))
-      edges.add(e)
+      edgeMap.put(source.id, edgeMap.get(source.id).getOrElse(Set.empty) + e)
+      edges.addLast(e)
     }
 
     // dealing with unconnected elements
@@ -155,7 +192,7 @@ final class Topology[V, E <: Topology.Edge[V]] private (val id: S#ID,
       if (!discovery(visited, source, e, target, upBound)) {
         Failure(new CycleDetected)  // Cycle --> Abort
       } else {
-        val (newVertices, affected) = shift(visited, loBound, upBound)
+        val affected = shift(visited, loBound, upBound)
         if (loBound < u) unconnected.transform(_ - 1)
         succeed()
         Success(Some(MoveAfter(source, affected)))
@@ -190,8 +227,8 @@ final class Topology[V, E <: Topology.Edge[V]] private (val id: S#ID,
   def removeEdge(e: E)(implicit tx: S#Tx): Unit = {
     if (edges.remove(e)) {
       val source  = e.sourceVertex
-      val newEMV  = edgeMap.get(source).getOrElse(Set.empty) - e
-      if (newEMV.isEmpty) edgeMap.remove(source) else edgeMap.add(source -> newEMV)
+      val newEMV  = edgeMap.get(source.id).getOrElse(Set.empty) - e
+      if (newEMV.isEmpty) edgeMap.remove(source.id) else edgeMap.put(source.id, newEMV)
     }
   }
 
@@ -216,9 +253,9 @@ final class Topology[V, E <: Topology.Edge[V]] private (val id: S#ID,
       if (idx < u) {
         unconnected.transform(_ - 1)
       } else {
-        if (edgeMap.contains(v)) {
-          val e = edgeMap.get(v).getOrElse(Set.empty)
-          edgeMap.remove(v)
+        if (edgeMap.contains(v.id)) {
+          val e = edgeMap.get(v.id).getOrElse(Set.empty)
+          edgeMap.remove(v.id)
           e.foreach(edges.remove)
         }
       }
@@ -231,7 +268,7 @@ final class Topology[V, E <: Topology.Edge[V]] private (val id: S#ID,
     while (targets.nonEmpty) {
       val v           = targets.pop()
       visited        += v
-      val m0          = edgeMap.get(v).getOrElse(Set.empty)
+      val m0          = edgeMap.get(v.id).getOrElse(Set.empty)
       val m1          = if (v == newV) m0 + newE else m0
       val moreTargets = m1.map(_.targetVertex)
       val grouped     = moreTargets.groupBy { t =>
@@ -248,17 +285,15 @@ final class Topology[V, E <: Topology.Edge[V]] private (val id: S#ID,
   }
 
   // initial cond: loBound (target) < upBound (source)
-  private def shift(visited: collection.Set[V], loBound: Int, upBound: Int): (Vec[V], Vec[V]) = {
-    ???
-//    // shift vertices in affected region down ord
-//    val (a, b)                  = vertices.splitAt(upBound)
-//    val (begin, target)         = a.splitAt(loBound)
-//    val source                  = b.head
-//    val end                     = b.tail
-//    val (affected, unaffected)  = target.partition(visited.contains)
-//
-//    val shifted = begin ++ unaffected ++ (source +: affected) ++ end
-//
-//    (shifted, affected)
+  private def shift(visited: collection.Set[V], loBound: Int, upBound: Int)(implicit tx: S#Tx): Vec[V] = {
+    // shift vertices in affected region down ord
+    val affected = (loBound until upBound).collect {
+      case idx if visited.contains(vertices(idx)) => idx
+    }
+    affected.zipWithIndex.map { case (idx, numRemoved) =>
+      val v = vertices.removeAt(idx - numRemoved)
+      vertices.insert(upBound + 1, v)
+      v
+    }
   }
 }
