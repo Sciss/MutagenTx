@@ -53,7 +53,7 @@ object Visual {
   val VIDEO_HEIGHT    = 576
   val VIDEO_WIDTH_SQR = 1024 // 1024 : 576 = 16 : 9
 
-  def apply(a: Algorithm)(implicit tx: S#Tx): Visual = {
+  def apply(a: AlgorithmOLD)(implicit tx: S#Tx): Visual = {
     val map = TMap.empty[S#ID, VisualBit]
     implicit val dtx = tx.durable
     new Impl(map, a, a.global.cursor.position).init()
@@ -89,7 +89,7 @@ object Visual {
   private final val ACTION_COLOR  = "color"
   private final val LAYOUT_TIME   = 50
 
-  private final class Impl(map: TMap[S#ID, VisualBit], val algorithm: Algorithm, cursorPos0: S#Acc)
+  private final class Impl(map: TMap[S#ID, VisualBit], val algorithm: AlgorithmOLD, cursorPos0: S#Acc)
     extends Visual with ComponentHolder[Component] {
 
     private[this] var _vis: Visualization       = _
@@ -110,7 +110,7 @@ object Visual {
       this
     }
 
-    private def insertChromosome(c: Chromosome)(implicit tx: S#Tx): Unit = {
+    private def insertChromosome(c: ChromosomeOLD)(implicit tx: S#Tx): Unit = {
       def loop(pred: Option[Bit], curr: Option[Bit]): Unit = {
         curr.foreach { b =>
           checkOrInsertBit(b)
@@ -483,7 +483,7 @@ trait Visual extends View[S] {
 
   def visualGraph: VisualGraph
 
-  def algorithm: Algorithm
+  def algorithm: AlgorithmOLD
 
   /** Schedule code to be executed during paused visualization animation
     * on the EDT after the commit of the transaction.

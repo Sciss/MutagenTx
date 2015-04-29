@@ -24,7 +24,7 @@ object TestCreate extends App {
 
   val base = file("database")
   require(base.isDirectory)
-  val a = Algorithm(base / "test")
+  val a = AlgorithmOLD(base / "test")
   a.global.cursor.step { implicit tx =>
     a.init(n = POP)
     a.evaluate()

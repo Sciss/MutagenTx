@@ -30,7 +30,7 @@ object TestAnalyze extends App {
   def run(): Unit = {
     val base = file("database")
     require(base.isDirectory)
-    val a = Algorithm(base / "test")
+    val a = AlgorithmOLD(base / "test")
     val csr = a.global.cursor
     val v = csr.step { implicit tx => Visual(a) }
 

@@ -21,24 +21,24 @@ import de.sciss.serial.{DataInput, DataOutput}
 import scala.annotation.tailrec
 import scala.collection.immutable.{IndexedSeq => Vec}
 
-object Chromosome {
-  def apply(numBits: Int)(implicit tx: S#Tx, r: TxnRandom[D#Tx]): Chromosome = new Chromosome {
+object ChromosomeOLD {
+  def apply(numBits: Int)(implicit tx: S#Tx, r: TxnRandom[D#Tx]): ChromosomeOLD = new ChromosomeOLD {
     val id      = tx.newID()
     val head    = tx.newVar(id, Bit(numBits))
     val fitness = tx.newVar(id, 0.0)
   }
 
-  def apply(c: Bit)(implicit tx: S#Tx): Chromosome = new Chromosome {
+  def apply(c: Bit)(implicit tx: S#Tx): ChromosomeOLD = new ChromosomeOLD {
     val id      = tx.newID()
     val head    = tx.newVar(id, Option(c))
     val fitness = tx.newVar(id, 0.0)
   }
 
-  implicit object Ser extends MutableSerializer[S, Chromosome] {
-    def readData(in: DataInput, id0: S#ID)(implicit tx: S#Tx): Chromosome = {
+  implicit object Ser extends MutableSerializer[S, ChromosomeOLD] {
+    def readData(in: DataInput, id0: S#ID)(implicit tx: S#Tx): ChromosomeOLD = {
       implicit val dtx = tx.durable
       implicit val sys = tx.system
-      new Chromosome {
+      new ChromosomeOLD {
         val id      = id0
         val head    = tx.readVar[Option[Bit]](id, in)
         val fitness = tx.readVar[Double](id, in)
@@ -46,7 +46,7 @@ object Chromosome {
     }
   }
 }
-trait Chromosome extends stm.Mutable.Impl[S] {
+trait ChromosomeOLD extends stm.Mutable.Impl[S] {
   def head    : S#Var[Option[Bit]]
   def fitness : S#Var[Double]
 

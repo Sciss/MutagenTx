@@ -19,4 +19,10 @@ import de.sciss.lucre.event.Durable
 package object mutagentx {
   type S = ConfluentReactive
   type D = Durable
+
+  implicit val chromosomeSerializer = Topology.serializer[Vertex, Edge]
+
+  // type Top = Topology[Vertex, Edge]
+
+  type Chromosome = Topology[Vertex, Edge]
 }
