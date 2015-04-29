@@ -1,10 +1,10 @@
 package de.sciss.mutagentx
 
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.stm.{Mutable, MutableSerializer}
 import de.sciss.mutagentx.{Topology => TopologyC}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
+import de.sciss.synth.proc.Confluent
 import de.sciss.topology.{Topology => TopologyI}
 import org.scalatest.{FlatSpec, Matchers}
 
@@ -21,7 +21,7 @@ class TopologySpec extends FlatSpec with Matchers {
     override def productPrefix = "E"
   }
 
-  type S = ConfluentReactive
+  type S = Confluent
 
   object VC {
     implicit object Ser extends MutableSerializer[S, VC] {
@@ -78,7 +78,7 @@ class TopologySpec extends FlatSpec with Matchers {
     val si2   = ti8.vertices.mkString(",")
     val si3   = ti8.edges.toList.sortBy(e => e.sourceVertex.name -> e.targetVertex.name).mkString(",")
 
-    val system      = ConfluentReactive(BerkeleyDB.tmp())
+    val system      = Confluent(BerkeleyDB.tmp())
     val (_, cursor) = system.cursorRoot(_ => ()) { implicit tx => _ => system.newCursor() }
 
     val (mc0, mc1, mc2, sc0, sc1, sc2, sc3) = cursor.step { implicit tx =>

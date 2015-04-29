@@ -1,5 +1,5 @@
 /*
- *  Algorithm.scala
+ *  AlgorithmOLD.scala
  *  (MutagenTx)
  *
  *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
@@ -14,11 +14,11 @@
 package de.sciss.mutagentx
 
 import de.sciss.file.File
-import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
-import de.sciss.lucre.{stm, confluent}
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.stm.store.BerkeleyDB
+import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
+import de.sciss.lucre.{confluent, stm}
+import de.sciss.synth.proc.Confluent
 
 import scala.annotation.tailrec
 import scala.collection.breakOut
@@ -41,7 +41,7 @@ object AlgorithmOLD {
 
   private def create(dbf: DataStoreFactory[DataStore]): AlgorithmOLD = {
     new AlgorithmOLD {
-      implicit val system = ConfluentReactive(dbf)
+      implicit val system = Confluent(dbf)
       val (handle, global) = system.rootWithDurable { implicit tx =>
         implicit val dtx = system.durableTx(tx)
         GenomeOLD.empty
@@ -182,12 +182,12 @@ trait AlgorithmOLD {
         val _res0 = {
           p0() = p1v
           // if (DEBUG) println(s"$p0() = $p1v")
-          tx.newHandle(chosen0)
+          tx.newHandleM(chosen0)
         }
         val _res1 = if (res.size + 1 == n) _res0 :: Nil else {
           p1() = p0v
           // if (DEBUG) println(s"$p1() = $p0v")
-          _res0 :: tx.newHandle(chosen1) :: Nil
+          _res0 :: tx.newHandleM(chosen1) :: Nil
         }
 
         _res1
@@ -224,7 +224,7 @@ trait AlgorithmOLD {
           val i2  = if (i20 < i1) i20 else i20 + 1
           chosen(i2).bit.transform(!_)
         }
-        tx.newHandle(chosen)
+        tx.newHandleM(chosen)
       }
       val h   = h0 // csr.step { implicit tx => tx.newHandle(h0()) }
       val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }

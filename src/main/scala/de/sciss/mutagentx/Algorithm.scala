@@ -14,15 +14,14 @@
 package de.sciss.mutagentx
 
 import de.sciss.file.File
-import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
-import de.sciss.lucre.{stm, confluent}
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.stm.store.BerkeleyDB
+import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
+import de.sciss.lucre.{confluent, stm}
+import de.sciss.synth.proc.Confluent
 import de.sciss.synth.{UGenSpec, UndefinedRate}
 
 import scala.annotation.tailrec
-import scala.collection.breakOut
 import scala.collection.generic.CanBuildFrom
 import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.language.higherKinds
@@ -30,24 +29,32 @@ import scala.language.higherKinds
 object Algorithm {
   val DEBUG = false
 
-  val constProb     : Double = 0.5
-  val minNumVertices: Int    = 4
-  val maxNumVertices: Int    = 50
-  val nonDefaultProb: Double = 0.9 // 0.5
+  // ---- generation ----
+  val constProb       : Double = 0.5
+  val minNumVertices  : Int    = 4
+  val maxNumVertices  : Int    = 50
+  val nonDefaultProb  : Double = 0.9 // 0.5
 
-  def tmp(): Algorithm = {
+  // ---- evaluation ----
+  val numCoeffs       : Int     = 13
+  val normalizeCoeffs : Boolean = true
+  val maxBoost        : Double  = 8.0
+  val temporalWeight  : Double  = 0.5
+  val vertexPenalty   : Double  = 0.2
+
+  def tmp(input: File): Algorithm = {
     val dbf = BerkeleyDB.tmp()
-    create(dbf)
+    create(dbf, input)
   }
 
-  def apply(dir: File): Algorithm = {
+  def apply(dir: File, input: File): Algorithm = {
     val dbf = BerkeleyDB.factory(dir)
-    create(dbf)
+    create(dbf, input)
   }
 
-  private def create(dbf: DataStoreFactory[DataStore]): Algorithm = {
+  private def create(dbf: DataStoreFactory[DataStore], _input: File): Algorithm = {
     new Algorithm {
-      implicit val system = ConfluentReactive(dbf)
+      implicit val system = Confluent(dbf)
       val (handle, global) = system.rootWithDurable { implicit tx =>
         implicit val dtx = system.durableTx(tx)
         Genome.empty
@@ -56,14 +63,18 @@ object Algorithm {
       }
 
       def genome(implicit tx: S#Tx): Genome = handle()
+
+      val input = _input
     }
   }
 }
 trait Algorithm {
-  import Algorithm.{DEBUG, minNumVertices, maxNumVertices, constProb}
-  import Util.{exprand, rrand, coin, choose}
+  import Algorithm.{DEBUG, constProb, maxNumVertices, minNumVertices}
+  import Util.{choose, coin, exprand, rrand}
 
   def genome(implicit tx: S#Tx): Genome
+
+  def input: File
 
   def system: S
 

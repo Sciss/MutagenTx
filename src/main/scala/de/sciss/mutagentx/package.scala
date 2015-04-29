@@ -13,11 +13,10 @@
 
 package de.sciss
 
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.event.Durable
+import de.sciss.synth.proc.{Durable, Confluent}
 
 package object mutagentx {
-  type S = ConfluentReactive
+  type S = Confluent
   type D = Durable
 
   implicit val chromosomeSerializer = Topology.serializer[Vertex, Edge]
