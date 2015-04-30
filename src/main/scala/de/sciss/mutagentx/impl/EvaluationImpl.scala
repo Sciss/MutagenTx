@@ -21,6 +21,7 @@ import de.sciss.filecache.{TxnConsumer, TxnProducer}
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.stm
 import de.sciss.lucre.stm.TxnLike
+import de.sciss.lucre.synth.InMemory
 import de.sciss.processor.Processor
 import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
 import de.sciss.span.Span
@@ -93,33 +94,32 @@ object EvaluationImpl {
     }
   }
 
-  def getInputSpec(algorithm: Algorithm)(implicit tx: TxnLike): Future[(File, AudioFileSpec)] = {
-    val f         = algorithm.input
-    val key       = f -> Algorithm.numCoeffs
+  def getInputSpec(input: File)(implicit tx: TxnLike): Future[(File, AudioFileSpec)] = {
+    val key       = input -> Algorithm.numCoeffs
     val futMeta   = cache.acquire(key)(tx.peer)
     val res       = futMeta.map { v =>
       val inputExtr = v.meta
-      val inputSpec = blocking(AudioFile.readSpec(f))
+      val inputSpec = blocking(AudioFile.readSpec(input))
       (inputExtr, inputSpec)
     }
     res.onComplete { case _ => TxnExecutor.defaultAtomic { implicit tx => cache.release(key) }}
     res
   }
 
-  def apply(c: Chromosome, algorithm: Algorithm)(implicit tx: S#Tx, cursor: stm.Cursor[S]): Future[Evaluated] = {
-    val futEval = getInputSpec(algorithm).flatMap { case (inputExtr, inputSpec) =>
-      if (Txn.findCurrent.isEmpty) {
-        cursor.step { implicit tx =>
-          evaluate(c, algorithm, inputSpec, inputExtr)
-        }
-      } else {
-        evaluate(c, algorithm, inputSpec, inputExtr)
-      }
-    }
-    // val fitness = Await.result(futEval, Duration(24, TimeUnit.SECONDS) /* Duration.Inf */).fitness
-    // fitness
-    futEval
-  }
+  //  def apply(c: Chromosome, algorithm: Algorithm)(implicit tx: S#Tx, cursor: stm.Cursor[S]): Future[Evaluated] = {
+  //    val futEval = getInputSpec(algorithm.input).flatMap { case (inputExtr, inputSpec) =>
+  //      if (Txn.findCurrent.isEmpty) {
+  //        cursor.step { implicit tx =>
+  //          evaluate(c, algorithm, inputSpec, inputExtr)
+  //        }
+  //      } else {
+  //        evaluate(c, algorithm, inputSpec, inputExtr)
+  //      }
+  //    }
+  //    // val fitness = Await.result(futEval, Duration(24, TimeUnit.SECONDS) /* Duration.Inf */).fitness
+  //    // fitness
+  //    futEval
+  //  }
 
   private val featNorms = Array[Array[Float]](
     Array(0.006015186f,1.4569731f),
@@ -138,19 +138,22 @@ object EvaluationImpl {
     Array(-0.10048226f,0.64655834f)
   )
 
-  def bounce(c: Chromosome, audioF: File, inputSpec: AudioFileSpec, inputExtr: File,
-             duration0: Double = -1)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Processor[Any] = {
-    implicit val itx = tx.inMemory
-    type I  = S#I
-    implicit val iCursor = tx.system.inMemory
+  private val inMemory = InMemory()
+
+  def bounce(graph: SynthGraph, audioF: File, inputSpec: AudioFileSpec, inputExtr: File,
+             duration0: Double = -1): Processor[Any] = {
+    type I  = InMemory
+    implicit val iCursor = inMemory
 
     val exp = ExprImplicits[I]
     import exp._
 
-    val proc      = Proc[I]
-    proc.graph()  = mkSynthGraph(c, mono = true, removeNaNs = false) // c.graph
-    val procObj   = Obj(Proc.Elem(proc))
-    val objH      = itx.newHandle(procObj) // (Obj.typedSerializer[I, Proc.Elem[I]])
+    val objH = inMemory.step { implicit tx =>
+      val proc      = Proc[I]
+      proc.graph()  = graph
+      val procObj   = Obj(Proc.Elem(proc))
+      tx.newHandle(procObj) // (Obj.typedSerializer[I, Proc.Elem[I]])
+    }
 
     import WorkspaceHandle.Implicits._
     val bncCfg              = Bounce.Config[I]
@@ -167,7 +170,9 @@ object EvaluationImpl {
     // bc.init : (S#Tx, Server) => Unit
     bncCfg.span             = Span(0L, (duration * Timeline.SampleRate).toLong)
     val bnc0                = Bounce[I, I].apply(bncCfg)
-    tx.afterCommit(bnc0.start())
+    // tx.afterCommit {
+      bnc0.start()
+    // }
     bnc0
   }
 
@@ -281,21 +286,21 @@ object EvaluationImpl {
 
   def evaluate(c: Chromosome, algorithm: Algorithm, inputSpec: AudioFileSpec, inputExtr: File)
               (implicit tx: S#Tx): Future[Evaluated] = {
-    val audioF      = File.createTemp(prefix = "muta_bnc", suffix = ".aif") // XXX TODO -- not too great inside txn
     import algorithm.global.rng
-    val bnc0        = bounce(c, audioF = audioF, inputSpec = inputSpec, inputExtr = inputExtr)
+    val graph       = mkSynthGraph(c, mono = true, removeNaNs = false) // c.graph
     val cH          = tx.newHandle(c)
     val numVertices = c.vertices.size
-
-    val p     = Promise[Evaluated]()
+    val p           = Promise[Evaluated]()
     tx.afterCommit {
-      p.completeWith(evaluateFut(cH, bnc0, inputSpec, inputExtr = inputExtr, audioF = audioF, numVertices = numVertices))
+      p.completeWith(evaluateFut(cH, graph, inputSpec, inputExtr = inputExtr, numVertices = numVertices))
     }
     p.future
   }
 
-  private def evaluateFut(cH: stm.Source[S#Tx, Chromosome], bnc0: Processor[Any], inputSpec: AudioFileSpec,
-                          inputExtr: File, audioF: File, numVertices: Int): Future[Evaluated] = {
+  private def evaluateFut(cH: stm.Source[S#Tx, Chromosome], graph: SynthGraph, inputSpec: AudioFileSpec,
+                          inputExtr: File, numVertices: Int): Future[Evaluated] = {
+    val audioF = File.createTemp(prefix = "muta_bnc", suffix = ".aif")
+    val bnc0 = bounce(graph, audioF = audioF, inputSpec = inputSpec, inputExtr = inputExtr)
     val bnc = Future {
       Await.result(bnc0, Duration(4.0, TimeUnit.SECONDS))
       // XXX TODO -- would be faster if we could use a Poll during

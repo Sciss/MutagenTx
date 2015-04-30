@@ -101,7 +101,14 @@ class TopologySpec extends FlatSpec with Matchers {
       assert(cc1 === true )
       val _sc0 = tc.vertices.iterator.toList.mkString(",")
       val _sc1 = tc.edges.iterator.toList.sortBy(e => e.sourceVertex.name -> e.targetVertex.name).mkString(",")
+
+      assert(tc.edgeMap.get(vca.id).fold(0)(_.size) === 1)
+      assert(tc.edgeMap.get(vcb.id).fold(0)(_.size) === 1)
+      assert(tc.edgeMap.get(vcd.id).fold(0)(_.size) === 1)
+
       tc.removeVertex(vca)
+      assert(tc.edgeMap.contains(vca.id) === false)
+
       val _sc2 = tc.vertices.iterator.toList.mkString(",")
       val _sc3 = tc.edges.iterator.toList.sortBy(e => e.sourceVertex.name -> e.targetVertex.name).mkString(",")
 

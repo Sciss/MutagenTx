@@ -10,14 +10,18 @@ object TestGenEval extends App {
 
   val cursor    = algorithm.global.cursor
   cursor.step { implicit tx =>
-    algorithm.init(10)
+    algorithm.init(1)
   }
   val fut =  cursor.step { implicit tx =>
     algorithm.evaluate()
   }
 
   val t = new Thread {
-    override def run(): Unit = this.synchronized(this.wait())
+    override def run(): Unit = {
+      this.synchronized(this.wait())
+      algorithm.system.close()
+      sys.exit()
+    }
     start()
   }
 

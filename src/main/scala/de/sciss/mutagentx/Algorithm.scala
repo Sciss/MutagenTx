@@ -20,6 +20,7 @@ import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
 import de.sciss.lucre.{confluent, stm}
+import de.sciss.synth.io.AudioFileSpec
 import de.sciss.synth.proc.{SoundProcesses, Confluent}
 import de.sciss.synth.{UGenSpec, UndefinedRate}
 
@@ -27,6 +28,7 @@ import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
 import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.concurrent.duration.Duration
+import scala.concurrent.stm.TxnExecutor
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.higherKinds
 
@@ -66,6 +68,11 @@ object Algorithm {
   }
 
   private def create(dbf: DataStoreFactory[DataStore], _input: File): Algorithm = {
+    val futInput = TxnExecutor.defaultAtomic { implicit tx =>
+      impl.EvaluationImpl.getInputSpec(_input)
+    }
+    val (_inputExtr, _inputSpec) = Await.result(futInput, Duration.Inf)
+
     new Algorithm {
       implicit val system = Confluent(dbf)
       val (handle, global) = system.rootWithDurable { implicit tx =>
@@ -77,7 +84,9 @@ object Algorithm {
 
       def genome(implicit tx: S#Tx): Genome = handle()
 
-      val input = _input
+      val input     = _input
+      val inputExtr = _inputExtr
+      val inputSpec = _inputSpec
     }
   }
 }
@@ -88,6 +97,8 @@ trait Algorithm {
   def genome(implicit tx: S#Tx): Genome
 
   def input: File
+  def inputExtr: File
+  def inputSpec: AudioFileSpec
 
   def system: S
 
@@ -193,7 +204,7 @@ trait Algorithm {
 
   def evaluate()(implicit tx: S#Tx): Future[Vec[Evaluated]] = {
     val futs = genome.chromosomes().map { c =>
-      impl.EvaluationImpl(c, this)(tx, global.cursor)
+      impl.EvaluationImpl.evaluate(c, this, inputSpec, inputExtr)
     }
     import Algorithm.executionContext
     Future.sequence(futs)
