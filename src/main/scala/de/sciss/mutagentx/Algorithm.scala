@@ -25,11 +25,12 @@ import de.sciss.synth.proc.{SoundProcesses, Confluent}
 import de.sciss.synth.{UGenSpec, UndefinedRate}
 
 import scala.annotation.tailrec
+import scala.collection.breakOut
 import scala.collection.generic.CanBuildFrom
 import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future, blocking}
 import scala.language.higherKinds
 
 object Algorithm {
@@ -207,7 +208,7 @@ trait Algorithm {
   //    Future.sequence(futs)
   //  }
 
-  def evaluate()(implicit tx: S#Tx): Future[Vec[Evaluated]] = {
+  def evaluate()(implicit tx: S#Tx): Future[Vec[Double]] = {
     val futs = genome.chromosomes().map { c =>
       impl.EvaluationImpl.evaluate(c, this, inputSpec, inputExtr)
     }
@@ -215,7 +216,19 @@ trait Algorithm {
     Future.sequence(futs)
   }
 
-//  def evaluate()(implicit tx: S#Tx): Unit =
+  def evaluateAndUpdate()(implicit tx: S#Tx): Future[Unit] = {
+    val fut = evaluate()
+    import Algorithm.executionContext
+    fut.map { fit =>
+      blocking {
+        global.cursor.step { implicit tx =>
+          genome.fitness() = fit
+        }
+      }
+    }
+  }
+
+    //  def evaluate()(implicit tx: S#Tx): Unit =
 //    genome.chromosomes().foreach { cH =>
 //      val b = cH.bits
 //      val h = b.size / 2
@@ -236,45 +249,59 @@ trait Algorithm {
 //      if (DEBUG) s"$s0  ${cH.debugString}" else s0
 //    } .mkString("\n")
 
-  def select(all: Vec[Chromosome])(implicit tx: S#Tx): Set[Chromosome] = {
-    ???
-//    implicit val dtx = tx.durable
-//
-//    val pop   = all.size
-//    val n     = (pop * selectionFrac + 0.5).toInt
-//
-//    @tailrec def loop(rem: Int, in: Set[Chromosome], out: Set[Chromosome]): Set[Chromosome] = if (rem == 0) out else {
-//      val sum     = in.view.map(_.fitness()).sum
-//      val rem1    = rem - 1
-//      if (sum == 0.0) {
-//        val chosen = in.head
-//        loop(rem1, in - chosen, out + chosen)
-//      } else {
-//        val inIdx       = in.zipWithIndex[Chromosome, Vec[(Chromosome, Int)]](breakOut)
-//        val norm        = inIdx.map {
-//          case (c, j) => (j, c.fitness() / sum)
-//        }
-//        val sorted      = norm.sortBy(_._2)
-//        val acc         = sorted.scanLeft(0.0) { case (a, (_, f)) => a + f } .tail
-//        val roulette    = rng.nextDouble()
-//        val idxS        = acc.indexWhere(_ > roulette)
-//        val idx         = if (idxS >= 0) sorted(idxS)._1 else in.size - 1
-//        val (chosen, _) = inIdx(idx)
-//        loop(rem1, in - chosen, out + chosen)
-//      }
-//    }
-//
-//    val sel   = loop(n, all.toSet, Set.empty)
-//    // val remove  = all -- sel
-//    // remove.foreach(prev.remove)
-//    sel
+  def select(all: Vec[(Chromosome, Double)])(implicit tx: S#Tx): Set[Chromosome] = {
+    implicit val dtx = tx.durable
+
+    val pop   = all.size
+    val n     = (pop * selectionFrac + 0.5).toInt
+
+    @tailrec def loop(rem: Int, in: Set[(Chromosome, Double)], out: Set[Chromosome]): Set[Chromosome] =
+      if (rem == 0) out else {
+        val sum     = in.view.map(_._2).sum
+        val rem1    = rem - 1
+        if (sum == 0.0) {
+          val chosen = in.head
+          loop(rem1, in - chosen, out + chosen._1)
+        } else {
+          val inIdx       = in.zipWithIndex[(Chromosome, Double), Vec[((Chromosome, Double), Int)]](breakOut)
+          val norm        = inIdx.map {
+            case ((c, f), j) => (j, f / sum)
+          }
+          val sorted      = norm.sortBy(_._2)
+          val acc         = sorted.scanLeft(0.0) { case (a, (_, f)) => a + f } .tail
+          val roulette    = rng.nextDouble()
+          val idxS        = acc.indexWhere(_ > roulette)
+          val idx         = if (idxS >= 0) sorted(idxS)._1 else in.size - 1
+          val (chosen, _) = inIdx(idx)
+          loop(rem1, in - chosen, out + chosen._1)
+        }
+      }
+
+    val sel   = loop(n, all.toSet.filterNot { case (_, f) => f.isInfinity|| f.isNaN }, Set.empty)
+    // val remove  = all -- sel
+    // remove.foreach(prev.remove)
+    sel
   }
 
-  def elitism(all: Vec[Chromosome])(implicit tx: S#Tx): Vec[Chromosome] = {
-    ???
-//    val sel = all.sortBy(-_.fitness()).take(numElitism)
-//    sel
-  }
+  def elitism(all: Vec[(Chromosome, Double)])(implicit tx: S#Tx): Vec[Chromosome] =
+    if (numElitism == 0) Vector.empty else {
+      // ensure that elite choices are distinct (don't want to accumulate five identical chromosomes over time)!
+      val eliteCandidates = all.sortBy(-_._2)
+      val res = Vector.newBuilder[Chromosome]
+      res.sizeHint(numElitism)
+      val it = eliteCandidates.iterator
+      var sz = 0
+      var fl = Double.NaN
+      while (sz < numElitism && it.hasNext) {
+        val (c, f) = it.next()
+        if (f != fl) {
+          res += c
+          sz  += 1
+          fl   = f
+        }
+      }
+      res.result()
+    }
 
   def scramble[A, CC[~] <: IndexedSeq[~], To](in: CC[A])(implicit tx: S#Tx, random: TxnRandom.Persistent[D],
                                                          cbf: CanBuildFrom[CC[A], A, To]): To = {
@@ -390,12 +417,14 @@ trait Algorithm {
     * - breeding: mutation and cross-over
     * - evaluation
     */
-  def iterate(): Unit = {
+  def iterate(): Future[Unit] = {
     val (el, sel, pop, inputAccess) = global.cursor.step { implicit tx =>
       if (DEBUG) println(s"iterate - inputAccess ${tx.inputAccess}")
-      val all   = genome.chromosomes()
+      val cs    = genome.chromosomes()
+      val fit   = genome.fitness()
+      val all   = cs zip fit
       val _el   = elitism(all) // .toSet
-    val _sel  = select (all) .map(tx.newHandle(_))
+      val _sel  = select (all) .map(tx.newHandle(_))
       (_el, scramble(_sel.toIndexedSeq), all.size, tx.inputAccess)
     }
 
@@ -412,7 +441,15 @@ trait Algorithm {
       genome.chromosomes() = el ++ (mut ++ cross).map { case (access, h) =>
         h.meld(access)
       }
-      evaluate()
+      evaluateAndUpdate()
     }
+//    import Algorithm.executionContext
+//    futEval.map { fit =>
+//      blocking {
+//        global.cursor.step { implicit tx =>
+//          genome.fitness() = fit
+//        }
+//      }
+//    }
   }
 }

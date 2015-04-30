@@ -289,20 +289,20 @@ object EvaluationImpl {
   }
 
   def evaluate(c: Chromosome, algorithm: Algorithm, inputSpec: AudioFileSpec, inputExtr: File)
-              (implicit tx: S#Tx): Future[Evaluated] = {
+              (implicit tx: S#Tx): Future[Double] = {
     import algorithm.global.rng
     val graph       = mkSynthGraph(c, mono = true, removeNaNs = false) // c.graph
-    val cH          = tx.newHandle(c)
+    // val cH          = tx.newHandle(c)
     val numVertices = c.vertices.size
-    val p           = Promise[Evaluated]()
+    val p           = Promise[Double]()
     tx.afterCommit {
-      p.completeWith(evaluateFut(cH, graph, inputSpec, inputExtr = inputExtr, numVertices = numVertices))
+      p.completeWith(evaluateFut(/* cH, */ graph, inputSpec, inputExtr = inputExtr, numVertices = numVertices))
     }
     p.future
   }
 
-  private def evaluateFut(cH: stm.Source[S#Tx, Chromosome], graph: SynthGraph, inputSpec: AudioFileSpec,
-                          inputExtr: File, numVertices: Int): Future[Evaluated] = {
+  private def evaluateFut(/* cH: stm.Source[S#Tx, Chromosome], */ graph: SynthGraph, inputSpec: AudioFileSpec,
+                          inputExtr: File, numVertices: Int): Future[Double] = {
     val audioF = File.createTemp(prefix = "muta_bnc", suffix = ".aif")
     val bnc0 = bounce(graph, audioF = audioF, inputSpec = inputSpec, inputExtr = inputExtr)
     val bnc = Future {
@@ -422,7 +422,7 @@ object EvaluationImpl {
       val pen = Algorithm.vertexPenalty
       val sim = if (pen <= 0) sim0 else
         sim0 - numVertices.linlin(Algorithm.minNumVertices, Algorithm.maxNumVertices, 0, pen)
-      new Evaluated(cH, sim)
+      sim // new Evaluated(cH, sim)
     }
 
     res.onComplete { case _ =>

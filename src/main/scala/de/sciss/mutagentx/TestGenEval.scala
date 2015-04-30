@@ -10,9 +10,9 @@ object TestGenEval extends App {
 
   val cursor    = algorithm.global.cursor
   cursor.step { implicit tx =>
-    algorithm.init(10)
+    algorithm.init(100)
   }
-  val fut =  cursor.step { implicit tx =>
+  val fut = cursor.step { implicit tx =>
     algorithm.evaluate()
   }
 
@@ -31,7 +31,7 @@ object TestGenEval extends App {
 
   fut.onComplete {
     case Success(vec) =>
-      println(vec.map(_.fitness).mkString(", "))
+      println(vec.mkString(", "))
       unhang()
     case Failure(ex)  =>
       ex.printStackTrace()
