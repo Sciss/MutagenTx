@@ -33,12 +33,12 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.higherKinds
 
 object Algorithm {
-  val DEBUG = true
+  val DEBUG = false
 
   // ---- generation ----
   val constProb       : Double = 0.5
   val minNumVertices  : Int    = 4
-  val maxNumVertices  : Int    = 4   // 50
+  val maxNumVertices  : Int    = 50
   val nonDefaultProb  : Double = 0.9 // 0.5
 
   // ---- evaluation ----

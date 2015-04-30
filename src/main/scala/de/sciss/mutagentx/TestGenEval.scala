@@ -10,7 +10,7 @@ object TestGenEval extends App {
 
   val cursor    = algorithm.global.cursor
   cursor.step { implicit tx =>
-    algorithm.init(1)
+    algorithm.init(10)
   }
   val fut =  cursor.step { implicit tx =>
     algorithm.evaluate()

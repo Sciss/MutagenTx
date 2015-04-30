@@ -329,7 +329,7 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
     }
     affected.zipWithIndex.map { case (idx, numRemoved) =>
       val v = vertices.removeAt(idx - numRemoved)
-      vertices.insert(upBound + 1, v)
+      vertices.insert(upBound, v)
       v
     }
   }
