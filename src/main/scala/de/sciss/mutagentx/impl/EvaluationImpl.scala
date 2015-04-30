@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit
 import de.sciss.file._
 import de.sciss.filecache.{TxnConsumer, TxnProducer}
 import de.sciss.lucre.confluent.TxnRandom
+import de.sciss.lucre.stm
 import de.sciss.lucre.stm.TxnLike
 import de.sciss.processor.Processor
 import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
@@ -33,8 +34,8 @@ import de.sciss.{filecache, numbers}
 import scala.annotation.tailrec
 import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.concurrent.duration.Duration
-import scala.concurrent.stm.TxnExecutor
-import scala.concurrent.{Await, Future, TimeoutException, blocking}
+import scala.concurrent.stm.{Txn, TxnExecutor}
+import scala.concurrent.{Promise, Await, Future, TimeoutException, blocking}
 
 object EvaluationImpl {
   val DEBUG = false
@@ -61,6 +62,7 @@ object EvaluationImpl {
 
   private val cCfg  = {
     val c = filecache.Config[CacheKey, CacheValue]()
+    c.executionContext = Algorithm.executionContext
     c.capacity  = filecache.Limit(count = 10)
     c.accept    = { (key, value) => key._1.lastModified() == value.lastModified }
     c.space     = { (key, value) => value.meta.length() + value.feature.length() }
@@ -104,13 +106,20 @@ object EvaluationImpl {
     res
   }
 
-  //  def apply(c: Chromosome, algorithm: Algorithm): Double = {
-  //    val futEval = getInputSpec(algorithm).flatMap { case (inputExtr, inputSpec) =>
-  //      evaluate(c, algorithm, inputSpec, inputExtr)
-  //    }
-  //    val fitness = Await.result(futEval, Duration(24, TimeUnit.SECONDS) /* Duration.Inf */).fitness
-  //    fitness
-  //  }
+  def apply(c: Chromosome, algorithm: Algorithm)(implicit tx: S#Tx, cursor: stm.Cursor[S]): Future[Evaluated] = {
+    val futEval = getInputSpec(algorithm).flatMap { case (inputExtr, inputSpec) =>
+      if (Txn.findCurrent.isEmpty) {
+        cursor.step { implicit tx =>
+          evaluate(c, algorithm, inputSpec, inputExtr)
+        }
+      } else {
+        evaluate(c, algorithm, inputSpec, inputExtr)
+      }
+    }
+    // val fitness = Await.result(futEval, Duration(24, TimeUnit.SECONDS) /* Duration.Inf */).fitness
+    // fitness
+    futEval
+  }
 
   private val featNorms = Array[Array[Float]](
     Array(0.006015186f,1.4569731f),
@@ -272,12 +281,21 @@ object EvaluationImpl {
 
   def evaluate(c: Chromosome, algorithm: Algorithm, inputSpec: AudioFileSpec, inputExtr: File)
               (implicit tx: S#Tx): Future[Evaluated] = {
-    val audioF  = File.createTemp(prefix = "muta_bnc", suffix = ".aif")
+    val audioF      = File.createTemp(prefix = "muta_bnc", suffix = ".aif") // XXX TODO -- not too great inside txn
     import algorithm.global.rng
-    val bnc0    = bounce(c, audioF = audioF, inputSpec = inputSpec, inputExtr = inputExtr)
+    val bnc0        = bounce(c, audioF = audioF, inputSpec = inputSpec, inputExtr = inputExtr)
+    val cH          = tx.newHandle(c)
+    val numVertices = c.vertices.size
 
-    val cH = tx.newHandle(c)
+    val p     = Promise[Evaluated]()
+    tx.afterCommit {
+      p.completeWith(evaluateFut(cH, bnc0, inputSpec, inputExtr = inputExtr, audioF = audioF, numVertices = numVertices))
+    }
+    p.future
+  }
 
+  private def evaluateFut(cH: stm.Source[S#Tx, Chromosome], bnc0: Processor[Any], inputSpec: AudioFileSpec,
+                          inputExtr: File, audioF: File, numVertices: Int): Future[Evaluated] = {
     val bnc = Future {
       Await.result(bnc0, Duration(4.0, TimeUnit.SECONDS))
       // XXX TODO -- would be faster if we could use a Poll during
@@ -394,7 +412,7 @@ object EvaluationImpl {
       import numbers.Implicits._
       val pen = Algorithm.vertexPenalty
       val sim = if (pen <= 0) sim0 else
-        sim0 - c.vertices.size.linlin(Algorithm.minNumVertices, Algorithm.maxNumVertices, 0, pen)
+        sim0 - numVertices.linlin(Algorithm.minNumVertices, Algorithm.maxNumVertices, 0, pen)
       new Evaluated(cH, sim)
     }
 

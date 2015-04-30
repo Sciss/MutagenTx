@@ -13,17 +13,21 @@
 
 package de.sciss.mutagentx
 
+import java.util.concurrent.{Executors, TimeUnit}
+
 import de.sciss.file.File
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
 import de.sciss.lucre.{confluent, stm}
-import de.sciss.synth.proc.Confluent
+import de.sciss.synth.proc.{SoundProcesses, Confluent}
 import de.sciss.synth.{UGenSpec, UndefinedRate}
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
 import scala.collection.immutable.{IndexedSeq => Vec}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.higherKinds
 
 object Algorithm {
@@ -37,13 +41,22 @@ object Algorithm {
 
   // ---- evaluation ----
   val numCoeffs       : Int     = 13
-  val normalizeCoeffs : Boolean = true
+  val normalizeCoeffs : Boolean = false // true
   val maxBoost        : Double  = 8.0
   val temporalWeight  : Double  = 0.5
   val vertexPenalty   : Double  = 0.2
 
+  implicit val executionContext: ExecutionContext = {
+    ExecutionContext.Implicits.global
+    // SoundProcesses.executionContext
+    //    val ex = Executors.newFixedThreadPool(2)
+    //    ExecutionContext.fromExecutor(ex)
+  }
+
   def tmp(input: File): Algorithm = {
-    val dbf = BerkeleyDB.tmp()
+    val cfg = BerkeleyDB.Config()
+    // cfg.lockTimeout = Duration(2000, TimeUnit.MILLISECONDS)
+    val dbf = BerkeleyDB.tmp(cfg)
     create(dbf, input)
   }
 
@@ -170,7 +183,23 @@ trait Algorithm {
     v
   }
 
-  def evaluate()(implicit tx: S#Tx): Unit = ???
+  //  def evaluate()(implicit tx: S#Tx): Future[Vec[Evaluated]] = {
+  //    val futs = genome.chromosomes().map { c =>
+  //      impl.EvaluationImpl(c, this)(tx, global.cursor)
+  //    }
+  //    import Algorithm.executionContext
+  //    Future.sequence(futs)
+  //  }
+
+  def evaluate()(implicit tx: S#Tx): Future[Vec[Evaluated]] = {
+    val futs = genome.chromosomes().map { c =>
+      impl.EvaluationImpl(c, this)(tx, global.cursor)
+    }
+    import Algorithm.executionContext
+    Future.sequence(futs)
+  }
+
+//  def evaluate()(implicit tx: S#Tx): Unit =
 //    genome.chromosomes().foreach { cH =>
 //      val b = cH.bits
 //      val h = b.size / 2
