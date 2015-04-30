@@ -197,15 +197,19 @@ object EvaluationImpl {
                   (v.asInstanceOf[AnyRef], classOf[Int])
 
                 case UGenSpec.ArgumentType.GE(_, _) =>
-                  val inGEOpt = top.edgeMap.get(last.id).getOrElse(Set.empty).flatMap { e =>
-                    if (e.inlet == arg.name) real.get(e.targetVertex) else None
-                  } .headOption
+                  val lastE   = top.edgeMap.get(last)
+                  val inGEOpt = lastE.flatMap { set =>
+                    set.flatMap { e =>
+                      if (e.inlet == arg.name) real.get(e.targetVertex) else None
+                    } .headOption
+                  }
                   val inGE = inGEOpt.getOrElse {
                     val xOpt = arg.defaults.get(UndefinedRate)
                     val x    = xOpt.getOrElse {
                       val inc = findIncompleteUGenInputs(top, u)
                       println("INCOMPLETE:")
                       inc.foreach(println)
+                      println(top.debugString)
                       sys.error(s"Vertex $spec has no input for inlet $arg")
                     }
                     x match {
@@ -256,7 +260,7 @@ object EvaluationImpl {
 
   def findIncompleteUGenInputs(t1: Chromosome, v: Vertex.UGen)(implicit tx: S#Tx): Vec[String] = {
     val spec      = v.info
-    val edgeSet   = t1.edgeMap.get(v.id).getOrElse(Set.empty)
+    val edgeSet   = t1.edgeMap.get(v).getOrElse(Set.empty)
     val argsFree  = geArgs(spec).filter { arg => !edgeSet.exists(_.inlet == arg.name) }
     val inc       = argsFree.filterNot(_.defaults.contains(UndefinedRate))
     inc.map(_.name)

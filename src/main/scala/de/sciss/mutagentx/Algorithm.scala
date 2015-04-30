@@ -33,12 +33,12 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.higherKinds
 
 object Algorithm {
-  val DEBUG = false
+  val DEBUG = true
 
   // ---- generation ----
   val constProb       : Double = 0.5
   val minNumVertices  : Int    = 4
-  val maxNumVertices  : Int    = 50
+  val maxNumVertices  : Int    = 4   // 50
   val nonDefaultProb  : Double = 0.9 // 0.5
 
   // ---- evaluation ----
@@ -123,11 +123,13 @@ trait Algorithm {
   def addVertex(c: Chromosome)(implicit tx: S#Tx): Unit = {
     if (coin(constProb)) {
       val v = mkConstant()
+      if (DEBUG) println(s"addVertex($v)")
       c.addVertex(v)
 
     } else {
       val v   = mkUGen()
       c.addVertex(v)
+      if (DEBUG) println(s"addVertex($v)")
       completeUGenInputs(c, v)
     }
   }
@@ -150,7 +152,7 @@ trait Algorithm {
     // A topology's edgeMap uses source-vertices as keys. Therefore, we can see
     // if the an argument is connected by getting the edges for the ugen and finding
     // an edge that uses the inlet name.
-    val edgeSet = c.edgeMap.get(v.id).getOrElse(Set.empty)
+    val edgeSet = c.edgeMap.get(v).getOrElse(Set.empty)
     val argsFree = geArgs(spec).filter { arg => !edgeSet.exists(_.inlet == arg.name) }
     val (hasDef, hasNoDef)          = argsFree.partition(_.defaults.contains(UndefinedRate))
     val (useNotDef, _ /* useDef */) = hasDef.partition(_ => coin(nonDefaultProb))
@@ -165,11 +167,14 @@ trait Algorithm {
         if (options.nonEmpty) {
           val vi  = choose(options.toIndexedSeq)
           val e   = Edge(v, vi, head.name)
+          if (DEBUG) println(s"addEdge($e)")
           c.addEdge(e).get // ._1
         } else {
           val vi  = mkConstant()
+          if (DEBUG) println(s"addVertex($vi)")
           c.addVertex(vi)
           val e   = Edge(v, vi, head.name)
+          if (DEBUG) println(s"addEdge($e)")
           c.addEdge(e).get
         }
 

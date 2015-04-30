@@ -13,15 +13,45 @@
 
 package de.sciss.mutagentx
 
+import de.sciss.lucre.data
+import de.sciss.lucre.data.SkipList
 import de.sciss.lucre.expr
 import de.sciss.lucre.stm.{Identifiable, IdentifierMap, Mutable}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
+import scala.annotation.tailrec
 import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.collection.mutable.{Set => MSet, Stack => MStack}
 import scala.util.{Failure, Success, Try}
 
 object Topology {
+  private implicit def ord[V <: Identifiable[S#ID]]: data.Ordering[S#Tx, V] = anyOrd.asInstanceOf[Ord[V]]
+
+  private val anyOrd = new Ord[Identifiable[S#ID]]
+
+  private final class Ord[V <: Identifiable[S#ID]] extends data.Ordering[S#Tx, V] {
+    def compare(a: V, b: V)(implicit tx: S#Tx): Int = {
+      val aid = a.id
+      val bid = b.id
+      val ab  = aid.base
+      val bb  = bid.base
+      if (ab < bb) -1 else if (ab > bb) 1 else {
+        @tailrec def loop(ap: S#Acc,  bp: S#Acc): Int =
+          if (ap.isEmpty) {
+            -1 // we rule out equality before; if (bp.isEmpty) 0 else -1
+          } else if (bp.isEmpty) 1 else {
+            val ah = ap.head.toInt
+            val bh = bp.head.toInt
+            if (ah < bh) -1 else if (ah > bh) 1 else {
+              loop(ap.tail, bp.tail)
+            }
+          }
+
+        if (aid.path == bid.path) 0 else loop(aid.path, bid.path)
+      }
+    }
+  }
+
   /** Creates an empty topology with no vertices or edges.
     *
     * @tparam V   vertex type
@@ -32,7 +62,7 @@ object Topology {
                                                    edgeSer  : Serializer[S#Tx, S#Acc, E]) = {
     val id = tx.newID()
     new Topology(id, expr.List.Modifiable[S, V], expr.List.Modifiable[S, E], tx.newIntVar(id, 0),
-      tx.newDurableIDMap[Set[E]])
+      SkipList.Map.empty[S, V, Set[E]] /* tx.newDurableIDMap[Set[E]] */)
   }
 
   implicit def serializer[V <: Identifiable[S#ID], E <: Edge[V]](implicit vertexSer: Serializer[S#Tx, S#Acc, V],
@@ -55,7 +85,7 @@ object Topology {
       val vertices    = expr.List.Modifiable.read[S, V](in, access)
       val edges       = expr.List.Modifiable.read[S, E](in, access)
       val unconnected = tx.readIntVar(id, in)
-      val edgeMap     = tx.readDurableIDMap[Set[E]](in)
+      val edgeMap     = SkipList.Map.read[S, V, Set[E]](in, access) // tx.readDurableIDMap[Set[E]](in)
       new Topology(id, vertices, edges, unconnected, edgeMap)
     }
   }
@@ -98,7 +128,7 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
                                                         val vertices: expr.List.Modifiable[S, V, Unit],
                                                         val edges   : expr.List.Modifiable[S, E, Unit],
                                                         val unconnected: S#Var[Int],
-                                                        val edgeMap: IdentifierMap[S#ID, S#Tx, Set[E]])
+                                                        val edgeMap: SkipList.Map[S, V, Set[E]])
   extends Mutable.Impl[S] {
 
   import Topology.{CycleDetected, Move, MoveAfter, MoveBefore}
@@ -106,6 +136,13 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
   private type T = Topology[V, E]
 
   override def toString() = s"Topology($id)" // s"Topology($vertices, $edges)($unconnected, $edgeMap)"
+
+  def debugString(implicit tx: S#Tx): String = {
+    val vs = vertices.iterator.toList.mkString("vertices = [", ", ", "]")
+    val es = edges   .iterator.toList.mkString("edges    = [", ", ", "]")
+    val em = edgeMap .iterator.toList.mkString("edgeMap  = [", ", ", "]")
+    s"Topology($id,\n  $vs\n  $es\n  $em\n)"
+  }
 
   protected def disposeData()(implicit tx: S#Tx): Unit = {
     vertices    .dispose()
@@ -155,7 +192,8 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
     if (loBound == upBound) Failure(new CycleDetected)
 
     def succeed(): Unit = {
-      edgeMap.put(source.id, edgeMap.get(source.id).getOrElse(Set.empty) + e)
+      // edgeMap.put(source.id, edgeMap.get(source.id).getOrElse(Set.empty) + e)
+      edgeMap.add(source, edgeMap.get(source).getOrElse(Set.empty) + e)
       edges.addLast(e)
     }
 
@@ -227,8 +265,8 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
   def removeEdge(e: E)(implicit tx: S#Tx): Unit = {
     if (edges.remove(e)) {
       val source  = e.sourceVertex
-      val newEMV  = edgeMap.get(source.id).getOrElse(Set.empty) - e
-      if (newEMV.isEmpty) edgeMap.remove(source.id) else edgeMap.put(source.id, newEMV)
+      val newEMV  = edgeMap.get(source).getOrElse(Set.empty) - e
+      if (newEMV.isEmpty) edgeMap.remove(source) else edgeMap.add(source, newEMV)
     }
   }
 
@@ -253,9 +291,8 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
       if (idx < u) {
         unconnected.transform(_ - 1)
       } else {
-        if (edgeMap.contains(v.id)) {
-          val e = edgeMap.get(v.id).getOrElse(Set.empty)
-          edgeMap.remove(v.id)
+        edgeMap.get(v).foreach { e =>
+          edgeMap.remove(v)
           e.foreach(edges.remove)
         }
       }
@@ -268,7 +305,7 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
     while (targets.nonEmpty) {
       val v           = targets.pop()
       visited        += v
-      val m0          = edgeMap.get(v.id).getOrElse(Set.empty)
+      val m0          = edgeMap.get(v).getOrElse(Set.empty)
       val m1          = if (v == newV) m0 + newE else m0
       val moreTargets = m1.map(_.targetVertex)
       val grouped     = moreTargets.groupBy { t =>

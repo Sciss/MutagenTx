@@ -20,7 +20,7 @@ import de.sciss.synth.proc.Confluent
 
 object GlobalState {
   def apply()(implicit tx: D#Tx, system: Confluent): GlobalState = new GlobalState {
-    val rng         = TxnRandom.Persistent[D](3L) // XXX TODO -- seed frozen for testing
+    val rng         = TxnRandom.Persistent[D](8L) // XXX TODO -- seed frozen for testing
     val cursor      = confluent.Cursor[S, D]()
     val forkCursor  = confluent.Cursor[S, D]()
   }
