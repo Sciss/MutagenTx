@@ -13,21 +13,18 @@
 
 package de.sciss.mutagentx
 
-import java.util.concurrent.{Executors, TimeUnit}
-
 import de.sciss.file.File
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
 import de.sciss.lucre.{confluent, stm}
 import de.sciss.synth.io.AudioFileSpec
-import de.sciss.synth.proc.{SoundProcesses, Confluent}
+import de.sciss.synth.proc.Confluent
 import de.sciss.synth.{UGenSpec, UndefinedRate}
 
 import scala.annotation.tailrec
 import scala.collection.breakOut
 import scala.collection.generic.CanBuildFrom
-import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
 import scala.concurrent.{Await, ExecutionContext, Future, blocking}

@@ -24,4 +24,7 @@ package object mutagentx {
   // type Top = Topology[Vertex, Edge]
 
   type Chromosome = Topology[Vertex, Edge]
+
+  type Vec[+A]  = scala.collection.immutable.IndexedSeq[A]
+  val  Vec      = scala.collection.immutable.IndexedSeq
 }

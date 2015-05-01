@@ -8,3 +8,4 @@ dependency-graph.sbt
 auto/
 database/
 render/
+audio_work/
