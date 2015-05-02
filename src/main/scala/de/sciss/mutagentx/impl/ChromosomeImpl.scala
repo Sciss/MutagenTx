@@ -132,4 +132,77 @@ object ChromosomeImpl {
     }
     f.toIndexedSeq
   }
+
+  def addVertex(c: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Vertex = {
+    import Algorithm.constProb
+    import Util.coin
+
+    if (coin(constProb)) {
+      val _v = mkConstant()
+      c.addVertex(_v)
+      _v
+
+    } else {
+      val _v  = mkUGen()
+      c.addVertex(_v)
+      completeUGenInputs(c, _v)
+      _v
+    }
+  }
+
+  def completeUGenInputs(c: Chromosome, v: Vertex.UGen)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Unit = {
+    import Algorithm.nonDefaultProb
+    import Util.{coin, choose}
+
+    val spec    = v.info
+    // An edge's source is the consuming UGen, i.e. the one whose inlet is occupied!
+    // A topology's edgeMap uses source-vertices as keys. Therefore, we can see
+    // if the an argument is connected by getting the edges for the ugen and finding
+    // an edge that uses the inlet name.
+    val edgeSet = c.edgeMap.get(v).getOrElse(Set.empty)
+    val argsFree = geArgs(spec).filter { arg => !edgeSet.exists(_.inlet == arg.name) }
+    val (hasDef, hasNoDef)          = argsFree.partition(_.defaults.contains(UndefinedRate))
+    val (useNotDef, _ /* useDef */) = hasDef.partition(_ => coin(nonDefaultProb))
+    val findDef = hasNoDef ++ useNotDef
+
+    @tailrec def loopVertex(rem: Vec[UGenSpec.Argument]): Unit = rem match {
+      case head +: tail =>
+        val options = c.vertices.iterator.filter { vi =>
+          val e = Edge(v, vi, head.name)
+          c.canAddEdge(e)
+        }
+        if (options.nonEmpty) {
+          val vi  = choose(options.toIndexedSeq)
+          val e   = Edge(v, vi, head.name)
+          c.addEdge(e).get
+        } else {
+          val vi  = mkConstant()
+          c.addVertex(vi)
+          val e   = Edge(v, vi, head.name)
+          c.addEdge(e).get
+        }
+
+        loopVertex(tail)
+
+      case _ =>
+    }
+
+    loopVertex(findDef)
+  }
+
+  def mkUGen()(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Vertex.UGen = {
+    import Util.choose
+    val spec    = choose(UGens.seq)
+    val v       = Vertex.UGen(spec)
+    v
+  }
+
+  def mkConstant()(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Vertex.Constant = {
+    import Util.{coin, exprand}
+
+    val f0  = exprand(0.001, 10000.001) - 0.001
+    val f   = if (coin(0.25)) -f0 else f0
+    val v   = Vertex.Constant(f.toFloat)
+    v
+  }
 }
