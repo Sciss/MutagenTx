@@ -46,6 +46,10 @@ object Algorithm {
   val temporalWeight  : Double  = 0.5
   val vertexPenalty   : Double  = 0.2
 
+  // ---- breeding ----
+  val mutMin          : Int     = 1
+  val mutMax          : Int     = 4
+
   implicit val executionContext: ExecutionContext = {
     ExecutionContext.Implicits.global
     // SoundProcesses.executionContext
@@ -104,9 +108,9 @@ trait Algorithm {
 
   import global.rng
 
-  private val mutationProb  = 0.5
+  private val mutationProb  = 1.0 // 0.5
   private val selectionFrac = 0.25
-  private val numElitism = 0 // 2
+  private val numElitism    = 2
 
   def init(n: Int)(implicit tx: S#Tx): Unit =
     genome.chromosomes() = Vector.fill(n)(mkIndividual())
@@ -321,7 +325,7 @@ trait Algorithm {
     */
   def crossover(sq: Vec[stm.Source[S#Tx, Chromosome]], n: Int,
                 inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] = {
-    ???
+    if (n <= 0) Vector.empty else ???
 //    var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
 //    while (res.size < n) {
 //      val idx0      = res.size << 1
@@ -377,7 +381,7 @@ trait Algorithm {
     */
   def mutate(sq: Vec[stm.Source[S#Tx, Chromosome]], n: Int,
              inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] = {
-    ???
+    impl.MutationImpl(this, sq, n, inputAccess)
 //    var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
 //    while (res.size < n) {
 //      val chosenH = sq(res.size % sq.size)
@@ -404,7 +408,6 @@ trait Algorithm {
 //    }
 //    res
   }
-
 
   /** Performs one iteration of the algorithm, assuming that current population
     * was already evaluated. Steps:

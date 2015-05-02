@@ -8,12 +8,17 @@ object TestGenEval extends App {
   val in        = file("audio_work") / "Betanovuss150410_1Cut.aif"
   val algorithm = Algorithm.tmp(in)
 
+  import Algorithm.executionContext
+
   val cursor    = algorithm.global.cursor
   cursor.step { implicit tx =>
     algorithm.init(100)
   }
-  val fut = cursor.step { implicit tx =>
-    algorithm.evaluate()
+  val fut0 = cursor.step { implicit tx =>
+    algorithm.evaluateAndUpdate()
+  }
+  val fut = fut0.map { _ =>
+    algorithm.iterate()
   }
 
   val t = new Thread {
@@ -27,11 +32,10 @@ object TestGenEval extends App {
 
   def unhang(): Unit = t.synchronized(t.notifyAll())
 
-  import Algorithm.executionContext
-
   fut.onComplete {
     case Success(vec) =>
-      println(vec.mkString(", "))
+      // println(vec.mkString(", "))
+      println("Success.")
       unhang()
     case Failure(ex)  =>
       ex.printStackTrace()

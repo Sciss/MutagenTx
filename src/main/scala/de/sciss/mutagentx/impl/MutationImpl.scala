@@ -15,10 +15,10 @@ package de.sciss.mutagentx
 package impl
 
 import de.sciss.lucre.confluent.TxnRandom
+import de.sciss.lucre.{confluent, stm}
 
-import scala.annotation.{tailrec, switch}
+import scala.annotation.switch
 import scala.collection.immutable.{IndexedSeq => Vec}
-import scala.util.Random
 
 object MutationImpl {
   private val stats = Array.fill(7)(0)
@@ -49,26 +49,46 @@ object MutationImpl {
     v
   }
 
-//  def apply(genome: Vec[Chromosome], sz: Int, mutationIter: Int)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Vec[Chromosome] = {
-//    @tailrec def loop(iter: Int, pred: Vec[Chromosome]): Vec[Chromosome] = if (iter >= mutationIter) pred else {
-//      var res = Vector.empty[Chromosome]
-//      while (res.size < sz) {
-//        val picked = genome(res.size % genome.size)
-//        res = (random.nextInt(6): @switch) match {
-//          case 0 => addVertex   (picked).fold(res)(res :+ _)
-//          case 1 => removeVertex(picked).fold(res)(res :+ _)
-////          case 2 => res :+ changeVertex(picked)
-////          case 3 => changeEdge  (picked).fold(res)(res :+ _)
-////          case 4 => swapEdge    (picked).fold(res)(res :+ _)
-////          case 5 => splitVertex (picked).fold(res)(res :+ _)
-////          case 6 => mergeVertex (picked).fold(res)(res :+ _)
-//        }
-//      }
-//      loop(iter + 1, res)
-//    }
-//
-//    loop(0, genome)
-//  }
+  /** Produces a sequence of `n` items by mutating the input `sq` selection.
+    *
+    * It assumes the invoking transaction is 'up-to-date' and will cause
+    * the selection's cursors to step from this transaction's input access.
+    */
+  def apply(algorithm: Algorithm, sq: Vec[stm.Source[S#Tx, Chromosome]], n: Int,
+            inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] = {
+    var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
+
+    while (res.size < n) {
+      val chosenH = sq(res.size % sq.size)
+      val csr     = algorithm.global.forkCursor
+      val hOpt    = csr.stepFrom(inputAccess) { implicit tx =>
+        import algorithm.global.{rng => random}
+        implicit val dtx = tx.durable
+        val chosen        = chosenH()
+        val mutationIter  = Util.rrand(Algorithm.mutMin, Algorithm.mutMax)
+        require(mutationIter > 0)
+        val success       = (false /: (1 to mutationIter)) { case (success0, iter) =>
+          val success1 = (random.nextInt(2 /* 6 */): @switch) match {
+            case 0 => addVertex   (chosen)
+            case 1 => removeVertex(chosen)
+  //          case 2 => res :+ changeVertex(picked)
+  //          case 3 => changeEdge  (picked).fold(res)(res :+ _)
+  //          case 4 => swapEdge    (picked).fold(res)(res :+ _)
+  //          case 5 => splitVertex (picked).fold(res)(res :+ _)
+  //          case 6 => mergeVertex (picked).fold(res)(res :+ _)
+          }
+          success0 | success1 // i.e. at least one mutation was applied
+        }
+        if (success) Some(tx.newHandleM(chosen)) else None
+      }
+      hOpt.foreach { h =>
+        val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
+        if (Algorithm.DEBUG) println(s"$h - $pos")
+        res :+= (pos, h)
+      }
+    }
+    res
+  }
 
   private def roulette[A](in: Vec[(A, Int)])(implicit tx: S#Tx, random: TxnRandom[D#Tx]): A = {
     implicit val dtx = tx.durable
