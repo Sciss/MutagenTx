@@ -2,6 +2,9 @@ package de.sciss.mutagentx
 
 import de.sciss.lucre.confluent.TxnRandom
 
+import scala.collection.generic.CanBuildFrom
+import scala.language.higherKinds
+
 object Util {
   // ---- random functions ----
   // cf. https://github.com/Sciss/Dissemination/blob/master/src/main/scala/de/sciss/semi/Util.scala
@@ -17,4 +20,18 @@ object Util {
 
   def choose[A](xs: Iterable[A])(implicit tx: S#Tx, random: TxnRandom[D#Tx]): A =
     xs.toIndexedSeq(random.nextInt(xs.size)(tx.durable))
+
+  def scramble[A, CC[~] <: IndexedSeq[~], To](in: CC[A])(implicit tx: S#Tx, random: TxnRandom.Persistent[D],
+                                                         cbf: CanBuildFrom[CC[A], A, To]): To = {
+    val b = cbf(in)
+    var rem = in: IndexedSeq[A]
+    implicit val dtx = tx.durable
+    while (rem.nonEmpty) {
+      val idx = random.nextInt(rem.size)
+      val e = rem(idx)
+      rem = rem.patch(idx, Nil, 1)
+      b += e
+    }
+    b.result()
+  }
 }
