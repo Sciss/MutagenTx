@@ -13,15 +13,13 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.data
 import de.sciss.lucre.data.SkipList
-import de.sciss.lucre.expr
-import de.sciss.lucre.stm.{Identifiable, IdentifierMap, Mutable}
+import de.sciss.lucre.{data, expr}
+import de.sciss.lucre.stm.{Identifiable, Mutable}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
 import scala.annotation.tailrec
 import scala.collection.mutable.{Set => MSet, Stack => MStack}
-import scala.util.{Failure, Success, Try}
 
 object Topology {
   private implicit def ord[V <: Identifiable[S#ID]]: data.Ordering[S#Tx, V] = anyOrd.asInstanceOf[Ord[V]]
@@ -181,14 +179,14 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
     *           In case the reference is the target vertex, the affected vertices should be
     *           moved _before_ the reference
     */
-  def addEdge(e: E)(implicit tx: S#Tx): Try[Option[Move[V]]] = {
+  def addEdge(e: E)(implicit tx: S#Tx): Option[Move[V]] = {
     val source	   = e.sourceVertex
     val target	   = e.targetVertex
     val upBound	   = vertices.indexOf(source)
-    if (upBound < 0) return Failure(new IllegalArgumentException(s"Source vertex $source not found"))
+    if (upBound < 0) throw new IllegalArgumentException(s"Source vertex $source not found")
     val loBound	   = vertices.indexOf(target)
-    if (loBound < 0) return Failure(new IllegalArgumentException(s"Target vertex $target not found"))
-    if (loBound == upBound) Failure(new CycleDetected)
+    if (loBound < 0) throw new IllegalArgumentException(s"Target vertex $target not found")
+    if (loBound == upBound) throw new CycleDetected
 
     def succeed(): Unit = {
       // edgeMap.put(source.id, edgeMap.get(source.id).getOrElse(Set.empty) + e)
@@ -209,7 +207,7 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
         vertices.insert(newUnCon    , source)
         vertices.insert(newUnCon + 1, target)
         succeed()
-        Success(Some(MoveAfter(source, Vector(target))))
+        Some(MoveAfter(source, Vector(target)))
       } else {
         val newUnCon    = u - 1
         unconnected()   = newUnCon
@@ -217,22 +215,23 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
         vertices.removeAt(upBound)
         vertices.insert(loBound - 1, source)
         succeed()
-        Success(Some(MoveBefore(target, sourceSeq)))
+        Some(MoveBefore(target, sourceSeq))
       }
 
       // regular algorithm
     } else if (loBound > upBound) {
       succeed()
-      Success(None)
+      None
+
     } else /* if (loBound < upBound) */ {
       val visited = MSet.empty[V]
       if (!discovery(visited, source, e, target, upBound)) {
-        Failure(new CycleDetected)  // Cycle --> Abort
+        throw new CycleDetected  // Cycle --> Abort
       } else {
         val affected = shift(visited, loBound, upBound)
         if (loBound < u) unconnected.transform(_ - 1)
         succeed()
-        Success(Some(MoveAfter(source, affected)))
+        Some(MoveAfter(source, affected))
       }
     }
   }

@@ -13,6 +13,8 @@
 
 package de.sciss.mutagentx
 
+import java.util.concurrent.Executors
+
 import de.sciss.file.File
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
@@ -25,7 +27,7 @@ import scala.annotation.tailrec
 import scala.collection.breakOut
 import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
-import scala.concurrent.{Await, ExecutionContext, Future, blocking}
+import scala.concurrent.{Promise, Await, ExecutionContext, Future, blocking}
 import scala.language.higherKinds
 
 object Algorithm {
@@ -54,8 +56,8 @@ object Algorithm {
   implicit val executionContext: ExecutionContext = {
     ExecutionContext.Implicits.global
     // SoundProcesses.executionContext
-    //    val ex = Executors.newFixedThreadPool(2)
-    //    ExecutionContext.fromExecutor(ex)
+    // val ex = Executors.newFixedThreadPool(6)
+    // ExecutionContext.fromExecutor(ex)
   }
 
   def tmp(input: File): Algorithm = {
@@ -167,14 +169,14 @@ trait Algorithm {
           val vi  = choose(options.toIndexedSeq)
           val e   = Edge(v, vi, head.name)
           if (DEBUG) println(s"addEdge($e)")
-          c.addEdge(e).get // ._1
+          c.addEdge(e) // .get // ._1
         } else {
           val vi  = mkConstant()
           if (DEBUG) println(s"addVertex($vi)")
           c.addVertex(vi)
           val e   = Edge(v, vi, head.name)
           if (DEBUG) println(s"addEdge($e)")
-          c.addEdge(e).get
+          c.addEdge(e) // .get
         }
 
         loopVertex(tail)
@@ -206,12 +208,32 @@ trait Algorithm {
   //    Future.sequence(futs)
   //  }
 
-  def evaluate()(implicit tx: S#Tx): Future[Vec[Double]] = {
-    val futs = genome.chromosomes().map { c =>
-      impl.EvaluationImpl.evaluate(c, this, inputSpec, inputExtr)
-    }
+  //  def evaluate()(implicit tx: S#Tx): Future[Vec[Float]] = {
+  //    val futs = genome.chromosomes().map { c =>
+  //      impl.EvaluationImpl.evaluate(c, this, inputSpec, inputExtr)
+  //    }
+  //    import Algorithm.executionContext
+  //    Future.sequence(futs)
+  //  }
+
+  def evaluate()(implicit tx: S#Tx): Future[Vec[Float]] = {
+    val p = Promise[Vec[Float]]()
+    val c = genome.chromosomes().map(tx.newHandle(_))
     import Algorithm.executionContext
-    Future.sequence(futs)
+    tx.afterCommit {
+      val futRes = Future[Vec[Float]] {
+        c.grouped(4).toIndexedSeq.flatMap { clump =>
+          val futClump: Vec[Future[Float]] = global.cursor.step { implicit tx =>
+            clump.map { cH =>
+              impl.EvaluationImpl.evaluate(cH(), this, inputSpec, inputExtr)
+            }
+          }
+          Await.result(Future.sequence(futClump), Duration.Inf)
+        }
+      }
+      p.completeWith(futRes)
+    }
+    p.future
   }
 
   def evaluateAndUpdate()(implicit tx: S#Tx): Future[Unit] = {
@@ -247,13 +269,13 @@ trait Algorithm {
 //      if (DEBUG) s"$s0  ${cH.debugString}" else s0
 //    } .mkString("\n")
 
-  def select(all: Vec[(Chromosome, Double)])(implicit tx: S#Tx): Set[Chromosome] = {
+  def select(all: Vec[(Chromosome, Float)])(implicit tx: S#Tx): Set[Chromosome] = {
     implicit val dtx = tx.durable
 
     val pop   = all.size
     val n     = (pop * selectionFrac + 0.5).toInt
 
-    @tailrec def loop(rem: Int, in: Set[(Chromosome, Double)], out: Set[Chromosome]): Set[Chromosome] =
+    @tailrec def loop(rem: Int, in: Set[(Chromosome, Float)], out: Set[Chromosome]): Set[Chromosome] =
       if (rem == 0) out else {
         val sum     = in.view.map(_._2).sum
         val rem1    = rem - 1
@@ -261,7 +283,7 @@ trait Algorithm {
           val chosen = in.head
           loop(rem1, in - chosen, out + chosen._1)
         } else {
-          val inIdx       = in.zipWithIndex[(Chromosome, Double), Vec[((Chromosome, Double), Int)]](breakOut)
+          val inIdx       = in.zipWithIndex[(Chromosome, Float), Vec[((Chromosome, Float), Int)]](breakOut)
           val norm        = inIdx.map {
             case ((c, f), j) => (j, f / sum)
           }
@@ -281,7 +303,7 @@ trait Algorithm {
     sel
   }
 
-  def elitism(all: Vec[(Chromosome, Double)])(implicit tx: S#Tx): Vec[Chromosome] =
+  def elitism(all: Vec[(Chromosome, Float)])(implicit tx: S#Tx): Vec[Chromosome] =
     if (numElitism == 0) Vector.empty else {
       // ensure that elite choices are distinct (don't want to accumulate five identical chromosomes over time)!
       val eliteCandidates = all.sortBy(-_._2)

@@ -21,14 +21,14 @@ object Genome {
   def empty(implicit tx: S#Tx): Genome = {
     val id          = tx.newID()
     val chromosomes = tx.newVar(id, Vec.empty[Chromosome])
-    val fitness     = tx.newVar(id, Vec.empty[Double    ])(Serializer.indexedSeq)
+    val fitness     = tx.newVar(id, Vec.empty[Float     ])(Serializer.indexedSeq)
     val cursor      = tx.system.newCursor()
     new GenomeImpl(id, chromosomes, fitness, cursor)
   }
 
   private final class GenomeImpl(val id         : S#ID,
                                  val chromosomes: S#Var[Vec[Chromosome]],
-                                 val fitness    : S#Var[Vec[Double    ]],
+                                 val fitness    : S#Var[Vec[Float     ]],
                                  val cursor     : confluent.Cursor[S, D])
     extends Genome with Mutable.Impl[S] {
 
@@ -51,7 +51,7 @@ object Genome {
   implicit object Ser extends MutableSerializer[S, Genome] {
     protected def readData(in: DataInput, id: S#ID)(implicit tx: S#Tx): Genome = {
       val chromosomes   = tx.readVar[Vec[Chromosome]](id, in)
-      val fitness       = tx.readVar[Vec[Double    ]](id, in)(Serializer.indexedSeq)
+      val fitness       = tx.readVar[Vec[Float     ]](id, in)(Serializer.indexedSeq)
       val cursor        = tx.system.readCursor(in)
       new GenomeImpl(id, chromosomes, fitness, cursor)
     }
@@ -59,7 +59,7 @@ object Genome {
 }
 trait Genome extends Mutable[S#ID, S#Tx] {
   def chromosomes: S#Var[Vec[Chromosome]]
-  def fitness    : S#Var[Vec[Double    ]]
+  def fitness    : S#Var[Vec[Float     ]]
 
   def cursor: confluent.Cursor[S, D]
 }

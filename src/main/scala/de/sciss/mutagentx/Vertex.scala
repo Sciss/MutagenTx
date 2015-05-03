@@ -46,27 +46,32 @@ object Vertex {
           val f = tx.readVar[Float](id, in)
           new Constant(id, f)
         case 1 =>
-          val name  = in.readUTF()
-          val spec  = UGens.map.getOrElse(name, sys.error(s"Spec '$name' not registered"))
-          new UGen.Impl(id, spec)
+          // val name  = in.readUTF()
+          val index = in.readShort()
+          val spec  = UGens.seq(index)
+          new UGen.Impl(id, index, spec)
       }
     }
   }
 
   object UGen {
-    def apply(info: UGenSpec)(implicit tx: S#Tx): UGen = new Impl(tx.newID(), info)
+    def apply(info: UGenSpec)(implicit tx: S#Tx): UGen = {
+      val index = UGens.seq.indexOf(info)
+      new Impl(tx.newID(), index, info)
+    }
     def unapply(v: UGen): Option[UGenSpec] = Some(v.info)
 
-    private[Vertex] final class Impl(val id: S#ID, val info: UGenSpec) extends UGen with Mutable.Impl[S] {
+    private[Vertex] final class Impl(val id: S#ID, index: Int, val info: UGenSpec) extends UGen with Mutable.Impl[S] {
       private def isBinOp: Boolean = info.name.startsWith("Bin_")
 
-      // def copy(): UGen = new Impl(info)
+      def copy()(implicit tx: S#Tx): UGen = UGen(info)
 
       protected def disposeData()(implicit tx: S#Tx) = ()
 
       protected def writeData(out: DataOutput): Unit = {
         out.writeByte(1)
-        out.writeUTF(info.name)
+        // out.writeUTF(info.name)
+        out.writeShort(index)
       }
 
       def instantiate(ins: Vec[(AnyRef, Class[_])]): GE =
@@ -155,7 +160,8 @@ object Vertex {
   }
   class Constant(val id: S#ID, val f: S#Var[Float]) extends Vertex with Mutable.Impl[S] {
     override def toString() = s"Constant$id"
-    // def copy(): Constant = new Constant(f)
+
+    def copy()(implicit tx: S#Tx): Constant = Constant(f())
 
     // def boxName = f.toString
     protected def disposeData()(implicit tx: S#Tx): Unit = f.dispose()
@@ -167,8 +173,11 @@ object Vertex {
   }
 }
 sealed trait Vertex extends Identifiable[S#ID] with Writable {
-  //  /** Creates an structurally identical copy, but wrapped in a new vertex (object identity). */
-  //  def copy(): Vertex
+  /** Creates an structurally identical copy, but wrapped in a new vertex (object identity).
+    * Theoretically, a better approach would be fork and merge, but it doesn't fit well
+    * into the current implementation of mutation.
+    */
+  def copy()(implicit tx: S#Tx): Vertex
 
   // def boxName: String
 }

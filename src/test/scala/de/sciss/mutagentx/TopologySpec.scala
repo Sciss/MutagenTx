@@ -8,7 +8,7 @@ import de.sciss.synth.proc.Confluent
 import de.sciss.topology.{Topology => TopologyI}
 import org.scalatest.{FlatSpec, Matchers}
 
-import scala.util.{Failure, Success}
+import scala.util.{Try, Failure, Success}
 
 /*
 
@@ -93,10 +93,10 @@ class TopologySpec extends FlatSpec with Matchers {
       tc.addVertex(vcb)
       tc.addVertex(vcc)
       tc.addVertex(vcd)
-      val Success(_mc0) = tc.addEdge(EC(vca, vcc))
-      val Success(_mc1) = tc.addEdge(EC(vcb, vca))
-      val Success(_mc2) = tc.addEdge(EC(vcd, vca))
-      val Failure(_)    = tc.addEdge(EC(vcc, vcd))
+      val _mc0 = tc.addEdge(EC(vca, vcc))
+      val _mc1 = tc.addEdge(EC(vcb, vca))
+      val _mc2 = tc.addEdge(EC(vcd, vca))
+      val Failure(_) = Try(tc.addEdge(EC(vcc, vcd)))
       val cc0  = tc.canAddEdge(EC(vcc, vcb))
       val cc1  = tc.canAddEdge(EC(vcb, vcd))
       assert(cc0 === false)
@@ -165,20 +165,20 @@ class TopologySpec extends FlatSpec with Matchers {
       val vBall = VC("Ball")
       tc.addVertex(vLinX)
       tc.addVertex(vC22)
-      val Success(_mc0) = tc.addEdge(EC(vLinX, vC22, "inA"))
-      val Success(_mc1) = tc.addEdge(EC(vLinX, vC22, "inB"))
-      val Success(_mc2) = tc.addEdge(EC(vLinX, vC22, "pan"))
-      val Success(_mc3) = tc.addEdge(EC(vLinX, vC22, "level"))
+      val _mc0 = tc.addEdge(EC(vLinX, vC22, "inA"))
+      val _mc1 = tc.addEdge(EC(vLinX, vC22, "inB"))
+      val _mc2 = tc.addEdge(EC(vLinX, vC22, "pan"))
+      val _mc3 = tc.addEdge(EC(vLinX, vC22, "level"))
       tc.addVertex(vC38)
       tc.addVertex(vFold)
-      val Success(_mc4) = tc.addEdge(EC(vFold, vC22 , "in"))
-      val Success(_mc5) = tc.addEdge(EC(vFold, vLinX, "lo"))
-      val Success(_mc6) = tc.addEdge(EC(vFold, vC22 , "hi"))
+      val _mc4 = tc.addEdge(EC(vFold, vC22 , "in"))
+      val _mc5 = tc.addEdge(EC(vFold, vLinX, "lo"))
+      val _mc6 = tc.addEdge(EC(vFold, vC22 , "hi"))
       tc.addVertex(vBall)
-      val Success(_mc7)  = tc.addEdge(EC(vBall, vC38 , "in"      ))
-      val Success(_mc8)  = tc.addEdge(EC(vBall, vLinX, "g"       ))
-      val Success(_mc9)  = tc.addEdge(EC(vBall, vLinX, "damp"    ))
-      val Success(_mc10) = tc.addEdge(EC(vBall, vLinX, "friction"))
+      val _mc7  = tc.addEdge(EC(vBall, vC38 , "in"      ))
+      val _mc8  = tc.addEdge(EC(vBall, vLinX, "g"       ))
+      val _mc9  = tc.addEdge(EC(vBall, vLinX, "damp"    ))
+      val _mc10 = tc.addEdge(EC(vBall, vLinX, "friction"))
       val _sc0 = tc.vertices.iterator.toList.mkString(",")
       val _sc1 = tc.edges   .iterator.toList.sortBy(_.toString  ).mkString(",")
       val _sc2 = tc.edgeMap .iterator.toList.sortBy(_.toString()).mkString(",")

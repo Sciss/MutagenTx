@@ -22,9 +22,7 @@ import scala.annotation.tailrec
 
 object ChromosomeImpl {
   def mkSynthGraph(c: Chromosome, mono: Boolean, removeNaNs: Boolean)
-                  (implicit tx: S#Tx, random: TxnRandom[D#Tx]): SynthGraph = {
-    import Util._
-
+                  (implicit tx: S#Tx /*, random: TxnRandom[D#Tx] */): SynthGraph = {
     val top = c
 
     @tailrec def loop(rem: Vec[Vertex], real: Map[Vertex, GE]): Map[Vertex, GE] = rem match {
@@ -37,7 +35,7 @@ object ChromosomeImpl {
                 case UGenSpec.ArgumentType.Int =>
                   val v = arg.defaults.get(UndefinedRate) match {
                     case Some(UGenSpec.ArgumentValue.Int(i)) => i
-                    case _ => rrand(1, 2)
+                    case _ => 1 // rrand(1, 2)
                   }
                   (v.asInstanceOf[AnyRef], classOf[Int])
 
@@ -90,7 +88,7 @@ object ChromosomeImpl {
       }
       if (ugens.nonEmpty) {
         val roots = getRoots(top)
-        val sig0: GE = if (roots.isEmpty) map(choose(ugens)) else Mix(roots.map(map.apply))
+        val sig0: GE = if (roots.isEmpty) map(ugens.head /* choose(ugens) */) else Mix(roots.map(map.apply))
         val sig1  = /* if (mono) */ Mix.mono(sig0) /* else sig0 */
         val sig2  = if (!removeNaNs) sig1 else {
             val isOk = CheckBadValues.ar(sig1, post = 0) sig_== 0
@@ -150,7 +148,7 @@ object ChromosomeImpl {
     }
   }
 
-  def completeUGenInputs(c: Chromosome, v: Vertex.UGen)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Unit = {
+  def completeUGenInputs(c: Chromosome, v: Vertex.UGen)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean = {
     import Algorithm.nonDefaultProb
     import Util.{coin, choose}
 
@@ -174,12 +172,12 @@ object ChromosomeImpl {
         if (options.nonEmpty) {
           val vi  = choose(options.toIndexedSeq)
           val e   = Edge(v, vi, head.name)
-          c.addEdge(e).get
+          c.addEdge(e) // .get
         } else {
           val vi  = mkConstant()
           c.addVertex(vi)
           val e   = Edge(v, vi, head.name)
-          c.addEdge(e).get
+          c.addEdge(e) // .get
         }
 
         loopVertex(tail)
@@ -187,7 +185,10 @@ object ChromosomeImpl {
       case _ =>
     }
 
-    loopVertex(findDef)
+    if (findDef.isEmpty) false else {
+      loopVertex(findDef)
+      true
+    }
   }
 
   def mkUGen()(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Vertex.UGen = {

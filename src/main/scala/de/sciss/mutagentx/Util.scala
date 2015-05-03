@@ -21,7 +21,7 @@ object Util {
   def choose[A](xs: Iterable[A])(implicit tx: S#Tx, random: TxnRandom[D#Tx]): A =
     xs.toIndexedSeq(random.nextInt(xs.size)(tx.durable))
 
-  def scramble[A, CC[~] <: IndexedSeq[~], To](in: CC[A])(implicit tx: S#Tx, random: TxnRandom.Persistent[D],
+  def scramble[A, CC[~] <: IndexedSeq[~], To](in: CC[A])(implicit tx: S#Tx, random: TxnRandom[D#Tx],
                                                          cbf: CanBuildFrom[CC[A], A, To]): To = {
     val b = cbf(in)
     var rem = in: IndexedSeq[A]

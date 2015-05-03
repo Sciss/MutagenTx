@@ -41,7 +41,7 @@ object GeneratorApp extends SwingApplication {
 
     def updateStats(a: Algorithm): Unit = {
       val csr = a.global.cursor
-      val (fit, inp) = csr.step { implicit tx =>
+      val (fit: Vec[Float], inp: S#Acc) = csr.step { implicit tx =>
         implicit val dtx = tx.durable
         a.genome.fitness() -> csr.position
       }

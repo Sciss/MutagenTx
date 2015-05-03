@@ -57,4 +57,6 @@ object UGens {
   val seq: Vec[UGenSpec] = ugens0 ++ binUGens
 
   val map: Map[String, UGenSpec] = seq.map(s => s.name -> s)(breakOut)
+
+  // val index: Map[Int, UGenSpec] = seq.zipWithIndex.map(_.swap)(breakOut)
 }
