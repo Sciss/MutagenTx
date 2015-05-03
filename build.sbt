@@ -29,6 +29,8 @@ libraryDependencies ++= Seq(
   "de.sciss"      %% "strugatzki"               % "2.9.0",
   "de.sciss"      %% "filecache-txn"            % "0.3.2",
   "de.sciss"      %% "soundprocesses-core"      % "2.18.0",
+  "de.sciss"      %% "kollflitz"                % "0.2.0",
+  "de.sciss"      %  "weblaf"                   % "1.28",
   "org.scalatest" %% "scalatest"                % "2.2.4" % "test",
   "de.sciss"      %% "topology"                 % "1.0.0" % "test"
 )

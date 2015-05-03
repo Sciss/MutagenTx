@@ -17,8 +17,6 @@ import de.sciss.lucre.confluent
 import de.sciss.lucre.stm.{Mutable, MutableSerializer}
 import de.sciss.serial.{Serializer, DataInput, DataOutput}
 
-import scala.collection.immutable.{IndexedSeq => Vec}
-
 object Genome {
   def empty(implicit tx: S#Tx): Genome = {
     val id          = tx.newID()

@@ -19,8 +19,6 @@ import de.sciss.synth.GE
 import de.sciss.synth.UGenSpec
 import de.sciss.synth.ugen.BinaryOpUGen
 
-import scala.collection.immutable.{IndexedSeq => Vec}
-
 //object Vertex {
 //  // strangely, a constant is mutable, while a ugen is constant
 //

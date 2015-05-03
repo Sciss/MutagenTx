@@ -19,7 +19,6 @@ import de.sciss.lucre.stm.MutableSerializer
 import de.sciss.serial.{DataInput, DataOutput}
 
 import scala.annotation.tailrec
-import scala.collection.immutable.{IndexedSeq => Vec}
 
 object ChromosomeOLD {
   def apply(numBits: Int)(implicit tx: S#Tx, r: TxnRandom[D#Tx]): ChromosomeOLD = new ChromosomeOLD {

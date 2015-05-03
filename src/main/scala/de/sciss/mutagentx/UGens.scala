@@ -4,7 +4,6 @@ import de.sciss.synth.ugen.BinaryOpUGen
 import de.sciss.synth.{UGenSpec, audio, demand}
 
 import scala.collection.breakOut
-import scala.collection.immutable.{IndexedSeq => Vec}
 
 object UGens {
   private val NoNoAttr: Set[UGenSpec.Attribute] = {

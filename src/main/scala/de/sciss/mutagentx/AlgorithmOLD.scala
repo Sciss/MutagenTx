@@ -23,7 +23,6 @@ import de.sciss.synth.proc.Confluent
 import scala.annotation.tailrec
 import scala.collection.breakOut
 import scala.collection.generic.CanBuildFrom
-import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.language.higherKinds
 
 object AlgorithmOLD {

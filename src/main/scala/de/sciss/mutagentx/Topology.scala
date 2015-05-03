@@ -20,7 +20,6 @@ import de.sciss.lucre.stm.{Identifiable, IdentifierMap, Mutable}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
 import scala.annotation.tailrec
-import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.collection.mutable.{Set => MSet, Stack => MStack}
 import scala.util.{Failure, Success, Try}
 
