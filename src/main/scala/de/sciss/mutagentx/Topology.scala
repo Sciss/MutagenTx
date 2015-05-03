@@ -280,6 +280,8 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
 
   /** Removes a vertex and all associated edges. If the vertex is not
     * contained in the structure, returns the unmodified topology.
+    *
+    * Note: Automatically removes outgoing edges, __but not incoming edges__
     */
   def removeVertex(v: V)(implicit tx: S#Tx): Unit = {
     val idx = vertices.indexOf(v)

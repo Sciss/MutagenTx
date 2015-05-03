@@ -34,24 +34,25 @@ object Algorithm {
   val DEBUG = false
 
   // ---- generation ----
-  val constProb       : Double = 0.5
-  val minNumVertices  : Int    = 4
-  val maxNumVertices  : Int    = 50
-  val nonDefaultProb  : Double = 0.9 // 0.5
+  val population      : Int     = 1500
+  val constProb       : Double  = 0.5
+  val minNumVertices  : Int     = 20
+  val maxNumVertices  : Int     = 100
+  val nonDefaultProb  : Double  = 0.99 // 0.5
 
   // ---- evaluation ----
-  val numCoeffs       : Int     = 13
+  val numCoeffs       : Int     = 42
   val normalizeCoeffs : Boolean = false // true
-  val maxBoost        : Double  = 8.0
-  val temporalWeight  : Double  = 0.5
-  val vertexPenalty   : Double  = 0.2
+  val maxBoost        : Double  = 10.0
+  val temporalWeight  : Double  = 0.3
+  val vertexPenalty   : Double  = 0.01
 
   // ---- breeding ----
-  val mutMin          : Int     = 1
+  val selectionFrac   : Double  = 0.33
+  val numElitism      : Int     = 5
+  val mutMin          : Int     = 2
   val mutMax          : Int     = 4
-  val mutationProb    : Double  = 0.5
-  val selectionFrac   : Double  = 0.25
-  val numElitism      : Int     = 2
+  val mutationProb    : Double  = 0.75
 
   implicit val executionContext: ExecutionContext = {
     ExecutionContext.Implicits.global
@@ -162,19 +163,19 @@ trait Algorithm {
     @tailrec def loopVertex(rem: Vec[UGenSpec.Argument]): Unit = rem match {
       case head +: tail =>
         val options = c.vertices.iterator.filter { vi =>
-          val e = Edge(v, vi, head.name)
+          val e = Edge.make(v, vi, head.name)
           c.canAddEdge(e)
         }
         if (options.nonEmpty) {
           val vi  = choose(options.toIndexedSeq)
-          val e   = Edge(v, vi, head.name)
+          val e   = Edge.make(v, vi, head.name)
           if (DEBUG) println(s"addEdge($e)")
           c.addEdge(e) // .get // ._1
         } else {
           val vi  = mkConstant()
           if (DEBUG) println(s"addVertex($vi)")
           c.addVertex(vi)
-          val e   = Edge(v, vi, head.name)
+          val e   = Edge.make(v, vi, head.name)
           if (DEBUG) println(s"addEdge($e)")
           c.addEdge(e) // .get
         }

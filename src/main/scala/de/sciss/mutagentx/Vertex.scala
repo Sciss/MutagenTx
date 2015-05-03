@@ -47,9 +47,7 @@ object Vertex {
           new Constant(id, f)
         case 1 =>
           // val name  = in.readUTF()
-          val index = in.readShort()
-          val spec  = UGens.seq(index)
-          new UGen.Impl(id, index, spec)
+          UGen.readIdentified(id, in, access)
       }
     }
   }
@@ -60,6 +58,19 @@ object Vertex {
       new Impl(tx.newID(), index, info)
     }
     def unapply(v: UGen): Option[UGenSpec] = Some(v.info)
+
+    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): UGen = {
+      val id  = tx.readID(in, access)
+      val tpe = in.readByte()
+      require(tpe == 1, s"Expected Vertex.UGen cookie 1 but found $tpe")
+      readIdentified(id, in, access)
+    }
+
+    private[Vertex] def readIdentified(id: S#ID, in: DataInput, access: S#Acc)(implicit tx: S#Tx): UGen = {
+      val index = in.readShort()
+      val spec  = UGens.seq(index)
+      new UGen.Impl(id, index, spec)
+    }
 
     private[Vertex] final class Impl(val id: S#ID, index: Int, val info: UGenSpec) extends UGen with Mutable.Impl[S] {
       private def isBinOp: Boolean = info.name.startsWith("Bin_")

@@ -154,21 +154,22 @@ object MutationImpl {
       case Vertex.UGen(info) => /* ChromosomeImpl.geArgs(info).map(_.name) */ info.inputs.map(_.arg)
       case _ => Vec.empty
     }
-    val newInletNames: Vec[String] = vNew match {
-      case Vertex.UGen(info) => /* ChromosomeImpl.geArgs(info).map(_.name) */ info.inputs.map(_.arg)
+
+    top.addVertex(vNew)
+    outlet.map(_.copy(targetVertex = vNew)).foreach(top.addEdge /* .get */)
+
+    // just as many as possible, leaving tail inlets empty
+    val newInlets = vNew match {
+      case vNewU: Vertex.UGen if oldInletNames.nonEmpty =>
+        val newInletNames = vNewU.info.inputs.map(_.arg)
+        inlets.collect {
+          case e if oldInletNames.indexOf(e.inlet) < newInletNames.size =>
+            e.copy(sourceVertex = vNewU, inletIndex = oldInletNames.indexOf(e.inlet))
+        }
       case _ => Vec.empty
     }
 
-    top.addVertex(vNew)
-    outlet.map(_.copy(targetVertex = vNew)).foreach(top.addEdge(_) /* .get */)
-
-    // just as many as possible, leaving tail inlets empty
-    val newInlets = inlets.collect {
-      case e if oldInletNames.indexOf(e.inlet) < newInletNames.size =>
-        e.copy(sourceVertex = vNew, inlet = newInletNames(oldInletNames.indexOf(e.inlet)))
-    }
-
-    newInlets.foreach(top.addEdge(_) /* .get */)
+    newInlets.foreach(top.addEdge /* .get */)
     vNew match {
       case vu: Vertex.UGen => ChromosomeImpl.completeUGenInputs(top, vu)
       case _ =>
@@ -247,9 +248,15 @@ object MutationImpl {
         val eNew = eOld.copy(targetVertex = vertexNew)
         top.addEdge(eNew) // .get
       }
-      top.edgeMap.get(vertexOld).getOrElse(Set.empty).foreach { eOld =>
-        val eNew = eOld.copy(sourceVertex = vertexNew)
-        top.addEdge(eNew) // .get
+      top.edgeMap.get(vertexOld).foreach { set =>
+        vertexNew match {
+          case vNewU: Vertex.UGen =>
+            set.foreach { eOld =>
+              val eNew = eOld.copy(sourceVertex = vNewU)
+              top.addEdge(eNew) // .get
+            }
+          case _ =>
+        }
       }
       checkComplete(top, s"splitVertex()")
       stats(5) += 1
@@ -282,13 +289,27 @@ object MutationImpl {
     }
     if (it.isEmpty) false else {
       val (v1, v2)  = it.next()
+      // edges, where v2 is the input
       val edgesOld  = top.edges.iterator.filter(_.targetVertex == v2).toIndexedSeq
       edgesOld.foreach(top.removeEdge)
-      edgesOld.foreach { eOld =>
+      if (Util.coin(0.5)) top.removeVertex(v2)
+
+      val check = edgesOld.flatMap { eOld =>
         val eNew = eOld.copy(targetVertex = v1)
-        if (top.canAddEdge(eNew)) top.addEdge(eNew)
+        val _ok = top.canAddEdge(eNew)
+        if (_ok) {
+          top.addEdge(eNew)
+          None
+        } else {
+          Some(eOld.sourceVertex)
+        }
       }
+      if (check.nonEmpty) {
+        check.foreach(ChromosomeImpl.completeUGenInputs(top, _))
+      }
+
       checkComplete(top, s"mergeVertex()")
+
       stats(6) += 1
       true
     }

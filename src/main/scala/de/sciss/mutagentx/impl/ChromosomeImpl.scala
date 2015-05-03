@@ -166,17 +166,17 @@ object ChromosomeImpl {
     @tailrec def loopVertex(rem: Vec[UGenSpec.Argument]): Unit = rem match {
       case head +: tail =>
         val options = c.vertices.iterator.filter { vi =>
-          val e = Edge(v, vi, head.name)
+          val e = Edge.make(v, vi, head.name)
           c.canAddEdge(e)
         }
         if (options.nonEmpty) {
           val vi  = choose(options.toIndexedSeq)
-          val e   = Edge(v, vi, head.name)
+          val e   = Edge.make(v, vi, head.name)
           c.addEdge(e) // .get
         } else {
           val vi  = mkConstant()
           c.addVertex(vi)
-          val e   = Edge(v, vi, head.name)
+          val e   = Edge.make(v, vi, head.name)
           c.addEdge(e) // .get
         }
 

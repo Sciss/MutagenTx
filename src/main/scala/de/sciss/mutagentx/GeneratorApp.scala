@@ -61,7 +61,7 @@ object GeneratorApp extends SwingApplication {
       val cursor = algorithm.global.cursor
       val isNew = cursor.step { implicit tx =>
         val _isNew = algorithm.genome.chromosomes().isEmpty
-        if (_isNew) algorithm.init(100)
+        if (_isNew) algorithm.init(Algorithm.population)
         _isNew
       }
       if (isNew) {
