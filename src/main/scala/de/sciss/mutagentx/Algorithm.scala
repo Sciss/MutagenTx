@@ -14,7 +14,6 @@
 package de.sciss.mutagentx
 
 import de.sciss.file.File
-import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
 import de.sciss.lucre.{confluent, stm}
@@ -24,7 +23,6 @@ import de.sciss.synth.{UGenSpec, UndefinedRate}
 
 import scala.annotation.tailrec
 import scala.collection.breakOut
-import scala.collection.generic.CanBuildFrom
 import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
 import scala.concurrent.{Await, ExecutionContext, Future, blocking}
@@ -49,6 +47,9 @@ object Algorithm {
   // ---- breeding ----
   val mutMin          : Int     = 1
   val mutMax          : Int     = 4
+  val mutationProb    : Double  = 0.5
+  val selectionFrac   : Double  = 0.25
+  val numElitism      : Int     = 2
 
   implicit val executionContext: ExecutionContext = {
     ExecutionContext.Implicits.global
@@ -93,7 +94,7 @@ object Algorithm {
   }
 }
 trait Algorithm {
-  import Algorithm.{DEBUG, constProb, maxNumVertices, minNumVertices}
+  import Algorithm.{DEBUG, constProb, maxNumVertices, minNumVertices, numElitism, selectionFrac, mutationProb}
   import Util.{choose, coin, exprand, rrand}
 
   def genome(implicit tx: S#Tx): Genome
@@ -107,10 +108,6 @@ trait Algorithm {
   val global: GlobalState
 
   import global.rng
-
-  private val mutationProb  = 1.0 // 0.5
-  private val selectionFrac = 0.25
-  private val numElitism    = 2
 
   def init(n: Int)(implicit tx: S#Tx): Unit =
     genome.chromosomes() = Vector.fill(n)(mkIndividual())
@@ -310,8 +307,9 @@ trait Algorithm {
     * the selection's cursors to step from this transaction's input access.
     */
   def crossover(sq: Vec[stm.Source[S#Tx, Chromosome]], n: Int,
-                inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] = {
-    if (n <= 0) Vector.empty else ???
+                inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] =
+    impl.CrossoverImpl(this, sq, n, inputAccess)
+
 //    var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
 //    while (res.size < n) {
 //      val idx0      = res.size << 1
@@ -358,7 +356,7 @@ trait Algorithm {
 //      hs.foreach(h => res :+= (pos, h))
 //    }
 //    res
-  }
+//  }
 
   /** Produces a sequence of `n` items by mutating the input `sel` selection.
     *
