@@ -63,9 +63,9 @@ object CrossoverImpl {
         def mkTop(vertices1: Vec[Vertex], edges1: Set[Edge], vertices2: Vec[Vertex], edges2: Set[Edge]): Chromosome = {
           val c = Topology.empty[Vertex, Edge]
           vertices1.foreach(c.addVertex)
-          edges1   .foreach(c.addEdge(_) /* .get */)  // this is now the first half of the original top
+          edges1   .foreach(c.addEdge /* .get */)  // this is now the first half of the original top
           vertices2.foreach(c.addVertex)
-          edges2   .foreach(c.addEdge(_) /* .get */)
+          edges2   .foreach(c.addEdge /* .get */)
           c
         }
 

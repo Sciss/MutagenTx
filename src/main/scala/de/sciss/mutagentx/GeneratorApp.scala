@@ -1,34 +1,31 @@
 package de.sciss.mutagentx
 
-import java.util.concurrent.TimeUnit
-
 import com.alee.laf.WebLookAndFeel
 import de.sciss.file._
 import de.sciss.kollflitz
 import de.sciss.lucre.swing.defer
 
-import scala.concurrent.{Await, Future}
 import scala.concurrent.duration.Duration
-import scala.swing.{Button, BorderPanel, FlowPanel, TextField, Label, Frame, SwingApplication}
+import scala.concurrent.{Await, Future, blocking}
+import scala.swing.{BorderPanel, Button, CheckBox, FlowPanel, Frame, Label, SwingApplication, TextField}
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success}
 
 object GeneratorApp extends SwingApplication {
   def startup(args: Array[String]): Unit = {
     WebLookAndFeel.install()
 
-    val ggBest = new TextField(4) {
-      editable = false
+    def mkNumView() = {
+      val t = new TextField(4)
+      t.editable  = false
+      t.focusable = false
+      t
     }
-    val ggAvg  = new TextField(4) {
-      editable = false
-    }
-    val ggMedian = new TextField(4) {
-      editable = false
-    }
-    val ggIter = new TextField(4) {
-      editable = false
-    }
+
+    val ggBest    = mkNumView()
+    val ggAvg     = mkNumView()
+    val ggMedian  = mkNumView()
+    val ggIter    = mkNumView()
+
     val pTop = new FlowPanel(
       new Label("Best:"  ), ggBest,
       new Label("Avg:"   ), ggAvg,
@@ -53,56 +50,79 @@ object GeneratorApp extends SwingApplication {
       ggIter  .text = (inp.size / 2).toString
     }
 
-    def init(): Future[Algorithm] = {
+    def init(): Future[Algorithm] = Future {
       val dir = file("database") / "betanovuss"
       val in  = file("audio_work") / "Betanovuss150410_1Cut.aif"
-      val algorithm = Algorithm(dir = dir, input = in)
+      val algorithm = blocking(Algorithm(dir = dir, input = in))
 
       val cursor = algorithm.global.cursor
       val isNew = cursor.step { implicit tx =>
         val _isNew = algorithm.genome.chromosomes().isEmpty
-        if (_isNew) algorithm.init(Algorithm.population)
+        if (_isNew) blocking(algorithm.init(Algorithm.population))
         _isNew
       }
       if (isNew) {
         val fut0 = cursor.step { implicit tx =>
           algorithm.evaluateAndUpdate()
         }
-        fut0.map(_ => algorithm)
-      } else {
-        Future.successful(algorithm)
+        Await.result(fut0, Duration.Inf)
+      }
+      algorithm
+    }
+
+    def iter(a: Algorithm): Future[Unit] = Future {
+      val peer = a.iterate()
+      Await.result(peer, Duration.Inf)
+    }
+//      .andThen { case Success(_) =>
+//        a.global.cursor.step { implicit tx =>
+//          a.evaluateAndUpdate()
+//        }
+//      }
+
+    val ggBusy = new CheckBox
+    var busy = Option.empty[Future[Any]]
+
+    def setBusy(fut: Future[Any]): Unit = {
+      busy = Some(fut)
+      ggBusy.selected = true
+      fut.onComplete {
+        case _ => defer {
+          busy = None
+          ggBusy.selected = false
+        }
+      }
+      fut.onFailure {
+        case ex => ex.printStackTrace()
       }
     }
 
-    def iter(a: Algorithm): Future[Unit] =
-      a.iterate().andThen { case Success(_) =>
-        a.global.cursor.step { implicit tx =>
-          a.evaluateAndUpdate()
-        }
-      }
-
     val ggInit = Button("New/Open") {
-      val fut = init()
-      fut.onComplete {
-        case Success(a) =>
-          defer {
-            algorithm = Some(a)
-            updateStats(a)
-          }
-        case Failure(ex) =>
-          ex.printStackTrace()
+      if (busy.isEmpty) {
+        val fut = init()
+        fut.onSuccess {
+          case a =>
+            defer {
+              algorithm = Some(a)
+              updateStats(a)
+            }
+        }
+        setBusy(fut)
       }
     }
     val ggStep1 = Button("Step 1") {
-      algorithm.foreach { a =>
-        val fut = iter(a)
-        fut.onComplete {
-          case Success(_) =>
+      if (busy.isEmpty) {
+        algorithm.foreach { a =>
+          val t0  = System.currentTimeMillis()
+          val fut = iter(a)
+          fut.onSuccess { case _ =>
+            val t1 = System.currentTimeMillis()
+            println(f"---------TOOK ${(t1-t0)*0.001}%1.3f sec.---------")
             defer {
               updateStats(a)
             }
-          case Failure(ex) =>
-            ex.printStackTrace()
+          }
+          setBusy(fut)
         }
       }
     }
@@ -110,27 +130,27 @@ object GeneratorApp extends SwingApplication {
       text = 100.toString
     }
     val ggStepN = Button("Step N") {
-      val num = math.max(1, ggStepNum.text.toInt)
-      algorithm.foreach { a =>
-        val fut = Future {
-          for (i <- 1 to num) {
-            println(s"-------------STEP $i-------------")
-            val futI = iter(a)
-            Await.result(futI, Duration(60, TimeUnit.SECONDS))
+      if (busy.isEmpty) {
+        val num = math.max(1, ggStepNum.text.toInt)
+        algorithm.foreach { a =>
+          val fut = Future {
+            for (i <- 1 to num) {
+              println(s"-------------STEP $i-------------")
+              val futI = iter(a)
+              Await.result(futI, Duration.Inf) // Duration(60, TimeUnit.SECONDS))
+            }
           }
-        }
-        fut.onComplete {
-          case Success(_) =>
+          fut.onSuccess { case _ =>
             defer {
               updateStats(a)
             }
-          case Failure(ex) =>
-            ex.printStackTrace()
+          }
+          setBusy(fut)
         }
       }
     }
 
-    val pBot = new FlowPanel(ggInit, ggStep1, ggStepN, ggStepNum)
+    val pBot = new FlowPanel(ggInit, ggStep1, ggStepN, ggStepNum, ggBusy)
 
     new Frame {
       title = "MutagenTx"

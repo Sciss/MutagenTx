@@ -1,0 +1,3 @@
+---------TOOK 1430.741 sec.---------
+1200 sec = 20 min; c. 2.5 per hour; c. 60 per day; c. 422 per week
+
