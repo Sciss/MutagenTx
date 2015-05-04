@@ -16,7 +16,7 @@ import scala.swing.Graphics2D
   * The next sub-type is `VisualNode` that is represented by a graph node.
   */
 trait VisualData extends Disposable[S#Tx] {
-  def main: Visual
+  def main: VisualOLD
 
   def isActive(implicit tx: S#Tx): Boolean
 

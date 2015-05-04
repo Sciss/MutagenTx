@@ -50,7 +50,7 @@ object VisualEdgeImpl {
       sink  .edgesIn .put(key, this)
       touch()
       main.deferVisTx {
-        if (Visual.DEBUG) println(s"MAKE EDGE $this")
+        if (VisualOLD.DEBUG) println(s"MAKE EDGE $this")
         mkPEdge()
       }
       this
@@ -70,8 +70,8 @@ object VisualEdgeImpl {
       if (_pEdge != null) throw new IllegalStateException(s"Component $this has already been initialized")
       _pEdge  = main.graph.addEdge(source.pNode, sink.pNode)
       val vis = main.visualization
-      val vi  = vis.getVisualItem(Visual.GROUP_GRAPH, _pEdge)
-      vi.set(Visual.COL_MUTA, this)
+      val vi  = vis.getVisualItem(VisualOLD.GROUP_GRAPH, _pEdge)
+      vi.set(VisualOLD.COL_MUTA, this)
       //      val sz  = nodeSize
       //      if (sz != 1.0f) vi.set(VisualItem.SIZE, sz)
       //      parent.aggr.addItem(vi)

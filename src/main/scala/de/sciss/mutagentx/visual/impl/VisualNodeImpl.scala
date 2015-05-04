@@ -68,7 +68,7 @@ private trait VisualNodeImpl extends VisualNode with VisualDataImpl {
     touch()
     main.deferVisTx {
       mkPNode()
-      if (Visual.DEBUG) println(s"MAKE NODE $this")
+      if (VisualOLD.DEBUG) println(s"MAKE NODE $this")
     }
   }
 
@@ -76,8 +76,8 @@ private trait VisualNodeImpl extends VisualNode with VisualDataImpl {
     if (_pNode != null) throw new IllegalStateException(s"Component $this has already been initialized")
     _pNode  = main.graph.addNode()
     val vis = main.visualization
-    val vi  = vis.getVisualItem(Visual.GROUP_GRAPH, _pNode)
-    vi.set(Visual.COL_MUTA, this)
+    val vi  = vis.getVisualItem(VisualOLD.GROUP_GRAPH, _pNode)
+    vi.set(VisualOLD.COL_MUTA, this)
     //      val sz  = nodeSize
     //      if (sz != 1.0f) vi.set(VisualItem.SIZE, sz)
     //      parent.aggr.addItem(vi)
@@ -140,7 +140,7 @@ private trait VisualNodeImpl extends VisualNode with VisualDataImpl {
   protected def drawLabel(g: Graphics2D, vi: VisualItem, fontSize: Float, text: String): Unit = {
     if (_fontSize != fontSize) {
       _fontSize = fontSize
-      _font = Visual.condensedFont.deriveFont(fontSize)
+      _font = VisualOLD.condensedFont.deriveFont(fontSize)
     }
 
     g.setColor(ColorLib.getColor(vi.getTextColor))

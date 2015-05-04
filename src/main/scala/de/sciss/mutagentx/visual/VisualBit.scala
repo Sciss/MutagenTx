@@ -15,7 +15,7 @@ package de.sciss.mutagentx
 package visual
 
 object VisualBit {
-  def apply(main: Visual, b: Bit)(implicit tx: S#Tx): VisualBit = impl.VisualBitImpl(main, b)
+  def apply(main: VisualOLD, b: Bit)(implicit tx: S#Tx): VisualBit = impl.VisualBitImpl(main, b)
 }
 trait VisualBit extends VisualNode {
   var state: Boolean

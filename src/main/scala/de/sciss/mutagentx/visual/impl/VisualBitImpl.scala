@@ -23,7 +23,7 @@ import scala.swing._
 object VisualBitImpl {
   import VisualNodeImpl.diam
 
-  def apply(_main: Visual, b: Bit)(implicit tx: S#Tx): VisualBit = new VisualBit with VisualNodeImpl {
+  def apply(_main: VisualOLD, b: Bit)(implicit tx: S#Tx): VisualBit = new VisualBit with VisualNodeImpl {
     var state = b.bit()
     val main  = _main
 

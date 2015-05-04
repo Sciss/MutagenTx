@@ -12,7 +12,7 @@ import scala.swing.Graphics2D
 class NuagesShapeRenderer(size: Int)
   extends AbstractShapeRenderer {
 
-  import Visual._
+  import VisualOLD._
 
   private val ellipse = new Ellipse2D.Float()
 
@@ -31,7 +31,7 @@ class NuagesShapeRenderer(size: Int)
   }
 
   override def render(g: Graphics2D, vi: VisualItem): Unit = {
-    val data = vi.get(Visual.COL_MUTA).asInstanceOf[VisualNode]
+    val data = vi.get(VisualOLD.COL_MUTA).asInstanceOf[VisualNode]
     if (data == null) return
     data.update(getShape(vi))
     data.render(g, vi)

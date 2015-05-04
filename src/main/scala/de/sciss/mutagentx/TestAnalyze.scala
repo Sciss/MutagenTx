@@ -17,7 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.{Date, Locale}
 
 import de.sciss.file._
-import de.sciss.mutagentx.visual.{VideoSettings, Visual}
+import de.sciss.mutagentx.visual.{VisualOLD, VideoSettings}
 import de.sciss.processor.Processor
 
 import scala.swing.event.ButtonClicked
@@ -32,14 +32,14 @@ object TestAnalyze extends App {
     require(base.isDirectory)
     val a = AlgorithmOLD(base / "test")
     val csr = a.global.cursor
-    val v = csr.step { implicit tx => Visual(a) }
+    val v = csr.step { implicit tx => VisualOLD(a) }
 
     Swing.onEDT {
       guiInit(v)
     }
   }
 
-  def guiInit(v: Visual): Unit = {
+  def guiInit(v: VisualOLD): Unit = {
     val ggPrevIter = Button("Prev Iter") {
       v.previousIteration()
     }
