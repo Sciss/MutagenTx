@@ -17,7 +17,7 @@ licenses           := Seq("GPL v3+" -> url("http://www.gnu.org/licenses/gpl-3.0.
 resolvers          += "Oracle Repository" at "http://download.oracle.com/maven"
 
 libraryDependencies ++= Seq(
-  "de.sciss"      %% "lucreconfluent"           % "2.11.1-SNAPSHOT",
+  "de.sciss"      %% "lucreconfluent"           % "2.11.0",
   "de.sciss"      %% "lucreevent-expr"          % "2.7.3",
   "de.sciss"      %% "lucrestm-bdb"             % "2.1.1",
   "de.sciss"      %% "fileutil"                 % "1.1.1",
