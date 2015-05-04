@@ -4,14 +4,14 @@ package visual
 import de.sciss.synth.UGenSpec
 
 object VisualUGen {
-  def apply(main: Visual, v: Vertex.UGen)(implicit tx: S#Tx): VisualUGen = ??? // impl.VisualBitImpl(main, b)
+  def apply(main: Visual, v: Vertex.UGen)(implicit tx: S#Tx): VisualUGen = impl.VisualUGenImpl(main, v)
 }
 trait VisualUGen extends VisualVertex {
   def info: UGenSpec
 }
 
 object VisualConstant {
-  def apply(main: Visual, v: Vertex.Constant)(implicit tx: S#Tx): VisualConstant = ??? // impl.VisualBitImpl(main, b)
+  def apply(main: Visual, v: Vertex.Constant)(implicit tx: S#Tx): VisualConstant = impl.VisualConstantImpl(main, v)
 }
 trait VisualConstant extends VisualVertex {
   var value: Float

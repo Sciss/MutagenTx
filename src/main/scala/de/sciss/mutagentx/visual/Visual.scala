@@ -34,6 +34,7 @@ import prefuse.controls.{DragControl, PanControl, WheelZoomControl, ZoomControl}
 import prefuse.data.{Graph => PGraph}
 import prefuse.render.{DefaultRendererFactory, EdgeRenderer}
 import prefuse.util.ColorLib
+import prefuse.util.force.ForceSimulator
 import prefuse.visual.expression.InGroupPredicate
 import prefuse.visual.{VisualGraph, VisualItem}
 import prefuse.{Constants, Display, Visualization}
@@ -109,9 +110,13 @@ object Visual {
       this
     }
 
+    def forceSimulator: ForceSimulator = _lay.getForceSimulator
+
     private def insertChromosome(c: Chromosome)(implicit tx: S#Tx): Unit = {
       c.vertices.iterator.foreach { v =>
-        checkOrInsertVertex(v)
+        if (v.isUGen || c.edges.iterator.filter(_.targetVertex == v).nonEmpty) {
+          checkOrInsertVertex(v)
+        }
       }
       c.edges.iterator.foreach { e =>
         checkOrInsertLink(e)
@@ -122,6 +127,8 @@ object Visual {
     def visualization : Visualization = _vis
     def graph         : PGraph        = _g
     def visualGraph   : VisualGraph   = _vg
+
+
 
     private[this] val guiCode = TxnLocal(init = Vector.empty[() => Unit], afterCommit = handleGUI)
 
@@ -197,21 +204,20 @@ object Visual {
     }
 
     private def checkOrInsertLink(e: Edge)(implicit tx: S#Tx): Unit = {
-      ???
-//      implicit val itx = tx.peer
-//      val tup = for {
-//        predV <- map.get(pred.id)
-//        succV <- map.get(succ.id)
-//      } yield (predV, succV)
-//
-//      if (tup.isEmpty) {
-//        println(s"WARNING: link misses vertices: $pred / $succ")
-//      }
-//
-//      tup.foreach { case (predV, succV) =>
-//        val edge = VisualEdge(predV, succV, init = false)
-//        predV.edgesOut.get(edge.key).fold[Unit](edge.init())(_.touch())
-//      }
+      implicit val itx = tx.peer
+      val tup = for {
+        sourceV <- map.get(e.sourceVertex.id)
+        targetV <- map.get(e.targetVertex.id)
+      } yield (sourceV, targetV)
+
+      if (tup.isEmpty) {
+        println(s"WARNING: link misses vertices: $e")
+      }
+
+      tup.foreach { case (sourceV, targetV) =>
+        val edge = VisualEdge(sourceV, targetV, init = false)
+        sourceV.edgesOut.get(edge.key).fold[Unit](edge.init())(_.touch())
+      }
     }
 
     def dispose()(implicit tx: S#Tx): Unit = ()
@@ -326,6 +332,35 @@ object Visual {
       _vis.setRendererFactory(rf)
 
       _lay = new ForceDirectedLayout(GROUP_GRAPH)
+
+      val forceMap = Map(
+        ("NBodyForce" , "GravitationalConstant") -> -2.0f,
+        ("DragForce"  , "DragCoefficient"      ) -> 0.002f,
+        ("SpringForce", "SpringCoefficient"    ) -> 1.0e-5f,
+        ("SpringForce", "DefaultSpringLength"  ) -> 200.0f
+      )
+
+      forceSimulator.getForces.foreach { force =>
+        val fName = force.getClass.getSimpleName
+        // println(s"----FORCE----$fName")
+        for (i <- 0 until force.getParameterCount) {
+          val pName = force.getParameterName(i)
+          forceMap.get((fName, pName)).foreach { value =>
+            force.setParameter(i, value)
+          }
+          // println(pName)
+
+          // NBodyForce
+          // - GravitationalConstant = -2.0
+          // - Distance = -1.0
+          // - BarnesHutTheta = 0.89
+          // DragForce
+          // - DragCoefficient = 0.002
+          // SpringForce
+          // - SpringCoefficient = 1.0e-5
+          // - DefaultSpringLength = 200.0
+        }
+      }
 
       // ------------------------------------------------
 
@@ -469,29 +504,8 @@ object Visual {
     def addLayoutComponent(name: String, comp: java.awt.Component) = ()
   }
 }
-trait Visual extends View[S] {
-  def display: Display
-
-  def visualization: Visualization
-
-  def graph: PGraph
-
-  def visualGraph: VisualGraph
-
+trait Visual extends VisualLike {
   def algorithm: Algorithm
 
-  /** Schedule code to be executed during paused visualization animation
-    * on the EDT after the commit of the transaction.
-    */
-  def deferVisTx(thunk: => Unit)(implicit tx: TxnLike): Unit
-
-  def previousIteration(): Unit
-
-  def animationStep(): Unit
-
-  var runAnimation: Boolean
-
-  def saveFrameAsPNG(file: File): Unit
-
-  def saveFrameSeriesAsPNG(settings: VideoSettings): Processor[Unit]
+  def forceSimulator: ForceSimulator
 }

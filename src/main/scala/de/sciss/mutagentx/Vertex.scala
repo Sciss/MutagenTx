@@ -75,6 +75,8 @@ object Vertex {
     private[Vertex] final class Impl(val id: S#ID, index: Int, val info: UGenSpec) extends UGen with Mutable.Impl[S] {
       private def isBinOp: Boolean = info.name.startsWith("Bin_")
 
+      def isUGen = true
+
       def copy()(implicit tx: S#Tx): UGen = UGen(info)
 
       protected def disposeData()(implicit tx: S#Tx) = ()
@@ -153,6 +155,8 @@ object Vertex {
   trait UGen extends Vertex {
     def info: UGenSpec
 
+    def boxName: String
+
     override def toString = s"${info.name}@${hashCode().toHexString}"
 
     def instantiate(ins: Vec[(AnyRef, Class[_])]): GE
@@ -172,6 +176,8 @@ object Vertex {
   class Constant(val id: S#ID, val f: S#Var[Float]) extends Vertex with Mutable.Impl[S] {
     override def toString() = s"Constant$id"
 
+    def isUGen = false
+
     def copy()(implicit tx: S#Tx): Constant = Constant(f())
 
     // def boxName = f.toString
@@ -189,6 +195,9 @@ sealed trait Vertex extends Identifiable[S#ID] with Writable {
     * into the current implementation of mutation.
     */
   def copy()(implicit tx: S#Tx): Vertex
+
+  def isUGen: Boolean
+  def isConstant: Boolean = !isUGen
 
   // def boxName: String
 }

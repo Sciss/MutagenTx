@@ -474,29 +474,6 @@ object VisualOLD {
     def addLayoutComponent(name: String, comp: java.awt.Component) = ()
   }
 }
-trait VisualOLD extends View[S] {
-  def display: Display
-
-  def visualization: Visualization
-
-  def graph: PGraph
-
-  def visualGraph: VisualGraph
-
+trait VisualOLD extends VisualLike {
   def algorithm: AlgorithmOLD
-
-  /** Schedule code to be executed during paused visualization animation
-    * on the EDT after the commit of the transaction.
-    */
-  def deferVisTx(thunk: => Unit)(implicit tx: TxnLike): Unit
-
-  def previousIteration(): Unit
-
-  def animationStep(): Unit
-
-  var runAnimation: Boolean
-
-  def saveFrameAsPNG(file: File): Unit
-
-  def saveFrameSeriesAsPNG(settings: VideoSettings): Processor[Unit]
 }

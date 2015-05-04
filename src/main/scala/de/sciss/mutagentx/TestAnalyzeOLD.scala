@@ -24,7 +24,7 @@ import scala.swing.event.ButtonClicked
 import scala.swing.{ProgressBar, FlowPanel, ToggleButton, Button, BorderPanel, Frame, Swing}
 import Swing._
 
-object TestAnalyze extends App {
+object TestAnalyzeOLD extends App {
   run()
 
   def run(): Unit = {
