@@ -16,8 +16,8 @@ object VertexApp extends App {
   run()
 
   def run(): Unit = {
-    val dir = file("database") / "betanovuss"
-    val in  = file("audio_work") / "Betanovuss150410_1Cut.aif"
+    val dir = file("database"  ) / (if (args.length > 0) args(0) else "betanovuss")
+    val in  = file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
     val a   = Algorithm(dir = dir, input = in)
     val csr = a.global.cursor
     val v   = csr.step { implicit tx => Visual(a) }
@@ -60,7 +60,7 @@ object VertexApp extends App {
         val dir       = file("render")
         require(dir.isDirectory)
         val cfg       = VideoSettings()
-        cfg.secondsSkip = 60
+        cfg.secondsSkip  = 60
         cfg.secondsDecay = 60
         cfg.baseFile  = dir / "movie"
         val p         = v.saveFrameSeriesAsPNG(cfg)

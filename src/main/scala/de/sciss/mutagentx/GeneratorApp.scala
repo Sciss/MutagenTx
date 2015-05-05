@@ -51,8 +51,8 @@ object GeneratorApp extends SwingApplication {
     }
 
     def init(): Future[Algorithm] = Future {
-      val dir = file("database") / "betanovuss"
-      val in  = file("audio_work") / "Betanovuss150410_1Cut.aif"
+      val dir = file("database"  ) / (if (args.length > 0) args(0) else "betanovuss")
+      val in  = file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
       val algorithm = blocking(Algorithm(dir = dir, input = in))
 
       val cursor = algorithm.global.cursor

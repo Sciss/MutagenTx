@@ -224,65 +224,64 @@ object Visual {
 
     private def shrink(in: S#Acc): S#Acc = {
       val prevIdx = in.take(in.size - 3)
-      prevIdx :+ prevIdx.term
+      if (prevIdx.isEmpty) prevIdx else  prevIdx :+ prevIdx.term
     }
 
     def previousIteration(): Unit = {
-      ???
-//      val pos = cursorPos.single.transformAndGet(c => c.take(c.size - 2))
-//      if (pos.isEmpty) return
-//
-//      algorithm.global.forkCursor.stepFrom(pos) { implicit tx =>
-//        implicit val itx = tx.peer
-//        val mapOld = map.snapshot
-//        map.clear()
-//        var toRemove = Set.empty[VisualData]
-//        mapOld.foreach { case (idOld, v) =>
-//          val pathOld = idOld.path
-//          val pathNew = shrink(pathOld)
-//          if (pathNew.isEmpty) {
-//            toRemove += v
-//          } else {
-//            val idNew = idOld.copy(pathNew)
-//            if (map.contains(idNew)) {
-//              toRemove += v
-//            } else {
-//              map.put(idNew, v)
-//            }
-//          }
-//        }
-//
-//        // for (i <- 1 to 1) {
-//        val cs = algorithm.genome.chromosomes()
-//        val ancestors = cs.filter { c =>
-//          c.exists { b =>
-//            val bid = b.id
-//            map.contains(bid)
-//          }
-//        }
-//        println(s"Num-ancestors = ${ancestors.size}")
-//        ancestors.foreach(insertChromosome)
-//        // }
-//
-//        map.foreach { case (_, v) =>
-//          if (!v.isActive) toRemove += v
-//
-//          def checkEdges(es: TMap[_, VisualEdge]): Unit = es.foreach {
-//            case (_, e) => if (!e.isActive) toRemove += e
-//          }
-//
-//          checkEdges(v.edgesIn)
-//          checkEdges(v.edgesOut)
-//        }
-//
-//        if (DEBUG) {
-//          val numVertices = toRemove.count(_.isInstanceOf[VisualBit])
-//          val numEdges    = toRemove.count(_.isInstanceOf[VisualEdge])
-//          println(s"map.size = ${mapOld.size} -> ${map.size}; toRemove.size = $numVertices vertices / $numEdges edges")
-//        }
-//
-//        toRemove.foreach(_.dispose())
-//      }
+      val pos = cursorPos.single.transformAndGet(c => shrink(c) /* c.take(c.size - 2) */)
+      if (pos.isEmpty) return
+
+      algorithm.global.forkCursor.stepFrom(pos) { implicit tx =>
+        implicit val itx = tx.peer
+        val mapOld = map.snapshot
+        map.clear()
+        var toRemove = Set.empty[VisualData]
+        mapOld.foreach { case (idOld, v) =>
+          val pathOld = idOld.path
+          val pathNew = shrink(pathOld)
+          if (pathNew.isEmpty) {
+            toRemove += v
+          } else {
+            val idNew = idOld.copy(pathNew)
+            if (map.contains(idNew)) {
+              toRemove += v
+            } else {
+              map.put(idNew, v)
+            }
+          }
+        }
+
+        // for (i <- 1 to 1) {
+        val cs = algorithm.genome.chromosomes()
+        val ancestors = cs.filter { c =>
+          c.vertices.iterator.filter { v =>
+            val vid = v.id
+            map.contains(vid)
+          } .nonEmpty
+        }
+        println(s"Num-ancestors = ${ancestors.size}")
+        ancestors.foreach(insertChromosome)
+        // }
+
+        map.foreach { case (_, v) =>
+          if (!v.isActive) toRemove += v
+
+          def checkEdges(es: TMap[_, VisualEdge]): Unit = es.foreach {
+            case (_, e) => if (!e.isActive) toRemove += e
+          }
+
+          checkEdges(v.edgesIn )
+          checkEdges(v.edgesOut)
+        }
+
+        if (DEBUG) {
+          val numVertices = toRemove.count(_.isInstanceOf[VisualVertex])
+          val numEdges    = toRemove.count(_.isInstanceOf[VisualEdge  ])
+          println(s"map.size = ${mapOld.size} -> ${map.size}; toRemove.size = $numVertices vertices / $numEdges edges")
+        }
+
+        toRemove.foreach(_.dispose())
+      }
     }
 
     private def mkActionColor(): Unit = {

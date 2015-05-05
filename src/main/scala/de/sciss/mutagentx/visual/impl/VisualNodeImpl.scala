@@ -51,7 +51,9 @@ private trait VisualNodeImpl extends VisualNode with VisualDataImpl {
     implicit val itx = tx.peer
     edgesIn .foreach(_._2.dispose())
     edgesOut.foreach(_._2.dispose())
-    main.deferVisTx(main.graph.removeNode(pNode))
+    main.deferVisTx {
+      if (pNode.isValid) main.graph.removeNode(pNode)
+    }
   }
 
   final def pNode: PNode = {
