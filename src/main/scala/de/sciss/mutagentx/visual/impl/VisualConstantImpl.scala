@@ -10,7 +10,7 @@ import scala.swing._
 object VisualConstantImpl {
   import VisualNodeImpl.diam
 
-  def apply(_main: Visual, v: Vertex.Constant)(implicit tx: S#Tx): VisualConstant = new VisualConstant with VisualNodeImpl {
+  def apply(_main: Visual, v: Vertex.Constant)(implicit tx: S#Tx): VisualConstant = new VisualConstant with VisualVertexImpl {
     var value = v.f()
     val main  = _main
 
@@ -21,7 +21,7 @@ object VisualConstantImpl {
     protected def boundsResized(): Unit = ()
 
     protected def renderDetail(g: Graphics2D, vi: VisualItem): Unit =
-      drawLabel(g, vi, diam * vi.getSize.toFloat * 0.5f, name)
+      drawLabel(g, vi, /* diam * vi.getSize.toFloat * 0.5f, */ name)
 
     def name = value.toString
 

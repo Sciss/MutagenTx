@@ -15,6 +15,8 @@ package de.sciss.mutagentx
 package visual
 package impl
 
+import java.awt.Shape
+
 import prefuse.visual.VisualItem
 
 import scala.concurrent.stm.Ref
@@ -34,10 +36,14 @@ object VisualBitImpl {
     protected def boundsResized(): Unit = ()
 
     protected def renderDetail(g: Graphics2D, vi: VisualItem): Unit =
-      drawLabel(g, vi, diam * vi.getSize.toFloat * 0.5f, name)
+      drawLabel(g, vi, /* diam * vi.getSize.toFloat * 0.5f, */ name)
 
     def name = if (state) "1" else "0"
 
     init()
+
+    protected def fontSize: Float = 16f // XXX
+
+    def getShape(x: Double, y: Double): Shape = ???
   }
 }

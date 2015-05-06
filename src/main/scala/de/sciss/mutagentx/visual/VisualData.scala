@@ -40,4 +40,6 @@ trait VisualNode extends VisualData {
     * current geometric shape of the corresponding visual item.
     */
   def update(shp: Shape): Unit
+
+  def getShape(x: Double, y: Double): Shape
 }

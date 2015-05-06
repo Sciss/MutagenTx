@@ -42,11 +42,11 @@ object VideoSettings {
 
     def baseFile_=(value: File): Unit = _baseFile = value
 
-    var width               = 1920
-    var height              = 1080
+    var width               = 1080 // 1920
+    var height              = 1920 // 1080
     var framesPerSecond     = 25
-    var secondsPerIteration = 2.0
-    var secondsDecay        = 10.0
+    var secondsPerIteration = 10.0 //  2.0
+    var secondsDecay        = 20.0 // 10.0
     var secondsSkip         = 0.0
   }
 }

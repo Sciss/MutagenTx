@@ -17,6 +17,7 @@ package visual
 import java.awt.geom.Point2D
 import java.awt.image.BufferedImage
 import java.awt.{Color, Font, LayoutManager, RenderingHints}
+import java.io.FileInputStream
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 import javax.swing.JPanel
@@ -25,6 +26,7 @@ import de.sciss.file._
 import de.sciss.lucre.stm.TxnLike
 import de.sciss.lucre.swing.impl.ComponentHolder
 import de.sciss.lucre.swing.{View, defer, deferTx, requireEDT}
+import de.sciss.mutagentx.visual.impl.{MySpringForce, BoxRenderer}
 import de.sciss.processor.Processor
 import prefuse.action.assignment.ColorAction
 import prefuse.action.layout.graph.ForceDirectedLayout
@@ -34,7 +36,7 @@ import prefuse.controls.{DragControl, PanControl, WheelZoomControl, ZoomControl}
 import prefuse.data.{Graph => PGraph}
 import prefuse.render.{DefaultRendererFactory, EdgeRenderer}
 import prefuse.util.ColorLib
-import prefuse.util.force.ForceSimulator
+import prefuse.util.force.{DragForce, NBodyForce, ForceSimulator}
 import prefuse.visual.expression.InGroupPredicate
 import prefuse.visual.{VisualGraph, VisualItem}
 import prefuse.{Constants, Display, Visualization}
@@ -50,9 +52,9 @@ import scala.util.control.NonFatal
 object Visual {
   val DEBUG = false
 
-  val VIDEO_WIDTH     = 720
-  val VIDEO_HEIGHT    = 576
-  val VIDEO_WIDTH_SQR = 1024 // 1024 : 576 = 16 : 9
+  // val VIDEO_WIDTH     = 720
+  val VIDEO_HEIGHT    = 1920 / 2 // 576
+  val VIDEO_WIDTH_SQR = 1080 / 2 // 1024 // 1024 : 576 = 16 : 9
 
   def apply(a: Algorithm)(implicit tx: S#Tx): Visual = {
     val map = TMap.empty[S#ID, VisualVertex]
@@ -64,10 +66,14 @@ object Visual {
     //    val is  = Wolkenpumpe.getClass.getResourceAsStream("BellySansCondensed.ttf")
     //    val res = Font.createFont(Font.TRUETYPE_FONT, is)
     //    is.close()
-    val res = new Font(Font.SANS_SERIF, Font.PLAIN, 11)
-    res
+//    val res = new Font(Font.SANS_SERIF, Font.PLAIN, 11)
+//    res
     //      // "SF Movie Poster Condensed"
     //      new Font( "BellySansCondensed", Font.PLAIN, 12 )
+    val is  = new FileInputStream("dosis/Dosis-Medium.ttf")
+    val res = Font.createFont(Font.TRUETYPE_FONT, is)
+    is.close()
+    res
   }
 
   private var _condensedFont: Font = _
@@ -252,16 +258,30 @@ object Visual {
         }
 
         // for (i <- 1 to 1) {
-        val cs = algorithm.genome.chromosomes()
+        val cs      = algorithm.genome.chromosomes()
+        val csSz    = cs.size
+        var lastProg= 0
+        var csi     = 0
         val ancestors = cs.filter { c =>
-          c.vertices.iterator.filter { v =>
+          val vs = c.vertices
+          val res = vs.iterator.filter { v =>
             val vid = v.id
             map.contains(vid)
           } .nonEmpty
+          csi += 1
+          val prog = csi * 100 / csSz
+          while (lastProg < prog) {
+            print('#')
+            lastProg += 1
+          }
+          res
         }
-        println(s"Num-ancestors = ${ancestors.size}")
-        ancestors.foreach(insertChromosome)
+        println(s"\nNum-ancestors = ${ancestors.size}")
+        ancestors.foreach { c =>
+          insertChromosome(c)
+        }
         // }
+        println("---1")
 
         map.foreach { case (_, v) =>
           if (!v.isActive) toRemove += v
@@ -274,6 +294,8 @@ object Visual {
           checkEdges(v.edgesOut)
         }
 
+        println("---2")
+
         if (DEBUG) {
           val numVertices = toRemove.count(_.isInstanceOf[VisualVertex])
           val numEdges    = toRemove.count(_.isInstanceOf[VisualEdge  ])
@@ -281,27 +303,30 @@ object Visual {
         }
 
         toRemove.foreach(_.dispose())
+        println("---3")
       }
     }
 
     private def mkActionColor(): Unit = {
       // colors
-      val actionNodeStroke  = new ColorAction(GROUP_NODES, VisualItem.STROKECOLOR, ColorLib.rgb(255, 255, 255))
-      actionNodeStroke.add(VisualItem.HIGHLIGHT, ColorLib.rgb(255, 255, 0))
+      val actionNodeStrokeColor  = new ColorAction(GROUP_NODES, VisualItem.STROKECOLOR, ColorLib.rgb(255, 255, 255))
+      actionNodeStrokeColor.add(VisualItem.HIGHLIGHT, ColorLib.rgb(255, 255, 0))
       // actionNodeStroke.add(VisualItem.HIGHLIGHT, ColorLib.rgb(220, 220, 0))
-      val actionNodeFill    = new ColorAction(GROUP_NODES, VisualItem.FILLCOLOR  , ColorLib.rgb(0, 0, 0))
-      actionNodeFill.add(VisualItem.HIGHLIGHT, ColorLib.rgb(63, 63, 0))
+      val actionNodeFillColor    = new ColorAction(GROUP_NODES, VisualItem.FILLCOLOR  , ColorLib.rgb(0, 0, 0))
+      actionNodeFillColor.add(VisualItem.HIGHLIGHT, ColorLib.rgb(63, 63, 0))
       val actionTextColor   = new ColorAction(GROUP_NODES, VisualItem.TEXTCOLOR  , ColorLib.rgb(255, 255, 255))
 
-      val actionEdgeColor   = new ColorAction(GROUP_EDGES, VisualItem.STROKECOLOR, ColorLib.rgb(255, 255, 255))
+      val actionEdgeStrokeColor = new ColorAction(GROUP_EDGES, VisualItem.STROKECOLOR, ColorLib.rgb(255, 255, 255))
+      val actionEdgeFillColor   = new ColorAction(GROUP_EDGES, VisualItem.FILLCOLOR  , ColorLib.rgb(255, 255, 255))
       //      val actionAggrFill    = new ColorAction(AGGR_PROC  , VisualItem.FILLCOLOR  , ColorLib.rgb(80, 80, 80))
       //      val actionAggrStroke  = new ColorAction(AGGR_PROC  , VisualItem.STROKECOLOR, ColorLib.rgb(255, 255, 255))
 
       actionColor = new ActionList(_vis)
       actionColor.add(actionTextColor)
-      actionColor.add(actionNodeStroke)
-      actionColor.add(actionNodeFill)
-      actionColor.add(actionEdgeColor)
+      actionColor.add(actionNodeStrokeColor)
+      actionColor.add(actionNodeFillColor)
+      actionColor.add(actionEdgeStrokeColor)
+      actionColor.add(actionEdgeFillColor  )
       //      actionColor.add(actionAggrFill)
       //      actionColor.add(actionAggrStroke)
       // actionColor.add(_lay)
@@ -318,12 +343,13 @@ object Visual {
         }
       }
 
-      _g     = new PGraph
+      _g     = new PGraph(true)
       _vg    = _vis.addGraph(GROUP_GRAPH, _g)
       _vg.addColumn(COL_MUTA, classOf[AnyRef])
 
-      val procRenderer = new NuagesShapeRenderer(50)
-      val edgeRenderer = new EdgeRenderer(Constants.EDGE_TYPE_LINE, Constants.EDGE_ARROW_FORWARD)
+      val procRenderer = new BoxRenderer(this) // new NuagesShapeRenderer(50)
+      val edgeRenderer = new EdgeRenderer(Constants.EDGE_TYPE_CURVE /* EDGE_TYPE_LINE */, Constants.EDGE_ARROW_REVERSE)
+      // edgeRenderer.setArrowHeadSize(200, 200)
 
       val rf = new DefaultRendererFactory(procRenderer)
       rf.add(new InGroupPredicate(GROUP_EDGES), edgeRenderer)
@@ -331,12 +357,35 @@ object Visual {
       _vis.setRendererFactory(rf)
 
       _lay = new ForceDirectedLayout(GROUP_GRAPH)
+      val sim = new ForceSimulator
+      sim.addForce(new NBodyForce)
+      sim.addForce(new MySpringForce)
+      sim.addForce(new DragForce)
+      _lay.setForceSimulator(sim)
+
+//      val forceMap = Map(
+//        ("NBodyForce" , "GravitationalConstant") -> -2.0f,
+//        ("DragForce"  , "DragCoefficient"      ) -> 0.002f,
+//        ("SpringForce", "SpringCoefficient"    ) -> 1.0e-5f,
+//        ("SpringForce", "DefaultSpringLength"  ) -> 200.0f
+//      )
+
+//      val forceMap = Map(
+//        ("NBodyForce" , "GravitationalConstant") -> -10.0f,
+//        ("NBodyForce" , "Distance"             ) -> -1.0f,
+//        ("NBodyForce" , "BarnesHutTheta"       ) -> 0.57f,
+//        ("DragForce"  , "DragCoefficient"      ) -> 0.023f,
+//        ("SpringForce", "SpringCoefficient"    ) -> 1.0e-5f,
+//        ("SpringForce", "DefaultSpringLength"  ) -> 200.0f
+//      )
 
       val forceMap = Map(
         ("NBodyForce" , "GravitationalConstant") -> -2.0f,
-        ("DragForce"  , "DragCoefficient"      ) -> 0.002f,
+        ("NBodyForce" , "Distance"             ) -> -1.0f,
+        ("NBodyForce" , "BarnesHutTheta"       ) -> 0.57f,
+        ("DragForce"  , "DragCoefficient"      ) -> 0.01f,
         ("SpringForce", "SpringCoefficient"    ) -> 1.0e-5f,
-        ("SpringForce", "DefaultSpringLength"  ) -> 200.0f
+        ("SpringForce", "DefaultSpringLength"  ) -> 10.0f
       )
 
       forceSimulator.getForces.foreach { force =>
@@ -360,6 +409,10 @@ object Visual {
           // - DefaultSpringLength = 200.0
         }
       }
+
+      _lay.setMaxTimeStep(40L)
+      _lay.setIterations(1)
+      // forceSimulator.setSpeedLimit()
 
       // ------------------------------------------------
 
@@ -449,7 +502,7 @@ object Visual {
         val res = Try(code)
         p.complete(res)
       }
-      blocking(Await.result(p.future, Duration(5, TimeUnit.SECONDS)))
+      blocking(Await.result(p.future, Duration(20, TimeUnit.SECONDS)))
     }
 
     def saveFrameSeriesAsPNG(settings: VideoSettings): Processor[Unit] = {
@@ -466,6 +519,10 @@ object Visual {
       runAnimation    = false
       val child       = baseFile.base
       val parent      = baseFile.parent
+
+      //      lazy val bImg  = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+      //      lazy val g     = bImg.createGraphics()
+
       Processor[Unit]("saveFrameSeriesAsPNG") { p =>
         var frame = 0
         while (frame < numFrames) {
@@ -474,19 +531,23 @@ object Visual {
             val f = parent / f"$child$frameSave%05d.png"
             execOnEDT {
               saveFrameAsPNG(f, width = width, height = height)
+              // _dsp.damageReport() // force complete redrawing
+              // _dsp.paintDisplay(g, new Dimension(width, height))
+              // ImageIO.write(bImg, "png", f)
             }
           }
           execOnEDT {
             animationStep()
           }
           frame += 1
-          println(frame)
+          println(s"frame $frame")
           p.progress = frame.toDouble / numFrames
           p.checkAborted()
-          if (frame % framesPerIter == 0) execOnEDT {
+          if (frame % framesPerIter == 0) /* execOnEDT */ {
             previousIteration()
           }
         }
+        // execOnEDT(g.dispose())
       }
     }
   }

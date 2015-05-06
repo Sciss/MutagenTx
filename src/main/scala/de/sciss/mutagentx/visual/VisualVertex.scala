@@ -24,5 +24,5 @@ object VisualVertex {
   }
 }
 sealed trait VisualVertex extends VisualNode {
-
+  def name: String
 }

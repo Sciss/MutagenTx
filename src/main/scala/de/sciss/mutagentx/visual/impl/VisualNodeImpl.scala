@@ -6,13 +6,14 @@ import java.awt.geom.{AffineTransform, GeneralPath, Ellipse2D, Rectangle2D, Line
 import java.awt.{Font, Shape, BasicStroke, Color}
 
 import prefuse.data.{Node => PNode}
+import prefuse.render.Renderer
 import prefuse.util.ColorLib
 import prefuse.visual.VisualItem
 
 import scala.concurrent.stm.{Ref, TMap}
 import scala.swing.Graphics2D
 
-private object VisualNodeImpl {
+object VisualNodeImpl {
   final val diam    = 50
   final val diam05  = 25 // diam * 0.5
 
@@ -39,7 +40,7 @@ private object VisualNodeImpl {
 
   // final val threeDigits   = new MathContext(3, RoundingMode.HALF_UP)
 }
-private trait VisualNodeImpl extends VisualNode with VisualDataImpl {
+trait VisualNodeImpl extends VisualNode with VisualDataImpl {
   import VisualNodeImpl._
 
   private[this] var _pNode: PNode = _
@@ -114,6 +115,8 @@ private trait VisualNodeImpl extends VisualNode with VisualDataImpl {
   private var _fontSize = 0f
   private var _font: Font = _
 
+  protected def font: Font = _font
+
   def render(g: Graphics2D, vi: VisualItem): Unit = {
     // fixed nodes are indicated by a think white outline
     if (fixed) {
@@ -139,11 +142,17 @@ private trait VisualNodeImpl extends VisualNode with VisualDataImpl {
   //    protected def drawName(g: Graphics2D, vi: VisualItem, fontSize: Float): Unit =
   //      drawLabel(g, vi, fontSize, name)
 
-  protected def drawLabel(g: Graphics2D, vi: VisualItem, fontSize: Float, text: String): Unit = {
+  protected def checkFont(): Unit = {
     if (_fontSize != fontSize) {
       _fontSize = fontSize
-      _font = VisualOLD.condensedFont.deriveFont(fontSize)
+      _font = Visual.condensedFont.deriveFont(fontSize)
     }
+  }
+
+  protected def fontSize: Float
+
+  protected def drawLabel(g: Graphics2D, vi: VisualItem, text: String): Unit = {
+    checkFont()
 
     g.setColor(ColorLib.getColor(vi.getTextColor))
 
@@ -190,4 +199,23 @@ private trait VisualNodeImpl extends VisualNode with VisualDataImpl {
   protected def boundsResized(): Unit
 
   protected def renderDetail(g: Graphics2D, vi: VisualItem): Unit
+}
+
+trait VisualVertexImpl extends VisualNodeImpl {
+  _: VisualVertex =>
+
+  protected def fontSize: Float = 12f
+
+  def getShape(x: Double, y: Double): Shape = {
+    checkFont()
+    // val fm    = BoxRenderer.defaultFontMetrics
+    val fm    = Renderer.DEFAULT_GRAPHICS.getFontMetrics(font)
+    val w1    = fm.stringWidth(name) // dataToString(data))
+    val w2    = math.max(BoxRenderer.MinBoxWidth, w1 + 6)
+    // val ports = data.ports
+    // val w3    = math.max(ports.numIns, ports.numOuts) * VisualPorts.MinSpacing
+    val w     = w2 // math.max(w2, w3)
+    r.setRect(x, y, w, BoxRenderer.DefaultBoxHeight)
+    r
+  }
 }

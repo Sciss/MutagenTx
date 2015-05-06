@@ -10,7 +10,7 @@ import scala.swing._
 object VisualUGenImpl {
   import VisualNodeImpl.diam
 
-  def apply(_main: Visual, v: Vertex.UGen)(implicit tx: S#Tx): VisualUGen = new VisualUGen with VisualNodeImpl {
+  def apply(_main: Visual, v: Vertex.UGen)(implicit tx: S#Tx): VisualUGen = new VisualUGen with VisualVertexImpl {
     val info = v.info
     val name = v.boxName
 
@@ -23,7 +23,7 @@ object VisualUGenImpl {
     protected def boundsResized(): Unit = ()
 
     protected def renderDetail(g: Graphics2D, vi: VisualItem): Unit =
-      drawLabel(g, vi, diam * vi.getSize.toFloat * 0.5f, name)
+      drawLabel(g, vi, /* diam * vi.getSize.toFloat * 0.5f, */ name)
 
     init()
   }

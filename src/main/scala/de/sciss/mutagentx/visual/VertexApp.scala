@@ -11,6 +11,7 @@ import prefuse.util.ui.JForcePanel
 import scala.swing.Swing._
 import scala.swing.event.ButtonClicked
 import scala.swing.{Component, Orientation, SplitPane, BorderPanel, Button, FlowPanel, Frame, ProgressBar, Swing, ToggleButton}
+import scala.util.{Failure, Success}
 
 object VertexApp extends App {
   run()
@@ -60,13 +61,17 @@ object VertexApp extends App {
         val dir       = file("render")
         require(dir.isDirectory)
         val cfg       = VideoSettings()
-        cfg.secondsSkip  = 60
-        cfg.secondsDecay = 60
+        cfg.secondsSkip  = 0.0 // 60
+        cfg.secondsDecay = 60.0 //
         cfg.baseFile  = dir / "movie"
         val p         = v.saveFrameSeriesAsPNG(cfg)
         seriesProc    = Some(p)
         p.addListener {
           case prog @ Processor.Progress(_, _) => onEDT(ggProgress.value = prog.toInt)
+          case Processor.Result(_, Success(_)) => println("Done.")
+          case Processor.Result(_, Failure(ex)) =>
+            println("Move rendering failed.")
+            ex.printStackTrace()
         }
 
       } { p =>
