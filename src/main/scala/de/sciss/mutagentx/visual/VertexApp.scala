@@ -29,6 +29,10 @@ object VertexApp extends App {
   }
 
   def guiInit(v: Visual): Unit = {
+    val ggHead = Button("Head") {
+      v.initChromosome(4)
+    }
+
     val ggPrevIter = Button("Prev Iter") {
       v.previousIteration()
     }
@@ -63,8 +67,10 @@ object VertexApp extends App {
         require(dir.isDirectory)
         val cfg       = VideoSettings()
         cfg.secondsSkip  = 0.0 // 60
-        cfg.secondsDecay = 60.0 //
-        cfg.baseFile  = dir / "movie"
+        cfg.secondsDecay = 20.0 // 60.0 //
+        cfg.secondsPerIteration = 10.0 // 2.0
+        cfg.chromosomeIndex     = 100
+        cfg.baseFile  = dir / "frame"
         val p         = v.saveFrameSeriesAsPNG(cfg)
         seriesProc    = Some(p)
         p.addListener {
@@ -81,7 +87,7 @@ object VertexApp extends App {
       }
     }
 
-    val pBottom = new FlowPanel(ggPrevIter, ggRunAnim, ggStepAnim, ggSaveFrame, ggSaveFrameSeries, ggProgress)
+    val pBottom = new FlowPanel(ggHead, ggPrevIter, ggRunAnim, ggStepAnim, ggSaveFrame, ggSaveFrameSeries, ggProgress)
 
     val fSim    = v.forceSimulator
     val fPanel  = new JForcePanel(fSim)
@@ -104,6 +110,7 @@ object VertexApp extends App {
       // v.display.panTo((-320, -240))
       // v.display.panTo((0, 0))
       v.display.panTo((-136, -470))   // XXX WAT -- where the heck do these values come from?
+      v.display.zoomAbs((0, 0), 1.3333)
 
       open()
 

@@ -23,6 +23,7 @@ import javax.imageio.ImageIO
 import javax.swing.JPanel
 
 import de.sciss.file._
+import de.sciss.kollflitz
 import de.sciss.lucre.stm.TxnLike
 import de.sciss.lucre.swing.impl.ComponentHolder
 import de.sciss.lucre.swing.{View, defer, deferTx, requireEDT}
@@ -41,6 +42,7 @@ import prefuse.visual.expression.InGroupPredicate
 import prefuse.visual.{VisualGraph, VisualItem}
 import prefuse.{Constants, Display, Visualization}
 
+import scala.annotation.tailrec
 import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Promise, ExecutionContext, blocking}
@@ -111,10 +113,16 @@ object Visual {
 
     def init()(implicit tx: S#Tx): this.type = {
       deferTx(guiInit())
-      val c = algorithm.genome.chromosomes().head
-      insertChromosome(c)
+      // val c = algorithm.genome.chromosomes().head
+      // insertChromosome(c)
       this
     }
+
+    def initChromosome(idx: Int): Unit =
+      algorithm.global.cursor.step { implicit tx =>
+        val c = algorithm.genome.chromosomes().apply(idx)
+        insertChromosome(c)
+      }
 
     def forceSimulator: ForceSimulator = _lay.getForceSimulator
 
@@ -236,7 +244,8 @@ object Visual {
 
     def previousIteration(): Unit = {
       val pos = cursorPos.single.transformAndGet(c => shrink(c) /* c.take(c.size - 2) */)
-      if (pos.isEmpty) return
+      // if (pos.isEmpty) return
+      if (pos.size <= 2) return
 
       algorithm.global.forkCursor.stepFrom(pos) { implicit tx =>
         implicit val itx = tx.peer
@@ -420,7 +429,7 @@ object Visual {
 
       _lay.setMaxTimeStep(40L)
       _lay.setIterations(1)
-      // forceSimulator.setSpeedLimit()
+      // forceSimulator.setSpeedLimit(0.025f)
 
       // ------------------------------------------------
 
@@ -510,7 +519,7 @@ object Visual {
         val res = Try(code)
         p.complete(res)
       }
-      blocking(Await.result(p.future, Duration(20, TimeUnit.SECONDS)))
+      blocking(Await.result(p.future, Duration.Inf)) //  Duration(20, TimeUnit.SECONDS)))
     }
 
     def saveFrameSeriesAsPNG(settings: VideoSettings): Processor[Unit] = {
@@ -528,15 +537,33 @@ object Visual {
       val child       = baseFile.base
       val parent      = baseFile.parent
 
+      forceSimulator.setSpeedLimit(speedLimit.toFloat)
+
+
       //      lazy val bImg  = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
       //      lazy val g     = bImg.createGraphics()
 
+      var initialized = false
+
       Processor[Unit]("saveFrameSeriesAsPNG") { p =>
         var frame = 0
+
+        // def mkF() = parent / f"$child${frame - framesSkip}%05d.png"
+        def mkF() = parent / f"$child${frame - framesSkip}%d.png"
+
         while (frame < numFrames) {
+          if (frame % framesPerIter == 0) /* execOnEDT */ {
+            if (initialized) {
+              previousIteration()
+            } else {
+              initChromosome(settings.chromosomeIndex)
+              initialized = true
+            }
+          }
+
           val frameSave = frame - framesSkip
           if (frameSave >= 0) {
-            val f = parent / f"$child$frameSave%05d.png"
+            val f = mkF()
             execOnEDT {
               saveFrameAsPNG(f, width = width, height = height)
               // _dsp.damageReport() // force complete redrawing
@@ -551,10 +578,40 @@ object Visual {
           println(s"frame $frame")
           p.progress = frame.toDouble / numFrames
           p.checkAborted()
-          if (frame % framesPerIter == 0) /* execOnEDT */ {
-            previousIteration()
-          }
         }
+
+        // now dissolve graph
+        val m0 = map.snapshot.values
+        println(s"VERTICES AT END: ${m0.size}")
+        if (m0.nonEmpty) {
+          import kollflitz.RandomOps._
+          implicit val rnd = new util.Random(0L)
+          val m = m0.toIndexedSeq.scramble()
+          val framesPlop = toFrames(plopDur)
+          // println(s"FRAMES-PLOP $framesPlop")
+          @tailrec def loop(sq: Vec[VisualVertex]): Unit = sq match {
+            case head +: tail =>
+              // println(s"DISPOSE $head")
+              algorithm.global.cursor.step { implicit tx =>
+                head.dispose()
+              }
+              for (i <- 1 to framesPlop) {
+                val f = mkF()
+                execOnEDT {
+                  saveFrameAsPNG(f, width = width, height = height)
+                }
+                execOnEDT {
+                  animationStep()
+                }
+                frame += 1
+              }
+              loop(tail)
+
+            case _ =>
+          }
+          loop(m)
+        }
+
         // execOnEDT(g.dispose())
       }
     }
@@ -576,4 +633,6 @@ trait Visual extends VisualLike {
   def algorithm: Algorithm
 
   def forceSimulator: ForceSimulator
+
+  def initChromosome(idx: Int): Unit
 }

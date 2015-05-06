@@ -23,11 +23,13 @@ object VideoSettings {
   implicit def build(b: Builder): VideoSettings = {
     import b._
     Impl(baseFile = baseFile, width = width, height = height, framesPerSecond = framesPerSecond,
-         secondsPerIteration = secondsPerIteration, secondsDecay = secondsDecay, secondsSkip = secondsSkip)
+         secondsPerIteration = secondsPerIteration, secondsDecay = secondsDecay, secondsSkip = secondsSkip,
+         chromosomeIndex = chromosomeIndex, plopDur = plopDur, speedLimit = speedLimit)
   }
 
   private final case class Impl(baseFile: File, width: Int, height: Int, framesPerSecond: Int,
-                                secondsPerIteration: Double, secondsDecay: Double, secondsSkip: Double)
+                                secondsPerIteration: Double, secondsDecay: Double, secondsSkip: Double,
+                                chromosomeIndex: Int, plopDur: Double, speedLimit: Double)
     extends VideoSettings {
 
     override def productPrefix = "VideoSetting"
@@ -48,6 +50,9 @@ object VideoSettings {
     var secondsPerIteration = 10.0 //  2.0
     var secondsDecay        = 20.0 // 10.0
     var secondsSkip         = 0.0
+    var chromosomeIndex     = 0
+    var plopDur             = 0.333
+    var speedLimit          = 0.04
   }
 }
 trait VideoSettings {
@@ -58,4 +63,7 @@ trait VideoSettings {
   def secondsPerIteration : Double
   def secondsDecay        : Double
   def secondsSkip         : Double
+  def chromosomeIndex     : Int
+  def plopDur             : Double
+  def speedLimit          : Double
 }
