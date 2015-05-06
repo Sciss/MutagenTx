@@ -30,7 +30,7 @@ object VertexApp extends App {
 
   def guiInit(v: Visual): Unit = {
     val ggHead = Button("Head") {
-      v.initChromosome(4)
+      v.initChromosome(100)
     }
 
     val ggPrevIter = Button("Prev Iter") {
@@ -109,7 +109,7 @@ object VertexApp extends App {
 
       // v.display.panTo((-320, -240))
       // v.display.panTo((0, 0))
-      v.display.panTo((-136, -470))   // XXX WAT -- where the heck do these values come from?
+      v.display.panTo((-136 + 20, -470 + 20))   // XXX WAT -- where the heck do these values come from?
       v.display.zoomAbs((0, 0), 1.3333)
 
       open()
