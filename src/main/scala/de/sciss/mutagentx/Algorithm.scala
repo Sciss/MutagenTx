@@ -34,10 +34,10 @@ object Algorithm {
   val DEBUG = false
 
   // ---- generation ----
-  val population      : Int     = 15 // 1500
+  val population      : Int     = 20 // 1500
   val constProb       : Double  = 0.5
-  val minNumVertices  : Int     = 20
-  val maxNumVertices  : Int     = 100
+  val minNumVertices  : Int     = 2 // 20
+  val maxNumVertices  : Int     = 3 // 100
   val nonDefaultProb  : Double  = 0.99 // 0.5
 
   // ---- evaluation ----
@@ -49,10 +49,10 @@ object Algorithm {
 
   // ---- breeding ----
   val selectionFrac   : Double  = 0.33
-  val numElitism      : Int     = 5
+  val numElitism      : Int     = 0 // 5
   val mutMin          : Int     = 2
   val mutMax          : Int     = 4
-  val mutationProb    : Double  = 0.75
+  val mutationProb    : Double  = 0.5 // 0.75
 
   implicit val executionContext: ExecutionContext = {
     ExecutionContext.Implicits.global

@@ -26,7 +26,7 @@ import de.sciss.file._
 import de.sciss.lucre.stm.TxnLike
 import de.sciss.lucre.swing.impl.ComponentHolder
 import de.sciss.lucre.swing.{View, defer, deferTx, requireEDT}
-import de.sciss.mutagentx.visual.impl.{MySpringForce, BoxRenderer}
+import de.sciss.mutagentx.visual.impl.{MyEdgeRenderer, MySpringForce, BoxRenderer}
 import de.sciss.processor.Processor
 import prefuse.action.assignment.ColorAction
 import prefuse.action.layout.graph.ForceDirectedLayout
@@ -281,7 +281,6 @@ object Visual {
           insertChromosome(c)
         }
         // }
-        println("---1")
 
         map.foreach { case (_, v) =>
           if (!v.isActive) toRemove += v
@@ -294,8 +293,6 @@ object Visual {
           checkEdges(v.edgesOut)
         }
 
-        println("---2")
-
         if (DEBUG) {
           val numVertices = toRemove.count(_.isInstanceOf[VisualVertex])
           val numEdges    = toRemove.count(_.isInstanceOf[VisualEdge  ])
@@ -303,7 +300,6 @@ object Visual {
         }
 
         toRemove.foreach(_.dispose())
-        println("---3")
       }
     }
 
@@ -348,8 +344,8 @@ object Visual {
       _vg.addColumn(COL_MUTA, classOf[AnyRef])
 
       val procRenderer = new BoxRenderer(this) // new NuagesShapeRenderer(50)
-      val edgeRenderer = new EdgeRenderer(Constants.EDGE_TYPE_CURVE /* EDGE_TYPE_LINE */, Constants.EDGE_ARROW_REVERSE)
-      // edgeRenderer.setArrowHeadSize(200, 200)
+      val edgeRenderer = new MyEdgeRenderer
+      // edgeRenderer.setArrowHeadSize(8, 8)
 
       val rf = new DefaultRendererFactory(procRenderer)
       rf.add(new InGroupPredicate(GROUP_EDGES), edgeRenderer)
@@ -379,13 +375,23 @@ object Visual {
 //        ("SpringForce", "DefaultSpringLength"  ) -> 200.0f
 //      )
 
+//      val forceMap = Map(
+//        ("NBodyForce" , "GravitationalConstant") -> -2.0f,
+//        ("NBodyForce" , "Distance"             ) -> -1.0f,
+//        ("NBodyForce" , "BarnesHutTheta"       ) -> 0.57f,
+//        ("DragForce"  , "DragCoefficient"      ) -> 0.01f,
+//        ("SpringForce", "SpringCoefficient"    ) -> 1.0e-5f,
+//        ("SpringForce", "DefaultSpringLength"  ) -> 10.0f
+//      )
+
       val forceMap = Map(
-        ("NBodyForce" , "GravitationalConstant") -> -2.0f,
+        ("NBodyForce" , "GravitationalConstant") -> -5.0f,
         ("NBodyForce" , "Distance"             ) -> -1.0f,
-        ("NBodyForce" , "BarnesHutTheta"       ) -> 0.57f,
-        ("DragForce"  , "DragCoefficient"      ) -> 0.01f,
-        ("SpringForce", "SpringCoefficient"    ) -> 1.0e-5f,
-        ("SpringForce", "DefaultSpringLength"  ) -> 10.0f
+        ("NBodyForce" , "BarnesHutTheta"       ) -> 0.4f,
+        ("DragForce"  , "DragCoefficient"      ) -> 0.02f,
+        ("MySpringForce", "SpringCoefficient"  ) -> 8.0e-5f,
+        ("MySpringForce", "Torque"             ) -> 2.0e-4f,
+        ("MySpringForce", "Limit"              ) -> 300.0f
       )
 
       forceSimulator.getForces.foreach { force =>
