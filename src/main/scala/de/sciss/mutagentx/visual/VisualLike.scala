@@ -33,5 +33,7 @@ trait VisualLike extends View[S] {
 
   def saveFrameAsPNG(file: File): Unit
 
+  def saveFrameAsPNG(file: File, width: Int, height: Int): Unit
+
   def saveFrameSeriesAsPNG(settings: VideoSettings): Processor[Unit]
 }

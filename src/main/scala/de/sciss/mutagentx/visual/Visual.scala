@@ -491,7 +491,7 @@ object Visual {
 
     def saveFrameAsPNG(file: File): Unit = saveFrameAsPNG(file, width = _dsp.getWidth, height = _dsp.getHeight)
 
-    private def saveFrameAsPNG(file: File, width: Int, height: Int): Unit = {
+    def saveFrameAsPNG(file: File, width: Int, height: Int): Unit = {
       requireEDT()
       val bImg  = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
       val g     = bImg.createGraphics()

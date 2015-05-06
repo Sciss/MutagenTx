@@ -49,7 +49,8 @@ object VertexApp extends App {
       val fmt   = new SimpleDateFormat("'betanovuss_'yyMMdd'_'HHmmss'.png'", Locale.US)
       val name  = fmt.format(new Date)
       val f     = userHome / "Pictures" / name
-      v.saveFrameAsPNG(f)
+      val vs    = VideoSettings()
+      v.saveFrameAsPNG(f, width = vs.width, height = vs.height)
     }
 
     var seriesProc = Option.empty[Processor[Unit]]
@@ -101,13 +102,17 @@ object VertexApp extends App {
       // size      = (640, 480)
 
       // v.display.panTo((-320, -240))
-      v.display.panTo((0, 0))
+      // v.display.panTo((0, 0))
+      v.display.panTo((-136, -470))   // XXX WAT -- where the heck do these values come from?
 
       open()
 
       override def closeOperation(): Unit = {
-        v.algorithm.system.close()
-        sys.exit(0)
+        try {
+          v.algorithm.system.close()
+        } finally {
+          sys.exit(0)
+        }
       }
     }
   }
