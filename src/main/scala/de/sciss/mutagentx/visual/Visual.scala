@@ -173,6 +173,7 @@ object Visual {
           case (vc: Vertex.Constant, vvc: VisualConstant) =>
             val value = vc.f()
             if (vvc.value != value) {
+              println(f"VALUE ${vvc.value}%1.3f >>> $value%1.3f")
               vvc.value = value   // XXX animate -- how? THREADING
             }
           case _ =>
@@ -390,6 +391,7 @@ object Visual {
         ("NBodyForce" , "BarnesHutTheta"       ) -> 0.4f,
         ("DragForce"  , "DragCoefficient"      ) -> 0.02f,
         ("MySpringForce", "SpringCoefficient"  ) -> 8.0e-5f,
+        ("MySpringForce", "DefaultSpringLength") -> 150.0f,
         ("MySpringForce", "Torque"             ) -> 2.0e-4f,
         ("MySpringForce", "Limit"              ) -> 300.0f
       )

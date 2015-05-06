@@ -133,24 +133,34 @@ object MutationImpl {
 
     val idx     = random.nextInt(numVertices)
     val vOld    = vertices(idx)
-    val outlet  = getTargets(top, vOld)
-    val inlets  = top.edgeMap.get(vOld).getOrElse(Set.empty)
+    vOld match {
+      case f: Vertex.Constant => changeVertexConstant(top, f)
+      case u: Vertex.UGen     => changeVertexUGen    (top, u)
+    }
+    stats(2) += 1
+
+    true
+  }
+
+  private def changeVertexConstant(top: Chromosome, vc: Vertex.Constant)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Unit = {
+    val fNew: Float = if (Util.coin())
+      ChromosomeImpl.mkConstantValue()            // completely random
+    else
+      vc.f() * Util.exprand(0.9, 1.0/0.9).toFloat  // gradual change
+
+    vc.f() = fNew
+  }
+
+  private def changeVertexUGen(top: Chromosome, vu: Vertex.UGen)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Unit = {
+    val outlet  = getTargets(top, vu)
+    val inlets  = top.edgeMap.get(vu).getOrElse(Set.empty)
     outlet.foreach(top.removeEdge)
     inlets.foreach(top.removeEdge)
-    top.removeVertex(vOld)
+    top.removeVertex(vu)
 
-    val vNew    = vOld match {
-      case Vertex.Constant(f) =>
-        val f0: Float = f   // some IntelliJ highlight bug
-        if (Util.coin())
-          ChromosomeImpl.mkConstant()   // completely random
-        else
-          Vertex.Constant(f0 * Util.exprand(0.9, 1.0/0.9).toFloat) // gradual change
-      case _ =>
-        ChromosomeImpl.mkUGen()
-    }
+    val vNew = ChromosomeImpl.mkUGen()
 
-    val oldInletNames: Vec[String] = vOld match {
+    val oldInletNames: Vec[String] = vu match {
       case Vertex.UGen(info) => /* ChromosomeImpl.geArgs(info).map(_.name) */ info.inputs.map(_.arg)
       case _ => Vec.empty
     }
@@ -174,10 +184,6 @@ object MutationImpl {
       case vu: Vertex.UGen => ChromosomeImpl.completeUGenInputs(top, vu)
       case _ =>
     }
-
-    stats(2) += 1
-
-    true
   }
 
   private def changeEdge(top: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean = {

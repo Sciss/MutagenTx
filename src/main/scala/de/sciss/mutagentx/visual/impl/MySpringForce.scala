@@ -7,7 +7,6 @@ import prefuse.util.force.{Spring, SpringForce}
 object MySpringForce {
   private final val pi    = math.Pi.toFloat
   private final val piH   = (math.Pi/2).toFloat
-  private final val twoPi = (math.Pi*2).toFloat
   private final val eps   = (1 * math.Pi/180).toFloat
 }
 class MySpringForce extends SpringForce {
@@ -74,19 +73,6 @@ class MySpringForce extends SpringForce {
       item1.force(1) += y1t - y1
       item2.force(0) += x2t - x2
       item2.force(1) += y2t - y2
-
-//      val cos1  = math.cos(ang).toFloat
-//      val sin1  = math.sin(ang).toFloat
-//      val x1Amt  = sin1 * af * r
-//      val y1Amt  = cos1 * af * r
-//      val cos2  = -cos1 // math.cos(-ang).toFloat
-//      val sin2  = -sin1 // math.sin(-ang).toFloat
-//      val x2Amt  = sin2 * af * r
-//      val y2Amt  = cos2 * af * r
-//      item1.force(0) += x1Amt
-//      item1.force(1) += y1Amt
-//      item2.force(0) += x2Amt
-//      item2.force(1) += y2Amt
     }
   }
 }

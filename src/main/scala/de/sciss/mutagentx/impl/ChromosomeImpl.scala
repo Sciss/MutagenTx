@@ -199,11 +199,14 @@ object ChromosomeImpl {
   }
 
   def mkConstant()(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Vertex.Constant = {
-    import Util.{coin, exprand}
+    val v = Vertex.Constant(mkConstantValue())
+    v
+  }
 
+  def mkConstantValue()(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Float = {
+    import Util.{coin, exprand}
     val f0  = exprand(0.001, 10000.001) - 0.001
     val f   = if (coin(0.25)) -f0 else f0
-    val v   = Vertex.Constant(f.toFloat)
-    v
+    f.toFloat
   }
 }
