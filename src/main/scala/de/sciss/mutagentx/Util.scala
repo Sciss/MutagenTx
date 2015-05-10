@@ -34,4 +34,40 @@ object Util {
     }
     b.result()
   }
+
+  // ---- signal processing functions ----
+
+  /** Mutates `a` by multiplying its contents with `b`. */
+  def mul(a: Array[Float], aOff: Int, b: Array[Float], bOff: Int, len: Int): Unit = {
+    var ai = aOff
+    val stop = ai + len
+    var bi = bOff
+    while (ai < stop) {
+      a(ai) *= b(bi)
+      ai += 1
+      bi += 1
+    }
+  }
+
+  /** Mutates `a` by adding `b` to it. */
+  def add(a: Array[Double], aOff: Int, b: Array[Double], bOff: Int, len: Int): Unit = {
+    var ai = aOff
+    val stop = ai + len
+    var bi = bOff
+    while (ai < stop) {
+      a(ai) += b(bi)
+      ai += 1
+      bi += 1
+    }
+  }
+
+  /** Mutates `a` by multiplying each element with `f` */
+  def mul(a: Array[Double], off: Int, len: Int, f: Double): Unit = {
+    var ai = off
+    val stop = ai + len
+    while (ai < stop) {
+      a(ai) *= f
+      ai += 1
+    }
+  }
 }
