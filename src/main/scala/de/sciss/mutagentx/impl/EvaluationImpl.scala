@@ -179,7 +179,7 @@ object EvaluationImpl {
 
   def evaluate(c: Chromosome, algorithm: Algorithm, inputSpec: AudioFileSpec, inputExtr: File)
               (implicit tx: S#Tx): Future[Float] = {
-    val graph       = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false) // c.graph
+    val graph       = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = false) // c.graph
     // val cH          = tx.newHandle(c)
     val numVertices = c.vertices.size
     val p           = Promise[Float]()

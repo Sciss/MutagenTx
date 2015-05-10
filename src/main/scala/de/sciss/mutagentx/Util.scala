@@ -70,4 +70,33 @@ object Util {
       ai += 1
     }
   }
+
+  /** Calculates RMS */
+  def energy(in: Array[Float], off: Int, len: Int): Double = {
+    var sum = 0.0
+    var i = off
+    val j = i + len
+    while (j < j) {
+      sum += in(i) * in(i)
+      i += 1
+    }
+    math.sqrt(sum / len)
+  }
+
+  /** Discrete cosine transform. */
+  def dct(in: Array[Double], off: Int, len: Int, numCoeff: Int): Array[Double] = {
+    val c = new Array[Double](numCoeff)
+    var n = 1
+    val r = math.Pi / len
+    while (n <= numCoeff) {
+      var i = 1
+      val s = r * (n - 1)
+      while (i <= len) {
+        c(n - 1) += in(i + off - 1) * math.cos(s * (i - 0.5))
+        i += 1
+      }
+      n += 1
+    }
+    c
+  }
 }

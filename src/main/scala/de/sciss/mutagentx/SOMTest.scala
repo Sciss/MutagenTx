@@ -43,8 +43,8 @@ object SOMTest extends App {
     def replaceWeight(newWeight: Weight): Node = copy(weight = newWeight)
   }
   
-  case class Weight(feature: Array[Double]) extends HasWeight {
-    override def toString = feature.map(d => f"$d%1.3f").mkString("[", ", ", "]")
+  case class Weight(spectral: Array[Double], temporal: Array[Double]) extends HasWeight {
+    override def toString = spectral.map(d => f"$d%1.3f").mkString("[", ", ", "]")
     
     def weight = this
     type Self = Weight
@@ -82,7 +82,7 @@ object SOMTest extends App {
       println(s"No. of chromosomes fit enough: ${sel0.size}")
       val sel   = sel0.take(50) // for now
       sel.map { case (c, f) =>
-        val gr = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = true)
+        val gr = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true)
         new Input(gr, iter = iter, fitness = f)
       }
     }
@@ -124,6 +124,7 @@ object SOMTest extends App {
               val numFrames = af.numFrames
               var remain  = numFrames
               val mean    = new Array[Double](numCoeff)
+              val enBuf   = new Array[Double](fftSize)
               var count   = 0
               while (remain > 0) {
                 val chunk = math.min(remain, fftSize - off).toInt
@@ -132,6 +133,10 @@ object SOMTest extends App {
                 System.arraycopy(inBuf(0), 0, winBuf, 0, off1)
                 if (off1 < fftSize) java.util.Arrays.fill(winBuf, off1, fftSize, 0f)
                 mul(winBuf, 0, win, 0, off1)
+                if (count < fftSize) {
+                  val e = energy(winBuf, 0, off1)
+                  enBuf(count) = e
+                }
                 val coeff = mfcc.process(winBuf, 0, off1)
                 add(mean, 0, coeff, 0, numCoeff)
                 remain -= chunk
@@ -143,12 +148,16 @@ object SOMTest extends App {
                 proc.checkAborted()
               }
               if (count > 0) mul(mean, 0, numCoeff, 1.0 / count)
+
+              val temporal = Util.dct(enBuf, off = 0, len = count, numCoeff = numCoeff)
+
               if (mean.exists(x => x.isNaN || x.isInfinity)) {
                 println("Dropping chromosome with NaN features!")
                 None
               } else {
-                val w = Node(input.graph, iter = input.iter, fitness = input.fitness, weight = Weight(mean))
-                Some(w)
+                val weight  = Weight(mean, temporal)
+                val node    = Node(input.graph, iter = input.iter, fitness = input.fitness, weight = weight)
+                Some(node)
               }
             } finally {
               af.cleanUp()
@@ -172,21 +181,22 @@ object SOMTest extends App {
       val featMax = Array(  151.118, 57.481, 20.539, 10.134, 8.485,   6.312,  5.287,  3.876,  4.552,  2.771,  3.031,  3.047,  3.272)
 
       def normalize(w: Weight): Weight = {
-        val fNew = w.feature.zipWithIndex.map { case (v, i) => v.linlin(featMin(i), featMax(i), 0, 1) }
-        w.copy(feature = fNew)
+        val fNew = w.spectral.zipWithIndex.map { case (v, i) => v.linlin(featMin(i), featMax(i), 0, 1) }
+        w.copy(spectral = fNew)
       }
       
       val nodesN = nodes.map(n => n.copy(weight = normalize(n.weight)))
 
       def rndWeight: Weight = {
-        val f = Array.fill(numCoeff)(rnd.nextDouble())
-        Weight(f)
+        val spectral = Array.fill(numCoeff)(rnd.nextDouble())
+        val temporal = Array.fill(numCoeff)(rnd.nextDouble())
+        Weight(spectral, temporal)
       }
 
       def weightDist(w1: Weight, w2: Weight): Double = {
         def norm(v: Array[Double]): Vec[Double] = (0 until v.length).map { i => v(i).linlin(featMin(i), featMax(i), 0, 1) }
-        val w1n = norm(w1.feature)
-        val w2n = norm(w2.feature)
+        val w1n = norm(w1.spectral)
+        val w2n = norm(w2.spectral)
         (w1n zip w2n).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
       }
 
@@ -220,8 +230,9 @@ object SOMTest extends App {
         def perform(iW: Double, nW: Double): Double =
           nW + learningRate * theta * (iW - nW)
 
-        val fNew = (input.weight.feature, weight.feature).zipped.map(perform)
-        input.replaceWeight(Weight(fNew))
+        val spectralNew = (input.weight.spectral, weight.spectral).zipped.map(perform)
+        val temporalNew = (input.weight.temporal, weight.temporal).zipped.map(perform)
+        input.replaceWeight(Weight(spectralNew, temporalNew))
       }
 
       def nextLattice(iter: Int, lattice: AnyLattice): AnyLattice = {

@@ -21,7 +21,7 @@ import de.sciss.synth.{UndefinedRate, UGenSpec, ugen, GE, SynthGraph}
 import scala.annotation.tailrec
 
 object ChromosomeImpl {
-  def mkSynthGraph(c: Chromosome, mono: Boolean, removeNaNs: Boolean)
+  def mkSynthGraph(c: Chromosome, mono: Boolean, removeNaNs: Boolean, config: Boolean)
                   (implicit tx: S#Tx /*, random: TxnRandom[D#Tx] */): SynthGraph = {
     val top = c
 
@@ -94,9 +94,12 @@ object ChromosomeImpl {
             val isOk = CheckBadValues.ar(sig1, post = 0) sig_== 0
             Gate.ar(sig1, isOk)
           }
-        val sig3  = Limiter.ar(LeakDC.ar(sig2))
+        val sig3  = if (config) sig2 else Limiter.ar(LeakDC.ar(sig2))
         val sig   = if (mono) sig3 else Pan2.ar(sig3) // SplayAz.ar(numChannels = 2, in = sig3)
-        Out.ar(0, sig)
+        if (config)
+          ConfigOut(sig)
+        else
+          Out.ar(0, sig)
       }
     }
   }
