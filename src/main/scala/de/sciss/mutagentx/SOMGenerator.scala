@@ -8,41 +8,122 @@ import de.sciss.lucre.data.DeterministicSkipOctree
 import de.sciss.lucre.data.gui.SkipQuadtreeView
 import de.sciss.lucre.geom.IntSpace.TwoDim
 import de.sciss.lucre.geom.{IntPoint2D, IntSpace, IntSquare}
-import de.sciss.lucre.stm
+import de.sciss.lucre.{expr, stm}
+import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.stm.InMemory
 import de.sciss.processor.{Processor, ProcessorOps}
-import de.sciss.serial.{DataInput, DataOutput, Serializer}
+import de.sciss.serial.{ImmutableSerializer, DataInput, DataOutput, Serializer}
 import de.sciss.synth.SynthGraph
 import de.sciss.synth.io.AudioFile
+import de.sciss.synth.proc.{Durable, SynthGraphs}
 import de.sciss.{kollflitz, numbers}
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, blocking}
+import scala.concurrent.{Future, Await, blocking}
 import scala.swing.{Component, MainFrame, Swing}
 import scala.util.Try
 
-object SOMTest extends App {
+object SOMGenerator extends App {
   run()
 
-  class Input (val graph: SynthGraph, val iter: Int, val fitness: Float)
-  
+  object Input {
+    implicit object serializer extends ImmutableSerializer[Input] {
+      private final val COOKIE = 0x496E7000 // "Inp\0"
+
+      def read(in: DataInput): Input = {
+        val cookie  = in.readInt()
+        if (cookie != COOKIE) throw new IllegalStateException(s"Expected cookie ${COOKIE.toHexString} but found ${cookie.toHexString}")
+        val graph   = SynthGraphs.ValueSerializer.read(in)
+        val iter    = in.readShort()
+        val fitness = in.readFloat()
+        Input(graph, iter = iter, fitness = fitness)
+      }
+
+      def write(input: Input, out: DataOutput): Unit = {
+        out.writeInt(COOKIE)
+        SynthGraphs.ValueSerializer.write(input.graph, out)
+        out.writeShort(input.iter)
+        out.writeFloat(input.fitness)
+      }
+    }
+  }
+  case class Input(graph: SynthGraph, iter: Int, fitness: Float) {
+    override def toString = {
+      val fitS  = f"$fitness%1.3f"
+      s"Weight(graph size = ${graph.sources.size}, iter = $iter, fitness = $fitS)"
+    }
+  }
+
   sealed trait HasWeight {
     type Self <: HasWeight
     def weight: Weight
     def replaceWeight(newWeight: Weight): Self
   }
-  
-  case class Node(graph: SynthGraph, iter: Int, fitness: Float, weight: Weight) extends HasWeight {
-    override def toString = {
-      val fitS  = f"$fitness%1.3f"
-      s"Weight(graph size = ${graph.sources.size}, iter = $iter, fitness = $fitS, w = $weight)"
-    }
 
+  object Node {
+    implicit object serializer extends ImmutableSerializer[Node] {
+      private final val COOKIE = 0x4E6F6400 // "Nod\0"
+
+      def read(in: DataInput): Node = {
+        val cookie  = in.readInt()
+        if (cookie != COOKIE) throw new IllegalStateException(s"Expected cookie ${COOKIE.toHexString} but found ${cookie.toHexString}")
+        val input   = Input.serializer.read(in)
+        val weight  = Weight.serializer.read(in)
+        Node(input = input, weight = weight)
+      }
+
+      def write(node: Node, out: DataOutput): Unit = {
+        out.writeInt(COOKIE)
+        Input.serializer.write(node.input, out)
+        Weight.serializer.write(node.weight, out)
+      }
+    }
+  }
+  case class Node(input: Input, weight: Weight) extends HasWeight {
     type Self = Node
     def replaceWeight(newWeight: Weight): Node = copy(weight = newWeight)
   }
-  
+
+  object Weight {
+    implicit object serializer extends ImmutableSerializer[Weight] {
+      private final val COOKIE = 0x57656900 // "Wei\0"
+
+      private def readArray(in: DataInput): Array[Double] = {
+        val sz = in.readShort()
+        val a  = new Array[Double](sz)
+        var i = 0
+        while (i < sz) {
+          a(i) = in.readDouble()
+          i += 1
+        }
+        a
+      }
+
+      def read(in: DataInput): Weight = {
+        val cookie = in.readInt()
+        if (cookie != COOKIE) throw new IllegalStateException(s"Expected cookie ${COOKIE.toHexString} but found ${cookie.toHexString}")
+        val spectral = readArray(in)
+        val temporal = readArray(in)
+        Weight(spectral = spectral, temporal = temporal)
+      }
+
+      private def writeArray(a: Array[Double], out: DataOutput): Unit = {
+        out.writeShort(a.length)
+        var i = 0
+        while (i < a.length) {
+          out.writeDouble(a(i))
+          i += 1
+        }
+      }
+
+      def write(w: Weight, out: DataOutput): Unit = {
+        out.writeInt(COOKIE)
+        writeArray(w.spectral, out)
+        writeArray(w.temporal, out)
+      }
+    }
+  }
   case class Weight(spectral: Array[Double], temporal: Array[Double]) extends HasWeight {
     override def toString = spectral.map(d => f"$d%1.3f").mkString("[", ", ", "]")
     
@@ -63,10 +144,170 @@ object SOMTest extends App {
 
   type AnyLattice = Lattice[HasWeight]
 
-  type S = InMemory
-  type D = IntSpace.TwoDim
+  type I    = InMemory
+  type Dim  = IntSpace.TwoDim
+
+  import Algorithm.executionContext
+
+  // hashes: from previous iterations, prevents that multiple identical synth graphs appear
+  def analyzeIter(a: Algorithm, path: S#Acc, hashes: Set[Int]): Future[(Vec[Node], Set[Int])] = {
+    val csr = a.global.forkCursor
+    val futGraphs: Future[(Set[Int], Vec[Input])] = Future {
+      val res: (Set[Int], Vec[Input]) = csr.stepFrom(path) { implicit tx =>
+        val g     = a.genome
+        val cs    = g.chromosomes()
+        val fit   = g.fitness    ()
+        val iter  = tx.inputAccess.size / 2
+        val sel0  = (cs zip fit).filter(_._2 > 0.2)
+        println(s"No. of chromosomes fit enough: ${sel0.size}")
+        val sel   = sel0 // .take(50) // for now
+        val res0 = ((hashes, Vec.empty[Input]) /: sel) { case ((hashesIn, inputsIn), (c, f)) =>
+          val gr    = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true)
+          val hash  = gr.hashCode()
+          if (hashesIn.contains(hash)) (hashesIn, inputsIn) else {
+            val input = new Input(gr, iter = iter, fitness = f)
+            (hashesIn + hash, inputsIn :+ input)
+          }
+        }
+        res0
+      }
+      res
+    }
+
+    val mCfgB = dsp.MFCC.Config()
+    mCfgB.fftSize   = 1024
+    mCfgB.minFreq   = 60
+    mCfgB.maxFreq   = 16000
+    mCfgB.sampleRate= 44100.0
+    mCfgB.numCoeff  = 13
+    val mCfg        = mCfgB.build
+    import mCfg.{fftSize, numCoeff}
+    val mfcc        = dsp.MFCC(mCfg)
+    val fftSizeH    = fftSize/2
+
+    val futWeights = Processor[(Vec[Node], Set[Int])]("Weights") { proc =>
+      val (hashesOut, graphs) = Await.result(futGraphs, Duration.Inf)
+      val numGraphs = graphs.size
+      val nodes = graphs.zipWithIndex.flatMap { case (input, gIdx) =>
+        val f         = File.createTemp(suffix = ".aif")
+        val futBounce = impl.EvaluationImpl.bounce(input.graph, audioF = f, inputSpec = a.inputSpec)
+        val resBounce = Try(Await.result(futBounce, Duration(20, TimeUnit.SECONDS)))
+
+        if (resBounce.isFailure) {
+          println("Bounce failed:")
+          println(resBounce)
+          None
+        } else {
+          import Util._
+
+          blocking {
+            val af = AudioFile.openRead(f)
+            try {
+              val inBuf   = af.buffer(fftSize)
+              val winBuf  = new Array[Float](fftSize)
+              val win     = dsp.Window.Kaiser6.create(fftSize)
+              var off     = 0
+              val numFrames = af.numFrames
+              var remain  = numFrames
+              val mean    = new Array[Double](numCoeff)
+              val enBuf   = new Array[Double](fftSize)
+              var count   = 0
+              while (remain > 0) {
+                val chunk = math.min(remain, fftSize - off).toInt
+                af.read(inBuf, off, chunk)
+                val off1 = off + chunk
+                System.arraycopy(inBuf(0), 0, winBuf, 0, off1)
+                if (off1 < fftSize) java.util.Arrays.fill(winBuf, off1, fftSize, 0f)
+                mul(winBuf, 0, win, 0, off1)
+                if (count < fftSize) {
+                  val e = energy(winBuf, 0, off1)
+                  enBuf(count) = e
+                }
+                val coeff = mfcc.process(winBuf, 0, off1)
+                add(mean, 0, coeff, 0, numCoeff)
+                remain -= chunk
+                System.arraycopy(inBuf(0), fftSizeH, inBuf(0), 0, fftSizeH) // overlap
+                off = fftSizeH
+                count += 1
+
+                proc.progress = (((numFrames - remain).toDouble / numFrames) + gIdx) / numGraphs
+                proc.checkAborted()
+              }
+              if (count > 0) mul(mean, 0, numCoeff, 1.0 / count)
+
+              val temporal = Util.dct(enBuf, off = 0, len = count, numCoeff = numCoeff)
+
+              if (mean.exists(x => x.isNaN || x.isInfinity)) {
+                println("Dropping chromosome with NaN features!")
+                None
+              } else {
+                val weight  = Weight(spectral = mean, temporal = temporal)
+                val node    = Node(input, weight)
+                Some(node)
+              }
+            } finally {
+              af.cleanUp()
+              f.delete()
+            }
+          }
+        }
+      }
+      (nodes, hashesOut)
+    }
+
+    futWeights
+  }
 
   def run(): Unit = {
+    val dir   = file("database"  ) / (if (args.length > 0) args(0) else "betanovuss0")
+    val in    = file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
+    val store = dir.parent / s"${dir.name}_def"
+    if (store.isDirectory) {
+      println(s"Directory $store already exists. Not regenerating.")
+      return
+    }
+
+    val a       = Algorithm(dir = dir, input = in)
+    val csr     = a.global.cursor
+    val path    = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
+    val numIter = path.size / 2
+
+    val dur     = Durable(BerkeleyDB.factory(store))
+    implicit val listSer = expr.List.Modifiable.serializer[D, Node]
+    implicit val iterSer = expr.List.Modifiable.serializer[D, expr.List.Modifiable[D, Node, Unit]]
+    val iterListH   = dur.root { implicit tx =>
+      expr.List.Modifiable[D, expr.List.Modifiable[D, Node, Unit]]
+    }
+
+    val proc = Processor[Unit]("gen-def") { self =>
+      var hashes = Set.empty[Int]
+      for (i <- 1 to numIter) {
+        println(s"-------- GENERATING SYNTH DEFS FOR ITERATION $i of $numIter --------")
+        val fut = analyzeIter(a, path.take(i * 2), hashes)
+        val (inputs: Vec[Node], hashesOut: Set[Int]) = Await.result(fut, Duration.Inf)
+        hashes = hashesOut
+        dur.step { implicit tx =>
+          val iterList = iterListH()
+          val defList  = expr.List.Modifiable[D, Node]
+          inputs.foreach(defList.addLast)
+          iterList.addLast(defList)
+        }
+        self.progress = i.toDouble / numIter
+        self.checkAborted()
+      }
+    }
+
+    proc.monitor()
+    proc.onComplete {
+      case _ =>
+        dur.close()
+        sys.exit()
+    }
+
+    Swing.onEDT {}  // keep JVM running
+  }
+
+  def runFOO(): Unit = {
     val dir = file("database"  ) / (if (args.length > 0) args(0) else "betanovuss0")
     val in  = file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
     val a   = Algorithm(dir = dir, input = in)
@@ -156,7 +397,7 @@ object SOMTest extends App {
                 None
               } else {
                 val weight  = Weight(mean, temporal)
-                val node    = Node(input.graph, iter = input.iter, fitness = input.fitness, weight = weight)
+                val node    = Node(input, weight)
                 Some(node)
               }
             } finally {
@@ -221,10 +462,10 @@ object SOMTest extends App {
         lattice.nodes.map(n => (n, nodeDist(n, bmu))).partition(n => n._2 <= radius)
 
       def learningRate(iter: Double): Double =
-        0.072 * math.exp(-iter/numIterations) // decays over time
+        0.072 * math.exp(-iter / numIterations) // decays over time
 
       def theta(d2bmu: Double, radius: Double): Double =
-        math.exp(-d2bmu.squared/(2.0*radius.squared)) // learning proportional to distance
+        math.exp(-d2bmu.squared / (2 * radius.squared)) // learning proportional to distance
 
       def adjust[W <: HasWeight](input: W, weight: Weight, learningRate: Double, theta: Double): input.Self = {
         def perform(iW: Double, nW: Double): Double =
@@ -242,7 +483,7 @@ object SOMTest extends App {
         val allNodes      = bmuNeighbours(radius, bmuNode, lattice)
         val lRate         = learningRate(iter)
         val adjustedNodes = allNodes._1.par.map { t =>
-          val tTheta = theta(t._2, radius)
+          val tTheta  = theta(t._2, radius)
           val nWeight = adjust(randomInput, t._1.node.weight, lRate, tTheta)
           PlacedNode(t._1.coord, nWeight)
         } .toIndexedSeq
@@ -300,12 +541,12 @@ object SOMTest extends App {
       val extent  = ((lattice.size + 1) / 2).nextPowerOfTwo
       implicit val system  = InMemory()
       val quadH = system.step { implicit tx =>
-        implicit object nodeSerializer extends Serializer[S#Tx, S#Acc, PlacedNode[Node]] {
-          def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): PlacedNode[Node] = sys.error("not supported")
+        implicit object nodeSerializer extends Serializer[I#Tx, I#Acc, PlacedNode[Node]] {
+          def read(in: DataInput, access: I#Acc)(implicit tx: I#Tx): PlacedNode[Node] = sys.error("not supported")
           def write(v: PlacedNode[Node], out: DataOutput): Unit = sys.error("not supported")
         }
-        implicit val pointView = (n: PlacedNode[Node], tx: S#Tx) => n.coord
-        val quad = DeterministicSkipOctree.empty[S, D, PlacedNode[Node]](IntSquare(extent, extent, extent))
+        implicit val pointView = (n: PlacedNode[Node], tx: I#Tx) => n.coord
+        val quad = DeterministicSkipOctree.empty[I, Dim, PlacedNode[Node]](IntSquare(extent, extent, extent))
         lattice.nodes.foreach(quad.add)
         tx.newHandle(quad)
       }
@@ -326,10 +567,10 @@ Feature vector 98% percentiles:
 
    */
 
-  def guiInit(quadH: stm.Source[S#Tx, DeterministicSkipOctree[S, D, PlacedNode[Node]]])(implicit system: S): Unit = {
+  def guiInit(quadH: stm.Source[I#Tx, DeterministicSkipOctree[I, Dim, PlacedNode[Node]]])(implicit system: I): Unit = {
     // val model = InteractiveSkipOctreePanel.makeModel2D(system)(())
     // new InteractiveSkipOctreePanel(model)
-    val quadView = new SkipQuadtreeView[S, PlacedNode[Node]](quadH, system, _.coord)
+    val quadView = new SkipQuadtreeView[I, PlacedNode[Node]](quadH, system, _.coord)
     new MainFrame {
       contents = Component.wrap(quadView)
       pack().centerOnScreen()
