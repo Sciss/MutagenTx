@@ -135,8 +135,14 @@ object EvaluationImpl {
 
   private val inMemory = InMemory()
 
-  def bounce(graph: SynthGraph, audioF: File, inputSpec: AudioFileSpec, inputExtr: File,
-             duration0: Double = -1): Processor[Any] = {
+  /** Bounces a synth def to an audio file.
+    *
+    * @param graph       the synth graph to play and evaluate
+    * @param audioF      the audio outpt file to bounce to
+    * @param inputSpec   the spec of the original target sound
+    * @param duration0   the duration to bounce in seconds or `-1` to bounce the duration of the target sound
+    */
+  def bounce(graph: SynthGraph, audioF: File, inputSpec: AudioFileSpec, duration0: Double = -1): Processor[Any] = {
     type I  = InMemory
     implicit val iCursor = inMemory
 
@@ -173,7 +179,6 @@ object EvaluationImpl {
 
   def evaluate(c: Chromosome, algorithm: Algorithm, inputSpec: AudioFileSpec, inputExtr: File)
               (implicit tx: S#Tx): Future[Float] = {
-    import algorithm.global.rng
     val graph       = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false) // c.graph
     // val cH          = tx.newHandle(c)
     val numVertices = c.vertices.size
@@ -184,10 +189,10 @@ object EvaluationImpl {
     p.future
   }
 
-  private def evaluateFut(/* cH: stm.Source[S#Tx, Chromosome], */ graph: SynthGraph, inputSpec: AudioFileSpec,
+  private def evaluateFut(graph: SynthGraph, inputSpec: AudioFileSpec,
                           inputExtr: File, numVertices: Int): Future[Float] = {
     val audioF = File.createTemp(prefix = "muta_bnc", suffix = ".aif")
-    val bnc0 = bounce(graph, audioF = audioF, inputSpec = inputSpec, inputExtr = inputExtr)
+    val bnc0 = bounce(graph, audioF = audioF, inputSpec = inputSpec)
     val bnc = Future {
       Await.result(bnc0, Duration(4.0, TimeUnit.SECONDS))
       // XXX TODO -- would be faster if we could use a Poll during

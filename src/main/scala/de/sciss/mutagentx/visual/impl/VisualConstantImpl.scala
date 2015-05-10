@@ -27,7 +27,7 @@ object VisualConstantImpl {
 
     private def mkName(): Unit = _name = {
       val mathContext = new MathContext(6, RoundingMode.DOWN)
-      val bigDecimal = BigDecimal(_value, mathContext)
+      val bigDecimal = BigDecimal(_value.toDouble, mathContext)
       bigDecimal.bigDecimal.toPlainString
     }
 

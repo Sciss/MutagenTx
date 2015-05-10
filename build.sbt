@@ -32,7 +32,9 @@ libraryDependencies ++= Seq(
   "de.sciss"      %% "kollflitz"                % "0.2.0",
   "de.sciss"      %  "weblaf"                   % "1.28",
   "org.scalatest" %% "scalatest"                % "2.2.4" % "test",
-  "de.sciss"      %% "topology"                 % "1.0.0" % "test"
+  "de.sciss"      %% "topology"                 % "1.0.0" % "test",
+  // MFCCTest
+  "de.sciss"      %%  "scissdsp"                % "1.2.2-SNAPSHOT"
 )
 
 scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xfuture")
