@@ -297,14 +297,26 @@ object SOMGenerator extends App {
       }
     }
 
+    val screwYou = new Thread {
+      override def run(): Unit = this.synchronized(this.wait())
+      start()
+    }
+
     proc.monitor()
+    proc.onFailure {
+      case ex =>
+        println("synth def database generation failed:")
+        ex.printStackTrace()
+    }
+
     proc.onComplete {
       case _ =>
+        println("...complete")
         dur.close()
         sys.exit()
     }
 
-    Swing.onEDT {}  // keep JVM running
+    // Swing.onEDT {}  // keep JVM running
   }
 
   def runFOO(): Unit = {
