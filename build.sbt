@@ -34,9 +34,9 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest"                % "2.2.4" % "test",
   "de.sciss"      %% "topology"                 % "1.0.0" % "test",
   // MFCC and SOM
-  "de.sciss"      %% "scissdsp"                 % "1.2.2-SNAPSHOT",
-  "de.sciss"      %% "lucredata-core"           % "2.3.1-SNAPSHOT",
-  "de.sciss"      %% "lucredata-views"          % "2.3.1-SNAPSHOT"
+  "de.sciss"      %% "scissdsp"                 % "1.2.2",
+  "de.sciss"      %% "lucredata-core"           % "2.3.1",
+  "de.sciss"      %% "lucredata-views"          % "2.3.1"
 )
 
 scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xfuture")

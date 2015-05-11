@@ -173,12 +173,14 @@ object SOMQuadTree extends App {
         val radius        = neighbourhoodRadius(iter)
         val inNodeIter    = bmuNeighbours(radius, bmuNode, lattice)
         val lRate         = learningRate(iter)
-        inNodeIter /* .par */.foreach { dist =>
+        val inNodeB = Vector.newBuilder[Dist]
+        inNodeIter.foreach(inNodeB += _)
+        inNodeB.result().par.foreach { dist =>
           val tTheta  = theta(dist.radius, radius)
           adjust(randomInput, dist.node.node.weight, lRate, tTheta)
         }
 
-        self.progress = ((iter + 1).toDouble / numIterations) * 0.5
+        self.progress = ((iter + 1).toDouble / numIterations) // * 0.5
         self.checkAborted()
       }
 
@@ -196,12 +198,12 @@ object SOMQuadTree extends App {
       val res: Lattice[Node] = {
         // val nodes = latticeN.nodes.collect { case PlacedNode(c, n: Node) => PlacedNode(c, n) }
         println("WARNING: TAKE 1000")
-        val nodes = trainingSet.take(1000).zipWithIndex.map { case (in, idx) =>
+        val nodes = trainingSet.take(1000).zipWithIndex.par.map { case (in, idx) =>
           val nearest = bmu(in)
-          self.progress = ((idx + 1).toDouble / 1000) * 0.5 + 0.5
-          self.checkAborted()
+          // self.progress = ((idx + 1).toDouble / 1000) * 0.5 + 0.5
+          // self.checkAborted()
           new PlacedNode(nearest.coord, in)
-        }
+        } .toArray
         new Lattice(/* size = latticeSize, */ nodes = nodes)
       }
 
