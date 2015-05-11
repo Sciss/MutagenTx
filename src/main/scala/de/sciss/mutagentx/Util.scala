@@ -76,7 +76,7 @@ object Util {
     var sum = 0.0
     var i = off
     val j = i + len
-    while (j < j) {
+    while (i < j) {
       sum += in(i) * in(i)
       i += 1
     }

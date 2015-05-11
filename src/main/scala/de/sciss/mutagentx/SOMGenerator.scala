@@ -53,7 +53,7 @@ object SOMGenerator extends App {
   sealed trait HasWeight {
     type Self <: HasWeight
     def weight: Weight
-    def replaceWeight(newWeight: Weight): Self
+    // def replaceWeight(newWeight: Weight): Self
   }
 
   object Node {
@@ -100,7 +100,7 @@ object SOMGenerator extends App {
         if (cookie != COOKIE) throw new IllegalStateException(s"Expected cookie ${COOKIE.toHexString} but found ${cookie.toHexString}")
         val spectral = readArray(in)
         val temporal = readArray(in)
-        Weight(spectral = spectral, temporal = temporal)
+        new Weight(spectral = spectral, temporal = temporal)
       }
 
       private def writeArray(a: Array[Double], out: DataOutput): Unit = {
@@ -119,12 +119,12 @@ object SOMGenerator extends App {
       }
     }
   }
-  case class Weight(spectral: Array[Double], temporal: Array[Double]) extends HasWeight {
+  class Weight(val spectral: Array[Double], val temporal: Array[Double]) extends HasWeight {
     override def toString = spectral.map(d => f"$d%1.3f").mkString("[", ", ", "]")
     
     def weight = this
     type Self = Weight
-    def replaceWeight(newWeight: Weight): Weight = newWeight
+    // def replaceWeight(newWeight: Weight): Weight = newWeight
   }
 
   type AnyNode = PlacedNode[HasWeight]
@@ -133,9 +133,9 @@ object SOMGenerator extends App {
   type Coord = IntPoint2D
   def  Coord(x: Int, y: Int) = IntPoint2D(x, y)
 
-  case class PlacedNode[+N](coord: Coord, node: N)
+  class PlacedNode[+N](val coord: Coord, val node: N)
 
-  case class Lattice[+N <: HasWeight](/* size: Int, */ nodes: Vec[PlacedNode[N]])
+  class Lattice[N <: HasWeight](val nodes: Array[PlacedNode[N]])
 
   type AnyLattice = Lattice[HasWeight]
 
@@ -239,6 +239,7 @@ object SOMGenerator extends App {
                 if (count < fftSize) {
                   val e = energy(winBuf, 0, off1)
                   enBuf(count) = e
+                  // println(s"---- ENERGY: $e")
                 }
                 val coeff = mfcc.process(winBuf, 0, off1)
                 add(mean, 0, coeff, 0, numCoeff)
@@ -253,12 +254,13 @@ object SOMGenerator extends App {
               if (count > 0) mul(mean, 0, numCoeff, 1.0 / count)
 
               val temporal = Util.dct(enBuf, off = 0, len = count, numCoeff = numCoeff)
+              // println(s"temporal.sum = ${temporal.sum}")
 
               if (mean.exists(x => x.isNaN || x.isInfinity)) {
                 println("Dropping chromosome with NaN features!")
                 None
               } else {
-                val weight  = Weight(spectral = mean, temporal = temporal)
+                val weight  = new Weight(spectral = mean, temporal = temporal)
                 val node    = Node(input, weight)
                 Some(node)
               }

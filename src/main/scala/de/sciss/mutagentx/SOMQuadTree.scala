@@ -1,6 +1,5 @@
 package de.sciss.mutagentx
 
-import de.sciss.file._
 import de.sciss.lucre.data.DeterministicSkipOctree
 import de.sciss.lucre.data.gui.SkipQuadtreeView
 import de.sciss.lucre.geom.{IntDistanceMeasure2D, IntPoint2D, IntSquare}
@@ -26,6 +25,8 @@ object SOMQuadTree extends App {
 
   import Algorithm.executionContext
 
+  final case class Dist(node: AnyNode, radius: Double)
+
   def run(name: String): Unit = {
     val latticeFut = Processor[Lattice[Node]]("lattice") { self =>
       val graphDB = SynthGraphDB.open(name)
@@ -49,82 +50,57 @@ object SOMQuadTree extends App {
 //      val featMin = Array(-1473.435, -2.223, -3.793, -4.728, -1.674, -1.988, -2.095, -2.003, -1.324, -1.997, -1.884, -3.046, -4.375)
 //      val featMax = Array(  151.118, 57.481, 20.539, 10.134, 8.485,   6.312,  5.287,  3.876,  4.552,  2.771,  3.031,  3.047,  3.272)
 
-      val featSpecMin = Array(-1560.6178,-21.7986,-4.6478,-5.2797,-3.6140,-4.1488,-3.9983,-3.6434,-2.4137,-2.2102,-2.5199,-4.4990,-6.6068)
-      val featSpecMax = Array(176.5447,55.3165,20.5961,10.6913,8.8670,6.5897,5.7930,4.1103,4.9481,3.7107,4.0118,3.8707,3.4230)
+      val featSpecMin = Array(-1554.8430,-21.7765,-4.5185,-5.2909,-3.6100,-4.1124,-3.9966,-3.6367,-2.4137,-2.2400,-2.4790,-4.5608,-6.6133)
+      val featSpecMax = Array(176.9208,55.4446,20.6956,10.6913,8.8621,6.5888,5.7932,4.1103,4.9481,3.7131,4.0103,3.8659,3.4231)
+      val featTempMin = Array(0.3567,-3.2570,-2.8579,-2.1212,-1.9764,-1.8338,-2.3039,-1.8459,-1.6096,-1.5539,-1.3541,-1.4128,-1.4109)
+      val featTempMax = Array(3100155267289.2250,3049041188044.5825,2937674475702.0060,2888555993728.8633,2603175515013.0580,2561710809328.4565,2572049306867.7030,2272804304747.4520,2409931779268.9175,2502593081103.6147,2758321940498.5825,2663814737416.1343,2637628956055.0970)
 
-      def normalize(w: Weight): Weight = {
-        val fNew = w.spectral.zipWithIndex.map { case (v, i) => v.linlin(featSpecMin(i), featSpecMax(i), 0, 1) }
-        w.copy(spectral = fNew)
+
+      def normalize(w: Weight): Unit = {
+        w.spectral.zipWithIndex.foreach { case (v, i) =>
+          val norm = v.linlin(featSpecMin(i), featSpecMax(i), 0, 1)
+          w.spectral(i) = norm
+        }
+        w.temporal.zipWithIndex.foreach { case (v, i) =>
+          val norm = v.linlin(featTempMin(i), featTempMax(i), 0, 1)
+          w.temporal(i) = norm
+        }
       }
 
       // println("WARNING: TAKE 1000")
-      val nodesN = nodes.map(n => n.copy(weight = normalize(n.weight))) // .take(1000)
+      nodes.foreach(n => normalize(n.weight)) // .take(1000)
 
       def rndWeight(): Weight = {
         val spectral = Array.fill(numCoeff)(rnd.nextDouble())
         val temporal = Array.fill(numCoeff)(rnd.nextDouble())
-        Weight(spectral, temporal)
+        new Weight(spectral, temporal)
       }
 
       def weightDist(w1: Weight, w2: Weight): Double = {
-        def norm(v: Array[Double]): Vec[Double] = (0 until v.length).map { i => v(i).linlin(featSpecMin(i), featSpecMax(i), 0, 1) }
-        val w1n = norm(w1.spectral)
-        val w2n = norm(w2.spectral)
-        (w1n zip w2n).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
+        def norm(v: Array[Double], min: Array[Double], max: Array[Double]): Vec[Double] =
+          (0 until v.length).map { i => v(i).linlin(min(i), max(i), 0, 1) }
+
+        val w1sn = norm(w1.spectral, featSpecMin, featSpecMax)
+        val w2sn = norm(w2.spectral, featSpecMin, featSpecMax)
+        val spectDist = (w1sn zip w2sn).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
+
+        val w1tn = norm(w1.temporal, featTempMin, featTempMax)
+        val w2tn = norm(w2.temporal, featTempMin, featTempMax)
+        val tempDist = (w1tn zip w2tn).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
+
+        (spectDist + tempDist) / 2
       }
 
       def nodeDist(n1: AnyNode, n2: AnyNode): Double =
         math.sqrt((n1.coord.x - n2.coord.x).squared + (n1.coord.y - n2.coord.y).squared) // Euclidean distance
 
-      println("WARNING: should scramble training set instead of using `choose`")
-      val trainingSet   : Vec[Node]       = nodesN
+      val trainingSet   : Array[Node]     = nodes.scramble().toArray
       println("WARNING: NUM ITER = 1000")
       val numIterations : Int             = 1000 // trainingSet.size * 4 // XXX
       val mapRadius     : Double          = extent
       val timeConstant  : Double          = numIterations / math.log(mapRadius)
 
-      def neighbourhoodRadius(iter: Double) = mapRadius * math.exp(-iter/timeConstant)
-
-      def bmu(input: HasWeight, lattice: Lattice[HasWeight]): PlacedNode[HasWeight] =
-        lattice.nodes.minBy(n => weightDist(input.weight, n.node.weight))
-
-      def bmuNeighbours(radius: Double, bmu: AnyNode,
-                        lattice: AnyLattice): (Vec[(AnyNode, Double)], Vec[(AnyNode, Double)]) =
-        lattice.nodes.map(n => (n, nodeDist(n, bmu))).partition(_._2 <= radius)
-
-      def learningRate(iter: Double): Double =
-        0.072 * math.exp(-iter / numIterations) // decays over time
-
-      def theta(d2bmu: Double, radius: Double): Double =
-        math.exp(-d2bmu.squared / (2 * radius.squared)) // learning proportional to distance
-
-      def adjust[W <: HasWeight](input: W, weight: Weight, learningRate: Double, theta: Double): input.Self = {
-        def perform(iW: Double, nW: Double): Double =
-          nW + learningRate * theta * (iW - nW)
-
-        val spectralNew = (input.weight.spectral, weight.spectral).zipped.map(perform)
-        val temporalNew = (input.weight.temporal, weight.temporal).zipped.map(perform)
-        input.replaceWeight(Weight(spectralNew, temporalNew))
-      }
-
-      def nextLattice(iter: Int, lattice: AnyLattice): AnyLattice = {
-        if (iter % 100 == 0) println(s"---- iter $iter")
-        val randomInput   = trainingSet.choose()
-        val bmuNode       = bmu(randomInput, lattice)
-        val radius        = neighbourhoodRadius(iter)
-        val (inNodes, outNodes) = bmuNeighbours(radius, bmuNode, lattice)
-        val lRate         = learningRate(iter)
-        val adjustedNodes = inNodes.par.map { case (n, nodeRadius) =>
-          val tTheta  = theta(nodeRadius, radius)
-          val nWeight = adjust(randomInput, n.node.weight, lRate, tTheta)
-          PlacedNode(n.coord, nWeight)
-        } .toIndexedSeq
-
-        self.progress = (iter + 1).toDouble / numIterations
-        self.checkAborted()
-
-        new Lattice(/* lattice.size, */ adjustedNodes ++ outNodes.map(_._1))
-      }
+      def neighbourhoodRadius(iter: Double) = mapRadius * math.exp(-iter / timeConstant)
 
       def mkLattice(): AnyLattice = {
         val nodes = for {
@@ -133,29 +109,100 @@ object SOMQuadTree extends App {
         } yield {
             val c = Coord(x, y)
             val w = rndWeight()
-            PlacedNode[HasWeight](c, w)
+            new PlacedNode[HasWeight](c, w)
           }
 
-        new Lattice(/* size, */ nodes)
+        new Lattice(/* size, */ nodes.toArray)
       }
 
-      @tailrec def run(in: AnyLattice, iter: Int): AnyLattice =
-        if (iter >= numIterations) in else {
-          val out = nextLattice(iter = iter, lattice = in)
-          run(out, iter + 1)
+      val lattice = mkLattice()
+
+      def bmu(input: HasWeight): PlacedNode[HasWeight] = {
+        val nodes = lattice.nodes
+        val iw = input.weight
+        var i = 0
+        var bestDist = Double.PositiveInfinity
+        var bestNode: AnyNode = null
+        while (i < nodes.length) {
+          val n = nodes(i)
+          val dist = weightDist(iw, n.node.weight)
+          if (dist < bestDist) {
+            bestDist = dist
+            bestNode = n
+          }
+          i += 1
+        }
+        require(bestNode != null)
+        bestNode
+      }
+
+      def bmuNeighbours(radius: Double, bmu: AnyNode,
+                        lattice: AnyLattice): Iterator[Dist] =
+        lattice.nodes.iterator.map(n => Dist(n, nodeDist(n, bmu))).filter(_.radius <= radius)
+
+      def learningRate(iter: Double): Double =
+        0.072 * math.exp(-iter / numIterations) // decays over time
+
+      def theta(d2bmu: Double, radius: Double): Double =
+        math.exp(-d2bmu.squared / (2 * radius.squared)) // learning proportional to distance
+
+      def adjust[W <: HasWeight](input: W, weight: Weight, learningRate: Double, theta: Double): Unit = {
+        @inline def perform(iW: Double, nW: Double): Double =
+          nW + learningRate * theta * (iW - nW)
+
+        // val spectralNew = (input.weight.spectral, weight.spectral).zipped.map(perform)
+        // val temporalNew = (input.weight.temporal, weight.temporal).zipped.map(perform)
+        // input.replaceWeight(Weight(spectralNew, temporalNew))
+
+        @inline def performA(ia: Array[Double], wa: Array[Double]): Unit = {
+          var i = 0
+          while (i < ia.length) {
+            wa(i) = perform(ia(i), wa(i))
+            i += 1
+          }
         }
 
-      println(s"--- num nodes = ${trainingSet.size}; num iterations = $numIterations")
-      val lattice0 = mkLattice()
-      val latticeN = run(lattice0, iter = 0)
+        performA(input.weight.spectral, weight.spectral)
+        performA(input.weight.temporal, weight.temporal)
+      }
+
+      def nextLattice(iter: Int): Unit = {
+        if (iter % 100 == 0) println(s"---- iter $iter")
+        val randomInput   = trainingSet(iter % trainingSet.length) // .choose()
+        val bmuNode       = bmu(randomInput)
+        val radius        = neighbourhoodRadius(iter)
+        val inNodeIter    = bmuNeighbours(radius, bmuNode, lattice)
+        val lRate         = learningRate(iter)
+        inNodeIter /* .par */.foreach { dist =>
+          val tTheta  = theta(dist.radius, radius)
+          adjust(randomInput, dist.node.node.weight, lRate, tTheta)
+        }
+
+        self.progress = ((iter + 1).toDouble / numIterations) * 0.5
+        self.checkAborted()
+      }
+
+      @tailrec def run(iter: Int): Unit =
+        if (iter < numIterations) {
+          nextLattice(iter = iter)
+          run(iter + 1)
+        }
+
+      println(s"--- num nodes = ${trainingSet.length}; num iterations = $numIterations")
+      // val lattice0 = mkLattice()
+      // val latticeN = run(lattice0, iter = 0)
+      run(iter = 0)
 
       val res: Lattice[Node] = {
         // val nodes = latticeN.nodes.collect { case PlacedNode(c, n: Node) => PlacedNode(c, n) }
-        val nodes = trainingSet.map { in =>
-          val nearest = bmu(in, latticeN)
-          PlacedNode(nearest.coord, in)
+        println("WARNING: TAKE 1000")
+        val nodes = trainingSet.take(1000).zipWithIndex.map { case (in, idx) =>
+          val nearest = bmu(in)
+          self.progress = ((idx + 1).toDouble / 1000) * 0.5 + 0.5
+          self.checkAborted()
+          new PlacedNode(nearest.coord, in)
         }
-        Lattice(/* size = latticeSize, */ nodes = nodes)
+        new Lattice(/* size = latticeSize, */ nodes = nodes)
       }
 
       res
@@ -172,7 +219,7 @@ object SOMQuadTree extends App {
 
     latticeFut.onSuccess { case lattice =>
       val ws = lattice.nodes
-      println(s"Number of weights: ${ws.size}")
+      println(s"Number of weights: ${ws.length}")
 
       /*
       import kollflitz.Ops._
