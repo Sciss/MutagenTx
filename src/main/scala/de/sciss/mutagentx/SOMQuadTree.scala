@@ -18,8 +18,8 @@ import scala.swing.{Component, MainFrame, Swing}
 object SOMQuadTree extends App {
   def numCoeff = 13
 
-  def extent        : Int             = 16384
-  def gridStep      : Int             = 32 // 16
+  def extent        : Int             = 256 // 16384
+  def gridStep      : Int             = 1 // 64 // 32 // 16
 
   run(args.headOption.getOrElse("betanovuss0"))
 
@@ -94,9 +94,11 @@ object SOMQuadTree extends App {
       def nodeDist(n1: AnyNode, n2: AnyNode): Double =
         math.sqrt((n1.coord.x - n2.coord.x).squared + (n1.coord.y - n2.coord.y).squared) // Euclidean distance
 
-      val trainingSet   : Array[Node]     = nodes.scramble().toArray
-      println("WARNING: NUM ITER = 1000")
-      val numIterations : Int             = 1000 // trainingSet.size * 4 // XXX
+      val MAX_NODES = 20
+
+      val trainingSet   : Array[Node]     = nodes.scramble().take(MAX_NODES).toArray
+      // println("WARNING: NUM ITER = 1000")
+      val numIterations : Int             = trainingSet.length // * 4
       val mapRadius     : Double          = extent
       val timeConstant  : Double          = numIterations / math.log(mapRadius)
 
@@ -104,8 +106,8 @@ object SOMQuadTree extends App {
 
       def mkLattice(): AnyLattice = {
         val nodes = for {
-          x <- -extent until extent by gridStep
-          y <- -extent until extent by gridStep
+          x <- 0 until (extent << 1) by gridStep
+          y <- 0 until (extent << 1) by gridStep
         } yield {
             val c = Coord(x, y)
             val w = rndWeight()
@@ -197,8 +199,7 @@ object SOMQuadTree extends App {
 
       val res: Lattice[Node] = {
         // val nodes = latticeN.nodes.collect { case PlacedNode(c, n: Node) => PlacedNode(c, n) }
-        println("WARNING: TAKE 1000")
-        val nodes = trainingSet.take(1000).zipWithIndex.par.map { case (in, idx) =>
+        val nodes = trainingSet.zipWithIndex.par.map { case (in, idx) =>
           val nearest = bmu(in)
           // self.progress = ((idx + 1).toDouble / 1000) * 0.5 + 0.5
           // self.checkAborted()
@@ -276,7 +277,7 @@ Feature vector 98% percentiles:
     // val model = InteractiveSkipOctreePanel.makeModel2D(system)(())
     // new InteractiveSkipOctreePanel(model)
     val quadView = new SkipQuadtreeView[I, PlacedNode[Node]](quadH, system, _.coord)
-    quadView.scale = 240.0 / extent
+    // quadView.scale = 240.0 / extent
     val quadComp = Component.wrap(quadView)
     new MainFrame {
       contents = quadComp
@@ -288,8 +289,8 @@ Feature vector 98% percentiles:
     quadComp.reactions += {
       case MousePressed(_, pt, mod, clicks, _) =>
         import numbers.Implicits._
-        val x = ((pt.x - insets.left) / quadView.scale - extent + 0.5).toInt.clip(-extent, extent)
-        val y = ((pt.y - insets.top ) / quadView.scale - extent + 0.5).toInt.clip(-extent, extent)
+        val x = ((pt.x - insets.left) / quadView.scale + 0.5).toInt.clip(0, extent << 1)
+        val y = ((pt.y - insets.top ) / quadView.scale + 0.5).toInt.clip(0, extent << 1)
 
         val nodeOpt = system.step { implicit tx =>
           val q = quadH()

@@ -23,7 +23,7 @@ object SOMMinMax extends App {
         val res = Vector.newBuilder[Double]
         handle().iterator.foreach { li =>
           li.iterator.foreach { node =>
-            // println(node.weight.temporal.mkString(", "))
+            if (idx == 0 && node.input.fitness > 0.3) println(node.weight.temporal.mkString(", "))
             res += feature(node.weight)(idx)
           }
         }

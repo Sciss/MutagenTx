@@ -202,7 +202,7 @@ object SOMGenerator extends App {
     val mfcc        = dsp.MFCC(mCfg)
     val fftSizeH    = fftSize/2
 
-    val futWeights = Processor[(Vec[Node], Set[Int])]("Weights") { proc =>
+    def futWeightsFun(proc: Processor[Any] with Processor.Body): (Vec[Node], Set[Int]) = {
       val (hashesOut, graphs) = Await.result(futGraphs, Duration.Inf)
       val numGraphs = graphs.size
       val nodes = graphs.zipWithIndex.flatMap { case (input, gIdx) =>
@@ -219,6 +219,9 @@ object SOMGenerator extends App {
 
           blocking {
             val af = AudioFile.openRead(f)
+            // if (gIdx == 29) {
+            //   println("AQUI")
+            // }
             try {
               val inBuf   = af.buffer(fftSize)
               val winBuf  = new Array[Float](fftSize)
@@ -256,10 +259,14 @@ object SOMGenerator extends App {
               val temporal = Util.dct(enBuf, off = 0, len = count, numCoeff = numCoeff)
               // println(s"temporal.sum = ${temporal.sum}")
 
-              if (mean.exists(x => x.isNaN || x.isInfinity)) {
-                println("Dropping chromosome with NaN features!")
+              if (mean.exists(x => x.isNaN || x.isInfinity) || enBuf.exists(_ > 1.0)) {
+                println("Dropping chromosome with NaN / exploding features!")
                 None
               } else {
+                if (temporal(1) > 100) {
+                  println(s"Temporal exploded !? $gIdx")
+                }
+
                 val weight  = new Weight(spectral = mean, temporal = temporal)
                 val node    = Node(input, weight)
                 Some(node)
@@ -273,8 +280,9 @@ object SOMGenerator extends App {
       }
       (nodes, hashesOut)
     }
+    val futWeights = Processor[(Vec[Node], Set[Int])]("Weights")(futWeightsFun)
 
-    futWeights
+      futWeights
   }
 
   def run(name: String, audioName: String): Unit = {
