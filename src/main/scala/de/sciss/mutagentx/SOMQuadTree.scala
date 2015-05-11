@@ -1,43 +1,41 @@
 package de.sciss.mutagentx
 
+import de.sciss.file._
 import de.sciss.lucre.data.DeterministicSkipOctree
 import de.sciss.lucre.data.gui.SkipQuadtreeView
-import de.sciss.lucre.geom.IntSquare
+import de.sciss.lucre.geom.{IntDistanceMeasure2D, IntPoint2D, IntSquare}
 import de.sciss.lucre.stm
 import de.sciss.lucre.stm.InMemory
 import de.sciss.mutagentx.SOMGenerator._
+import de.sciss.processor.Processor
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 import de.sciss.{kollflitz, numbers}
 
 import scala.annotation.tailrec
-import scala.concurrent.Future
+import scala.concurrent.blocking
+import scala.swing.event.MousePressed
 import scala.swing.{Component, MainFrame, Swing}
 
-object SOMGenerator2 {
+object SOMQuadTree {
   val numCoeff = 13
 
-  def calcMinMin(): Unit = {
-    import kollflitz.Ops._
+  val extent        : Int             = 16384
+  val gridStep      : Int             = 16
 
-    val perc = (0 until 13).map { i =>
-      val all = ws.map { n =>
-        n.node.weight.feature(i)
+  import Algorithm.executionContext
+
+  def run(name: String): Unit = {
+    val latticeFut = Processor[Lattice[Node]]("lattice") { self =>
+      val graphDB = SynthGraphDB.open(file("database") / name)
+      val nodes: Vec[Node] = blocking {
+        import graphDB._
+        system.step { implicit tx =>
+          var res = Vector.newBuilder[Node]
+          handle().iterator.foreach(_.iterator.foreach(n => res += n))
+          res.result()
+        }
       }
-      val sorted = all.sortedT
-      (sorted.percentile(2), sorted.percentile(98))
-    }
-    println("Feature vector  2% percentiles:")
-    println(perc.map(tup => f"${tup._1}%1.3f").mkString("[", ",", "]"))
-    println("Feature vector 98% percentiles:")
-    println(perc.map(tup => f"${tup._2}%1.3f").mkString("[", ",", "]"))
-  }
-
-  def run(): Unit = {
-    val extent        : Int             = 16384
-    val gridStep      : Int             = 16
-
-    val latticeFut = Future[Lattice[Node]] {
-      val nodes: Vec[Node] = ???
+      graphDB.system.close()
 
       // cf. http://oogifu.blogspot.com/2014/07/self-organizing-map-in-scala.html
 
@@ -72,7 +70,7 @@ object SOMGenerator2 {
       def nodeDist(n1: AnyNode, n2: AnyNode): Double =
         math.sqrt((n1.coord.x - n2.coord.x).squared + (n1.coord.y - n2.coord.y).squared) // Euclidean distance
 
-      val trainingSet   : Vec[HasWeight]  = nodesN
+      val trainingSet   : Vec[Node]       = nodesN
       val numIterations : Int             = trainingSet.size * 4 // XXX
       val mapRadius     : Double          = extent
       val timeConstant  : Double          = numIterations / math.log(mapRadius)
@@ -133,8 +131,13 @@ object SOMGenerator2 {
 
       val lattice0 = mkLattice()
       val latticeN = run(lattice0, iter = 0)
+
       val res: Lattice[Node] = {
-        val nodes = latticeN.nodes.collect { case PlacedNode(c, n: Node) => PlacedNode(c, n) }
+        // val nodes = latticeN.nodes.collect { case PlacedNode(c, n: Node) => PlacedNode(c, n) }
+        val nodes = trainingSet.map { in =>
+          val nearest = bmu(in, latticeN)
+          PlacedNode(nearest.coord, in)
+        }
         Lattice(/* size = latticeSize, */ nodes = nodes)
       }
 
@@ -163,7 +166,7 @@ object SOMGenerator2 {
       println(perc.map(tup => f"${tup._2}%1.3f").mkString("[", ",", "]"))
       */
 
-      import numbers.Implicits._
+      // import numbers.Implicits._
       // val extent  = ((lattice.size + 1) / 2).nextPowerOfTwo
       implicit val system  = InMemory()
       val quadH = system.step { implicit tx =>
@@ -197,10 +200,28 @@ Feature vector 98% percentiles:
     // val model = InteractiveSkipOctreePanel.makeModel2D(system)(())
     // new InteractiveSkipOctreePanel(model)
     val quadView = new SkipQuadtreeView[I, PlacedNode[Node]](quadH, system, _.coord)
+    quadView.scale = 240.0 / extent
+    val quadComp = Component.wrap(quadView)
     new MainFrame {
-      contents = Component.wrap(quadView)
+      contents = quadComp
       pack().centerOnScreen()
       open()
+    }
+    quadComp.listenTo(quadComp.mouse.clicks)
+    val insets = quadView.getInsets
+    quadComp.reactions += {
+      case MousePressed(_, pt, mod, clicks, _) =>
+        import numbers.Implicits._
+        val x = ((pt.x - insets.left) / quadView.scale - extent + 0.5).toInt.clip(-extent, extent)
+        val y = ((pt.y - insets.top ) / quadView.scale - extent + 0.5).toInt.clip(-extent, extent)
+
+        val nodeOpt = system.step { implicit tx =>
+          val q = quadH()
+          q.nearestNeighborOption(IntPoint2D(x, y), IntDistanceMeasure2D.euclideanSq)
+        }
+        nodeOpt.foreach { node =>
+          println(node)
+        }
     }
   }
 }
