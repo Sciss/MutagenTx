@@ -16,17 +16,19 @@ import scala.concurrent.blocking
 import scala.swing.event.MousePressed
 import scala.swing.{Component, MainFrame, Swing}
 
-object SOMQuadTree {
-  val numCoeff = 13
+object SOMQuadTree extends App {
+  def numCoeff = 13
 
-  val extent        : Int             = 16384
-  val gridStep      : Int             = 16
+  def extent        : Int             = 16384
+  def gridStep      : Int             = 32 // 16
+
+  run(args.headOption.getOrElse("betanovuss0"))
 
   import Algorithm.executionContext
 
   def run(name: String): Unit = {
     val latticeFut = Processor[Lattice[Node]]("lattice") { self =>
-      val graphDB = SynthGraphDB.open(file("database") / name)
+      val graphDB = SynthGraphDB.open(name)
       val nodes: Vec[Node] = blocking {
         import graphDB._
         system.step { implicit tx =>
@@ -44,24 +46,28 @@ object SOMQuadTree {
       import kollflitz.RandomOps._
       import numbers.Implicits._
 
-      val featMin = Array(-1473.435, -2.223, -3.793, -4.728, -1.674, -1.988, -2.095, -2.003, -1.324, -1.997, -1.884, -3.046, -4.375)
-      val featMax = Array(  151.118, 57.481, 20.539, 10.134, 8.485,   6.312,  5.287,  3.876,  4.552,  2.771,  3.031,  3.047,  3.272)
+//      val featMin = Array(-1473.435, -2.223, -3.793, -4.728, -1.674, -1.988, -2.095, -2.003, -1.324, -1.997, -1.884, -3.046, -4.375)
+//      val featMax = Array(  151.118, 57.481, 20.539, 10.134, 8.485,   6.312,  5.287,  3.876,  4.552,  2.771,  3.031,  3.047,  3.272)
+
+      val featSpecMin = Array(-1560.6178,-21.7986,-4.6478,-5.2797,-3.6140,-4.1488,-3.9983,-3.6434,-2.4137,-2.2102,-2.5199,-4.4990,-6.6068)
+      val featSpecMax = Array(176.5447,55.3165,20.5961,10.6913,8.8670,6.5897,5.7930,4.1103,4.9481,3.7107,4.0118,3.8707,3.4230)
 
       def normalize(w: Weight): Weight = {
-        val fNew = w.spectral.zipWithIndex.map { case (v, i) => v.linlin(featMin(i), featMax(i), 0, 1) }
+        val fNew = w.spectral.zipWithIndex.map { case (v, i) => v.linlin(featSpecMin(i), featSpecMax(i), 0, 1) }
         w.copy(spectral = fNew)
       }
 
-      val nodesN = nodes.map(n => n.copy(weight = normalize(n.weight)))
+      // println("WARNING: TAKE 1000")
+      val nodesN = nodes.map(n => n.copy(weight = normalize(n.weight))) // .take(1000)
 
-      def rndWeight: Weight = {
+      def rndWeight(): Weight = {
         val spectral = Array.fill(numCoeff)(rnd.nextDouble())
         val temporal = Array.fill(numCoeff)(rnd.nextDouble())
         Weight(spectral, temporal)
       }
 
       def weightDist(w1: Weight, w2: Weight): Double = {
-        def norm(v: Array[Double]): Vec[Double] = (0 until v.length).map { i => v(i).linlin(featMin(i), featMax(i), 0, 1) }
+        def norm(v: Array[Double]): Vec[Double] = (0 until v.length).map { i => v(i).linlin(featSpecMin(i), featSpecMax(i), 0, 1) }
         val w1n = norm(w1.spectral)
         val w2n = norm(w2.spectral)
         (w1n zip w2n).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
@@ -70,8 +76,10 @@ object SOMQuadTree {
       def nodeDist(n1: AnyNode, n2: AnyNode): Double =
         math.sqrt((n1.coord.x - n2.coord.x).squared + (n1.coord.y - n2.coord.y).squared) // Euclidean distance
 
+      println("WARNING: should scramble training set instead of using `choose`")
       val trainingSet   : Vec[Node]       = nodesN
-      val numIterations : Int             = trainingSet.size * 4 // XXX
+      println("WARNING: NUM ITER = 1000")
+      val numIterations : Int             = 1000 // trainingSet.size * 4 // XXX
       val mapRadius     : Double          = extent
       val timeConstant  : Double          = numIterations / math.log(mapRadius)
 
@@ -100,6 +108,7 @@ object SOMQuadTree {
       }
 
       def nextLattice(iter: Int, lattice: AnyLattice): AnyLattice = {
+        if (iter % 100 == 0) println(s"---- iter $iter")
         val randomInput   = trainingSet.choose()
         val bmuNode       = bmu(randomInput, lattice)
         val radius        = neighbourhoodRadius(iter)
@@ -111,6 +120,9 @@ object SOMQuadTree {
           PlacedNode(n.coord, nWeight)
         } .toIndexedSeq
 
+        self.progress = (iter + 1).toDouble / numIterations
+        self.checkAborted()
+
         new Lattice(/* lattice.size, */ adjustedNodes ++ outNodes.map(_._1))
       }
 
@@ -118,7 +130,11 @@ object SOMQuadTree {
         val nodes = for {
           x <- -extent until extent by gridStep
           y <- -extent until extent by gridStep
-        } yield PlacedNode[HasWeight](Coord(x, y), rndWeight)
+        } yield {
+            val c = Coord(x, y)
+            val w = rndWeight()
+            PlacedNode[HasWeight](c, w)
+          }
 
         new Lattice(/* size, */ nodes)
       }
@@ -129,6 +145,7 @@ object SOMQuadTree {
           run(out, iter + 1)
         }
 
+      println(s"--- num nodes = ${trainingSet.size}; num iterations = $numIterations")
       val lattice0 = mkLattice()
       val latticeN = run(lattice0, iter = 0)
 
@@ -145,6 +162,13 @@ object SOMQuadTree {
     }
 
     // futWeights.monitor(printResult = false)
+
+    latticeFut.monitor()
+    latticeFut.onFailure {
+      case ex =>
+        println("lattice generation failed:")
+        ex.printStackTrace()
+    }
 
     latticeFut.onSuccess { case lattice =>
       val ws = lattice.nodes
@@ -183,7 +207,10 @@ object SOMQuadTree {
       Swing.onEDT(guiInit(quadH))
     }
 
-    Swing.onEDT {}  // keep JVM running :)
+    new Thread {
+      override def run(): Unit = this.synchronized(this.wait())
+      start()
+    }
   }
 
   /*

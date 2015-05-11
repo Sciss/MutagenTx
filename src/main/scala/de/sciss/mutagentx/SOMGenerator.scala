@@ -19,7 +19,8 @@ import scala.concurrent.{Await, Future, blocking}
 import scala.util.Try
 
 object SOMGenerator extends App {
-  run()
+  run(name      = if (args.length > 0) args(0) else "betanovuss0",
+      audioName = if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
 
   object Input {
     implicit object serializer extends ImmutableSerializer[Input] {
@@ -130,7 +131,7 @@ object SOMGenerator extends App {
 
   // case class Coord(x: Int, y: Int)
   type Coord = IntPoint2D
-  val  Coord = IntPoint2D
+  def  Coord(x: Int, y: Int) = IntPoint2D(x, y)
 
   case class PlacedNode[+N](coord: Coord, node: N)
 
@@ -146,7 +147,8 @@ object SOMGenerator extends App {
   object SynthGraphDB {
     type Tpe = expr.List.Modifiable[D, expr.List.Modifiable[D, Node, Unit], Unit]
 
-    def open(dir: File): SynthGraphDB = {
+    def open(name: String): SynthGraphDB = {
+      val dir = file("database") / s"${name}_def"
       val dur = Durable(BerkeleyDB.factory(dir))
       implicit val listSer = expr.List.Modifiable.serializer[D, Node]
       implicit val iterSer = expr.List.Modifiable.serializer[D, expr.List.Modifiable[D, Node, Unit]]
@@ -273,9 +275,9 @@ object SOMGenerator extends App {
     futWeights
   }
 
-  def run(): Unit = {
-    val dir   = file("database"  ) / (if (args.length > 0) args(0) else "betanovuss0")
-    val in    = file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
+  def run(name: String, audioName: String): Unit = {
+    val dir   = file("database"  ) / name
+    val in    = file("audio_work") / audioName // (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
     val store = dir.parent / s"${dir.name}_def"
     if (store.isDirectory) {
       println(s"Directory $store already exists. Not regenerating.")
@@ -287,7 +289,7 @@ object SOMGenerator extends App {
     val path    = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
     val numIter = path.size / 2
 
-    val graphDB = SynthGraphDB.open(store)
+    val graphDB = SynthGraphDB.open(name)
     import graphDB.{system => dur, handle => iterListH}
 
     val proc = Processor[Unit]("gen-def") { self =>
@@ -308,7 +310,7 @@ object SOMGenerator extends App {
       }
     }
 
-    val screwYou = new Thread {
+    new Thread {
       override def run(): Unit = this.synchronized(this.wait())
       start()
     }

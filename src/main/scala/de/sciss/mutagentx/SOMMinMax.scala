@@ -6,7 +6,7 @@ import de.sciss.mutagentx.SOMGenerator.{Weight, SynthGraphDB}
 import de.sciss.processor.Processor
 
 object SOMMinMax extends App {
-  val numCoeff = 13
+  def numCoeff = 13
 
   run(args.headOption.getOrElse("betanovuss0"))
 
@@ -15,7 +15,7 @@ object SOMMinMax extends App {
   def run(name: String): Unit = {
     import kollflitz.Ops._
 
-    val graphDB = SynthGraphDB.open(file("database") / s"${name}_def")
+    val graphDB = SynthGraphDB.open(name)
     import graphDB._
 
     def perform(idx: Int, feature: Weight => Array[Double]): (Double, Double) = {
@@ -23,6 +23,7 @@ object SOMMinMax extends App {
         val res = Vector.newBuilder[Double]
         handle().iterator.foreach { li =>
           li.iterator.foreach { node =>
+            // println(node.weight.temporal.mkString(", "))
             res += feature(node.weight)(idx)
           }
         }
@@ -57,6 +58,23 @@ object SOMMinMax extends App {
       print("temporal", statsTemporal)
     }
 
+    new Thread {
+      override def run(): Unit = this.synchronized(this.wait())
+      start()
+    }
+
     proc.monitor()
+    proc.onFailure {
+      case ex =>
+        println("synth def database generation failed:")
+        ex.printStackTrace()
+    }
+
+    proc.onComplete {
+      case _ =>
+        println("...complete")
+        system.close()
+        sys.exit()
+    }
   }
 }
