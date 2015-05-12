@@ -1,9 +1,12 @@
 package de.sciss.mutagentx
 
+import java.io.{FileInputStream, FileOutputStream}
+
 import de.sciss.file._
 import de.sciss.kollflitz
-import de.sciss.mutagentx.SOMGenerator.{Weight, SynthGraphDB}
+import de.sciss.mutagentx.SOMGenerator.{SynthGraphDB, Weight}
 import de.sciss.processor.Processor
+import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
 
 object SOMMinMax extends App {
   def numCoeff = 13
@@ -12,8 +15,31 @@ object SOMMinMax extends App {
 
   import Algorithm.executionContext
 
+  // spectral followed by temporal
+  type Tpe = (Vec[(Double, Double)], Vec[(Double, Double)])
+
+  def read(name: String): Tpe = {
+    val statFile = file("database") / s"${name}_stat"
+    val fin   = new FileInputStream(statFile)
+    val sz    = fin.available()
+    val szE   = numCoeff * 2 * 2 * 8
+    require(sz == szE, s"Unexpected size $sz, expected $szE")
+    val arr   = new Array[Byte](sz)
+    fin.read(arr)
+    fin.close()
+    val din   = DataInput(arr)
+    val ser   = implicitly[ImmutableSerializer[Tpe]]
+    ser.read(din)
+  }
+
   def run(name: String): Unit = {
     import kollflitz.Ops._
+
+    val statFile = file("database") / s"${name}_stat"
+    if (statFile.exists) {
+      println(s"File $statFile already exists. Not regenerating.")
+      return
+    }
 
     val graphDB = SynthGraphDB.open(name)
     import graphDB._
@@ -23,7 +49,7 @@ object SOMMinMax extends App {
         val res = Vector.newBuilder[Double]
         handle().iterator.foreach { li =>
           li.iterator.foreach { node =>
-            if (idx == 0 && node.input.fitness > 0.3) println(node.weight.temporal.mkString(", "))
+            // if (idx == 0 && node.input.fitness > 0.3) println(node.weight.temporal.mkString(", "))
             res += feature(node.weight)(idx)
           }
         }
@@ -45,6 +71,14 @@ object SOMMinMax extends App {
 
       val statsSpectral = step(0.0, _.spectral)
       val statsTemporal = step(0.0, _.temporal)
+      val stats = (statsSpectral, statsTemporal)
+
+      val serializer  = implicitly[ImmutableSerializer[Tpe]]
+      val fos         = new FileOutputStream(statFile)
+      val dout        = DataOutput()
+      serializer.write(stats, dout)
+      fos.write(dout.toByteArray)
+      fos.close()
 
       def print(name: String, stats: Vec[(Double, Double)]): Unit = {
         println(s"------ STATS FOR $name ------")

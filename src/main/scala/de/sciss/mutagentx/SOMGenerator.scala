@@ -4,10 +4,9 @@ import java.util.concurrent.TimeUnit
 
 import de.sciss.dsp
 import de.sciss.file._
-import de.sciss.lucre.{stm, expr}
-import de.sciss.lucre.geom.{IntPoint2D, IntSpace}
-import de.sciss.lucre.stm.{Source, InMemory}
+import de.sciss.lucre.stm.Source
 import de.sciss.lucre.stm.store.BerkeleyDB
+import de.sciss.lucre.{expr, stm}
 import de.sciss.processor.{Processor, ProcessorOps}
 import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
 import de.sciss.synth.SynthGraph
@@ -46,14 +45,32 @@ object SOMGenerator extends App {
   case class Input(graph: SynthGraph, iter: Int, fitness: Float) {
     override def toString = {
       val fitS  = f"$fitness%1.3f"
-      s"Weight(graph size = ${graph.sources.size}, iter = $iter, fitness = $fitS)"
+      s"Input(graph size = ${graph.sources.size}, iter = $iter, fitness = $fitS)"
     }
   }
 
-  sealed trait HasWeight {
-    type Self <: HasWeight
-    def weight: Weight
-    // def replaceWeight(newWeight: Weight): Self
+  import Algorithm.executionContext
+
+  object SynthGraphDB {
+    type Tpe = expr.List.Modifiable[D, expr.List.Modifiable[D, Node, Unit], Unit]
+
+    def open(name: String): SynthGraphDB = {
+      val dir = file("database") / s"${name}_def"
+      val dur = Durable(BerkeleyDB.factory(dir))
+      implicit val listSer = expr.List.Modifiable.serializer[D, Node](Node.serializer)
+      implicit val iterSer = expr.List.Modifiable.serializer[D, expr.List.Modifiable[D, Node, Unit]]
+      val iterListH = dur.root { implicit tx =>
+        expr.List.Modifiable[D, expr.List.Modifiable[D, Node, Unit]]
+      }
+      new SynthGraphDB {
+        val system: D = dur
+        val handle: Source[D#Tx, Tpe] = iterListH
+      }
+    }
+  }
+  trait SynthGraphDB {
+    implicit val system: D
+    val handle: stm.Source[D#Tx, SynthGraphDB.Tpe]
   }
 
   object Node {
@@ -75,10 +92,7 @@ object SOMGenerator extends App {
       }
     }
   }
-  case class Node(input: Input, weight: Weight) extends HasWeight {
-    type Self = Node
-    def replaceWeight(newWeight: Weight): Node = copy(weight = newWeight)
-  }
+  case class Node(input: Input, weight: Weight)
 
   object Weight {
     implicit object serializer extends ImmutableSerializer[Weight] {
@@ -119,51 +133,8 @@ object SOMGenerator extends App {
       }
     }
   }
-  class Weight(val spectral: Array[Double], val temporal: Array[Double]) extends HasWeight {
+  class Weight(val spectral: Array[Double], val temporal: Array[Double]) {
     override def toString = spectral.map(d => f"$d%1.3f").mkString("[", ", ", "]")
-    
-    def weight = this
-    type Self = Weight
-    // def replaceWeight(newWeight: Weight): Weight = newWeight
-  }
-
-  type AnyNode = PlacedNode[HasWeight]
-
-  // case class Coord(x: Int, y: Int)
-  type Coord = IntPoint2D
-  def  Coord(x: Int, y: Int) = IntPoint2D(x, y)
-
-  class PlacedNode[+N](val coord: Coord, val node: N)
-
-  class Lattice[N <: HasWeight](val nodes: Array[PlacedNode[N]])
-
-  type AnyLattice = Lattice[HasWeight]
-
-  type I    = InMemory
-  type Dim  = IntSpace.TwoDim
-
-  import Algorithm.executionContext
-
-  object SynthGraphDB {
-    type Tpe = expr.List.Modifiable[D, expr.List.Modifiable[D, Node, Unit], Unit]
-
-    def open(name: String): SynthGraphDB = {
-      val dir = file("database") / s"${name}_def"
-      val dur = Durable(BerkeleyDB.factory(dir))
-      implicit val listSer = expr.List.Modifiable.serializer[D, Node]
-      implicit val iterSer = expr.List.Modifiable.serializer[D, expr.List.Modifiable[D, Node, Unit]]
-      val iterListH = dur.root { implicit tx =>
-        expr.List.Modifiable[D, expr.List.Modifiable[D, Node, Unit]]
-      }
-      new SynthGraphDB {
-        val system: D = dur
-        val handle: Source[D#Tx, Tpe] = iterListH
-      }
-    }
-  }
-  trait SynthGraphDB {
-    implicit val system: D
-    val handle: stm.Source[D#Tx, SynthGraphDB.Tpe]
   }
 
   // hashes: from previous iterations, prevents that multiple identical synth graphs appear
@@ -300,7 +271,7 @@ object SOMGenerator extends App {
     val numIter = path.size / 2
 
     val graphDB = SynthGraphDB.open(name)
-    import graphDB.{system => dur, handle => iterListH}
+    import graphDB.{handle => iterListH, system => dur}
 
     val proc = Processor[Unit]("gen-def") { self =>
       var hashes = Set.empty[Int]
