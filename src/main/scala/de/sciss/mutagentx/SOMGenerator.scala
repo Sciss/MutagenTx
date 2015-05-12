@@ -12,6 +12,7 @@ import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
 import de.sciss.synth.SynthGraph
 import de.sciss.synth.io.AudioFile
 import de.sciss.synth.proc.{Durable, SynthGraphs}
+import de.sciss.synth.ugen.ConfigOut
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future, blocking}
@@ -257,6 +258,8 @@ object SOMGenerator extends App {
   }
 
   def run(name: String, audioName: String): Unit = {
+    ConfigOut.NO_NORMALIZE = true // yukk
+
     val dir   = file("database"  ) / name
     val in    = file("audio_work") / audioName // (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
     val store = dir.parent / s"${dir.name}_def"
