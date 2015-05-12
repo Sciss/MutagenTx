@@ -22,7 +22,7 @@ object SOMMinMax extends App {
     val statFile = file("database") / s"${name}_stat"
     val fin   = new FileInputStream(statFile)
     val sz    = fin.available()
-    val szE   = numCoeff * 2 * 2 * 8
+    val szE   = numCoeff * 2 * 2 * 8 + 2 * 4
     require(sz == szE, s"Unexpected size $sz, expected $szE")
     val arr   = new Array[Byte](sz)
     fin.read(arr)
@@ -44,7 +44,7 @@ object SOMMinMax extends App {
     val graphDB = SynthGraphDB.open(name)
     import graphDB._
 
-    def perform(idx: Int, feature: Weight => Array[Double]): (Double, Double) = {
+    def perform(idx: Int, feature: Weight => Array[Double], print0: Boolean): (Double, Double) = {
       val all = system.step { implicit tx =>
         val res = Vector.newBuilder[Double]
         handle().iterator.foreach { li =>
@@ -56,21 +56,21 @@ object SOMMinMax extends App {
         res.result()
       }
       val sorted = all.sortedT
-      if (idx == 0) println(s"calcMinMax - based on ${sorted.size} samples.")
+      if (idx == 0 && print0) println(s"calcMinMax - based on ${sorted.size} samples.")
       (sorted.percentile(2), sorted.percentile(98))
     }
 
     val proc = Processor[Unit]("calc-min-max") { self =>
-      def step(off: Double, feature: Weight => Array[Double]): Vec[(Double, Double)] =
+      def step(off: Double, feature: Weight => Array[Double], print0: Boolean): Vec[(Double, Double)] =
         (0 until numCoeff).map { idx =>
-          val res = perform(idx, feature)
+          val res = perform(idx, feature, print0 = print0)
           self.progress = ((idx + 1).toDouble / numCoeff) * 0.5 + off
           self.checkAborted()
           res
         }
 
-      val statsSpectral = step(0.0, _.spectral)
-      val statsTemporal = step(0.0, _.temporal)
+      val statsSpectral = step(0.0, _.spectral, print0 = true )
+      val statsTemporal = step(0.0, _.temporal, print0 = false)
       val stats = (statsSpectral, statsTemporal)
 
       val serializer  = implicitly[ImmutableSerializer[Tpe]]

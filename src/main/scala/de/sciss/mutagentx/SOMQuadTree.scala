@@ -1,5 +1,8 @@
 package de.sciss.mutagentx
 
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+
 import de.sciss.file._
 import de.sciss.lucre.data.DeterministicSkipOctree
 import de.sciss.lucre.data.gui.SkipQuadtreeView
@@ -14,7 +17,8 @@ import de.sciss.synth.proc.Durable
 import de.sciss.{kollflitz, numbers}
 
 import scala.annotation.tailrec
-import scala.concurrent.blocking
+import scala.concurrent.duration.Duration
+import scala.concurrent.{TimeoutException, Await, Future, blocking}
 import scala.swing.event.MousePressed
 import scala.swing.{Component, MainFrame, Swing}
 
@@ -24,7 +28,7 @@ object SOMQuadTree extends App {
   def extent    : Int   = 256 // 16384
   def gridStep  : Int   = 1 // 64 // 32 // 16
 
-  def MAX_NODES : Int   = 20
+  def MAX_NODES : Int   = 16384
 
   run(args.headOption.getOrElse("betanovuss0"))
 
@@ -125,13 +129,24 @@ object SOMQuadTree extends App {
         // def norm(v: Array[Double], min: Array[Double], max: Array[Double]): Vec[Double] =
         //  (0 until v.length).map { i => v(i).linlin(min(i), max(i), 0, 1) }
 
+        def sqrDifSumSqrt(a: Array[Double], b: Array[Double]): Double = {
+          var i = 0
+          var sum = 0.0
+          while (i < a.length) {
+            val d = a(i) - b(i)
+            sum += d * d
+            i += 1
+          }
+          math.sqrt(sum)
+        }
+
         val w1sn = w1.spectral // norm(w1.spectral, featSpecMin, featSpecMax)
         val w2sn = w2.spectral // norm(w2.spectral, featSpecMin, featSpecMax)
-        val spectDist = (w1sn zip w2sn).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
+        val spectDist = sqrDifSumSqrt(w1sn, w2sn) // (w1sn zip w2sn).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
 
         val w1tn = w1.temporal // norm(w1.temporal, featTempMin, featTempMax)
         val w2tn = w2.temporal // norm(w2.temporal, featTempMin, featTempMax)
-        val tempDist = (w1tn zip w2tn).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
+        val tempDist = sqrDifSumSqrt(w1tn, w2tn) // (w1tn zip w2tn).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
 
         (spectDist + tempDist) / 2
       }
@@ -140,7 +155,7 @@ object SOMQuadTree extends App {
         math.sqrt((n1.x - n2.x).squared + (n1.y - n2.y).squared) // Euclidean distance
 
       val trainingSet   : Array[Node]     = nodes.scramble().take(MAX_NODES).toArray
-      // println("WARNING: NUM ITER = 1000")
+      println(s"Input ${nodes.length} nodes. Training with ${trainingSet.length} items.")
       val numIterations : Int             = trainingSet.length // * 4
       val mapRadius     : Double          = extent
       val timeConstant  : Double          = numIterations / math.log(mapRadius)
@@ -210,7 +225,7 @@ object SOMQuadTree extends App {
       }
 
       def nextLattice(iter: Int): Unit = {
-        if (iter % 100 == 0) println(s"---- iter $iter")
+        // if (iter % 100 == 0) println(s"---- iter $iter")
         val randomInput   = trainingSet(iter % trainingSet.length) // .choose()
         val bmuNode       = bmu(randomInput.weight)
         val radius        = neighbourhoodRadius(iter)
@@ -223,7 +238,7 @@ object SOMQuadTree extends App {
           adjust(randomInput.weight, dist.node.weight, lRate, tTheta)
         }
 
-        self.progress = (iter + 1).toDouble / numIterations // * 0.5
+        self.progress = (iter + 1).toDouble / numIterations * 0.5
         self.checkAborted()
       }
 
@@ -238,16 +253,30 @@ object SOMQuadTree extends App {
       // val latticeN = run(lattice0, iter = 0)
       run(iter = 0)
 
-      val res: Vec[PlacedNode] = {
+      val placeNum = new AtomicInteger(0)
+
+      val futRes = Future[Vec[PlacedNode]] {
         // val nodes = latticeN.nodes.collect { case PlacedNode(c, n: Node) => PlacedNode(c, n) }
         val nodes = trainingSet.zipWithIndex.par.map { case (in, idx) =>
           val nearest = bmu(in.weight)
           // self.progress = ((idx + 1).toDouble / 1000) * 0.5 + 0.5
           // self.checkAborted()
+          placeNum.incrementAndGet()
           new PlacedNode(nearest.coord, in)
         } .toIndexedSeq
         // new Lattice(/* size = latticeSize, */ nodes = nodes)
         nodes
+      }
+
+      var done = false
+      var res: Vec[PlacedNode] = null
+      while (!done) try {
+        res = Await.result(futRes, Duration(10, TimeUnit.SECONDS))
+        done = true
+      } catch {
+        case _: TimeoutException =>
+          self.progress = (placeNum.get().toDouble / trainingSet.length) * 0.5 + 0.5
+          self.checkAborted()
       }
 
       res
@@ -255,7 +284,7 @@ object SOMQuadTree extends App {
 
     // futWeights.monitor(printResult = false)
 
-    placedNodesFut.monitor()
+    placedNodesFut.monitor(printResult = false)
     placedNodesFut.onFailure {
       case ex =>
         println("lattice generation failed:")
