@@ -36,7 +36,8 @@ libraryDependencies ++= Seq(
   // MFCC and SOM
   "de.sciss"      %% "scissdsp"                 % "1.2.2",
   "de.sciss"      %% "lucredata-core"           % "2.3.1",
-  "de.sciss"      %% "lucredata-views"          % "2.3.1"
+  "de.sciss"      %% "lucredata-views"          % "2.3.1",
+  "de.sciss"      %% "scalacolliderswing-core"  % "1.25.0"
 )
 
 scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xfuture")

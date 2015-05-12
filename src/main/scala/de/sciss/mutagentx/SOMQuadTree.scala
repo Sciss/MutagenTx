@@ -3,6 +3,7 @@ package de.sciss.mutagentx
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
+import de.sciss.audiowidgets.Transport
 import de.sciss.file._
 import de.sciss.lucre.data.DeterministicSkipOctree
 import de.sciss.lucre.data.gui.SkipQuadtreeView
@@ -13,14 +14,18 @@ import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.mutagentx.SOMGenerator._
 import de.sciss.processor.Processor
 import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
+import de.sciss.synth.impl.DefaultUGenGraphBuilderFactory
+import de.sciss.synth.{Synth, SynthDef, Server, ServerConnection}
 import de.sciss.synth.proc.Durable
+import de.sciss.synth.swing.ServerStatusPanel
 import de.sciss.{kollflitz, numbers}
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
 import scala.concurrent.{TimeoutException, Await, Future, blocking}
 import scala.swing.event.MousePressed
-import scala.swing.{Component, MainFrame, Swing}
+import scala.swing.{Button, BorderPanel, FlowPanel, Component, MainFrame, Swing}
+import scala.util.Try
 
 object SOMQuadTree extends App {
   def numCoeff  : Int   = 13
@@ -67,10 +72,36 @@ object SOMQuadTree extends App {
 
   type Dim  = IntSpace.TwoDim
 
+  object QuadGraphDB {
+    type Tpe = DeterministicSkipOctree[D, Dim, PlacedNode]
+
+    def open(name: String): QuadGraphDB = {
+      val somDir = file("database") / s"${name}_som"
+      implicit val dur  = Durable(BerkeleyDB.factory(somDir))
+      implicit val pointView = (n: PlacedNode, tx: D#Tx) => n.coord
+      implicit val octreeSer = DeterministicSkipOctree.serializer[D, Dim, PlacedNode]
+      val quadH = dur.root { implicit tx =>
+        DeterministicSkipOctree.empty[D, Dim, PlacedNode](IntSquare(extent, extent, extent))
+      }
+
+      new QuadGraphDB {
+        val system: D = dur
+        val handle: stm.Source[D#Tx, Tpe] = quadH
+      }
+    }
+  }
+  trait QuadGraphDB {
+    implicit val system: D
+    val handle: stm.Source[D#Tx, QuadGraphDB.Tpe]
+  }
+
   def run(name: String): Unit = {
     val somDir = file("database") / s"${name}_som"
     if (somDir.isDirectory) {
       println(s"Directory $somDir already exists. Not regenerating.")
+      val db = QuadGraphDB.open(name)
+      import db.system
+      Swing.onEDT(guiInit[D](db.handle))
       return
     }
 
@@ -294,17 +325,13 @@ object SOMQuadTree extends App {
     placedNodesFut.onSuccess { case nodes =>
       println(s"Number of nodes: ${nodes.length}")
 
-      implicit val system  = Durable(BerkeleyDB.factory(somDir))
-      type D = Durable
-      implicit val pointView = (n: PlacedNode, tx: D#Tx) => n.coord
-      implicit val octreeSer = DeterministicSkipOctree.serializer[D, Dim, PlacedNode]
-      val quadH = system.root { implicit tx =>
-        val quad = DeterministicSkipOctree.empty[D, Dim, PlacedNode](IntSquare(extent, extent, extent))
+      val db = QuadGraphDB.open(name)
+      import db.system
+      system.step { implicit tx =>
+        val quad = db.handle()
         nodes.foreach(quad.add)
-        quad
       }
-
-      Swing.onEDT(guiInit[D](quadH))
+      Swing.onEDT(guiInit[D](db.handle))
     }
 
     new Thread {
@@ -315,13 +342,58 @@ object SOMQuadTree extends App {
 
   def guiInit[R <: Sys[R]](quadH: stm.Source[R#Tx, DeterministicSkipOctree[R, Dim, PlacedNode]])
                           (implicit cursor: stm.Cursor[R]): Unit = {
-    // val model = InteractiveSkipOctreePanel.makeModel2D(system)(())
-    // new InteractiveSkipOctreePanel(model)
-    val quadView = new SkipQuadtreeView[R, PlacedNode](quadH, cursor, _.coord)
+
+    var synthOpt = Option.empty[Synth]
+
+    import de.sciss.synth.Ops._
+
+    val quadView  = new SkipQuadtreeView[R, PlacedNode](quadH, cursor, _.coord)
+
+    def stopSynth(): Unit = synthOpt.foreach { synth =>
+      synthOpt = None
+      if (synth.server.isRunning) synth.release(3.0) // free()
+    }
+    def playSynth(): Unit = {
+      stopSynth()
+      for {
+        s    <- Try(Server.default).toOption
+        node <- quadView.highlight.headOption
+      } {
+        val graph = node.node.input.graph // node.chromosome.graph
+        val df    = SynthDef("test", graph.expand(DefaultUGenGraphBuilderFactory))
+        val x     = df.play(s, args = Seq("out" -> 1))
+        synthOpt = Some(x)
+      }
+    }
+
+    val pStatus = new ServerStatusPanel
+    def boot(): Unit = {
+      val cfg = Server.Config()
+      cfg.pickPort()
+      val connect = Server.boot(config = cfg) {
+        case ServerConnection.Running(s) =>
+        case ServerConnection.Aborted    =>
+      }
+      pStatus.booting = Some(connect)
+    }
+
+    val butKill = Button("Kill") {
+      import scala.sys.process._
+      Try(Server.default).toOption.foreach(_.dispose())
+      "killall scsynth".!
+    }
+
+    pStatus.bootAction = Some(boot)
+    val bs = Transport.makeButtonStrip(Seq(Transport.Stop(stopSynth()), Transport.Play(playSynth())))
+    val tp = new FlowPanel(pStatus, butKill, bs)
+
     // quadView.scale = 240.0 / extent
-    val quadComp = Component.wrap(quadView)
+    val quadComp  = Component.wrap(quadView)
     new MainFrame {
-      contents = quadComp
+      contents = new BorderPanel {
+        add(tp      , BorderPanel.Position.North )
+        add(quadComp, BorderPanel.Position.Center)
+      }
       pack().centerOnScreen()
       open()
     }
@@ -338,7 +410,12 @@ object SOMQuadTree extends App {
           q.nearestNeighborOption(IntPoint2D(x, y), IntDistanceMeasure2D.euclideanSq)
         }
         nodeOpt.foreach { node =>
-          println(node)
+          // println(node.node.input.graph)
+          // --- the hightlight doesn't seem to be working,
+          // probably because SynthGraph is not equal to itself after de-serialization?
+          quadView.highlight = Set(node)
+          quadView.repaint()
+          bs.button(Transport.Play).foreach(_.doClick(100))
         }
     }
   }
