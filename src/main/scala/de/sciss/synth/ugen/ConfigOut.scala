@@ -22,7 +22,7 @@ final case class ConfigOut(in: GE) extends UGenSource.ZeroOut with WritesBus {
       val normDur = 2.0
       val tFree = TDelay.kr(doneEnv, normDur)
       FreeSelf.kr(tFree)
-      Normalizer.ar(sig3 * env, level = -0.2.dbamp, dur = normDur)
+      Normalizer.ar(sig3, level = -0.2.dbamp, dur = normDur) * DelayN.ar(env, normDur, normDur)
     }
     val bus   = "out".kr(0f)
     Out.ar(bus, sig)

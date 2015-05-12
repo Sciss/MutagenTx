@@ -369,6 +369,7 @@ object SOMQuadTree extends App {
     val pStatus = new ServerStatusPanel
     def boot(): Unit = {
       val cfg = Server.Config()
+      cfg.memorySize = 256 * 1024
       cfg.pickPort()
       val connect = Server.boot(config = cfg) {
         case ServerConnection.Running(s) =>
