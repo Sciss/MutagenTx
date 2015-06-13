@@ -15,7 +15,7 @@ import de.sciss.mutagentx.SOMGenerator._
 import de.sciss.processor.Processor
 import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
 import de.sciss.synth.impl.DefaultUGenGraphBuilderFactory
-import de.sciss.synth.{Synth, SynthDef, Server, ServerConnection}
+import de.sciss.synth.{SynthGraph, Synth, SynthDef, Server, ServerConnection}
 import de.sciss.synth.proc.Durable
 import de.sciss.synth.swing.ServerStatusPanel
 import de.sciss.{kollflitz, numbers}
@@ -343,11 +343,13 @@ object SOMQuadTree extends App {
   def guiInit[R <: Sys[R]](quadH: stm.Source[R#Tx, DeterministicSkipOctree[R, Dim, PlacedNode]])
                           (implicit cursor: stm.Cursor[R]): Unit = {
 
-    var synthOpt = Option.empty[Synth]
+    var synthOpt      = Option.empty[Synth]
+    var synthGraphOpt = Option.empty[SynthGraph]
 
     import de.sciss.synth.Ops._
 
-    val quadView  = new SkipQuadtreeView[R, PlacedNode](quadH, cursor, _.coord)
+    val quadView = new SkipQuadtreeView[R, PlacedNode](quadH, cursor, _.coord)
+    quadView.scale = 1.4
 
     def stopSynth(): Unit = synthOpt.foreach { synth =>
       synthOpt = None
@@ -362,7 +364,8 @@ object SOMQuadTree extends App {
         val graph = node.node.input.graph // node.chromosome.graph
         val df    = SynthDef("test", graph.expand(DefaultUGenGraphBuilderFactory))
         val x     = df.play(s, args = Seq("out" -> 1))
-        synthOpt = Some(x)
+        synthOpt      = Some(x)
+        synthGraphOpt = Some(graph)
       }
     }
 
@@ -386,7 +389,13 @@ object SOMQuadTree extends App {
 
     pStatus.bootAction = Some(boot)
     val bs = Transport.makeButtonStrip(Seq(Transport.Stop(stopSynth()), Transport.Play(playSynth())))
-    val tp = new FlowPanel(pStatus, butKill, bs)
+    val ggPrint = Button("Print") {
+      synthGraphOpt.foreach { graph =>
+        val x = impl.ChromosomeImpl.graphToString(graph)
+        println(x)
+      }
+    }
+    val tp = new FlowPanel(pStatus, butKill, bs, ggPrint)
 
     // quadView.scale = 240.0 / extent
     val quadComp  = Component.wrap(quadView)
