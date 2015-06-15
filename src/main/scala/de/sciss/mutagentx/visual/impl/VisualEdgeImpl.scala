@@ -15,18 +15,22 @@ package de.sciss.mutagentx
 package visual
 package impl
 
+import de.sciss.lucre.event.Sys
 import prefuse.data.{Edge => PEdge}
 
 import scala.concurrent.stm.Ref
 
 object VisualEdgeImpl {
-  def apply(source: VisualNode, sink: VisualNode, init: Boolean)(implicit tx: S#Tx): VisualEdge.Init = {
+  def apply[S <: Sys[S]](source: VisualNode[S], sink: VisualNode[S], init: Boolean)
+                        (implicit tx: S#Tx): VisualEdge.Init[S] = {
     val res = Impl(source, sink)
     if (init) res.init()
     res
   }
 
-  private final case class Impl(source: VisualNode, sink: VisualNode) extends VisualEdge.Init with VisualDataImpl {
+  private final case class Impl[S <: Sys[S]](source: VisualNode[S], sink: VisualNode[S])
+    extends VisualEdge.Init[S] with VisualDataImpl[S] {
+
     private[this] var _pEdge: PEdge = _
 
     override def productPrefix: String = "VisualEdge"
@@ -50,7 +54,7 @@ object VisualEdgeImpl {
       sink  .edgesIn .put(key, this)
       touch()
       main.deferVisTx {
-        if (VisualOLD.DEBUG) println(s"MAKE EDGE $this")
+        if (Visual.DEBUG) println(s"MAKE EDGE $this")
         mkPEdge()
       }
       this
@@ -70,8 +74,8 @@ object VisualEdgeImpl {
       if (_pEdge != null) throw new IllegalStateException(s"Component $this has already been initialized")
       _pEdge  = main.graph.addEdge(source.pNode, sink.pNode)
       val vis = main.visualization
-      val vi  = vis.getVisualItem(VisualOLD.GROUP_GRAPH, _pEdge)
-      vi.set(VisualOLD.COL_MUTA, this)
+      val vi  = vis.getVisualItem(Visual.GROUP_GRAPH, _pEdge)
+      vi.set(Visual.COL_MUTA, this)
       //      val sz  = nodeSize
       //      if (sz != 1.0f) vi.set(VisualItem.SIZE, sz)
       //      parent.aggr.addItem(vi)

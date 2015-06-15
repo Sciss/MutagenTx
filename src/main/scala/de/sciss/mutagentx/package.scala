@@ -13,17 +13,19 @@
 
 package de.sciss
 
-import de.sciss.synth.proc.{Durable, Confluent}
+import de.sciss.lucre.data
+import de.sciss.lucre.event.Sys
 
 package object mutagentx {
-  type S = Confluent
-  type D = Durable
+  // type S = Confluent
+  // type D = Durable
 
-  implicit val chromosomeSerializer = Topology.serializer[Vertex, Edge]
+  implicit def chromosomeSerializer[S <: Sys[S]](implicit ord: data.Ordering[S#Tx, Vertex[S]]) =
+    Topology.serializer[S, Vertex[S], Edge[S]]
 
   // type Top = Topology[Vertex, Edge]
 
-  type Chromosome = Topology[Vertex, Edge]
+  type Chromosome[S <: Sys[S]] = Topology[S, Vertex[S], Edge[S]]
 
   type Vec[+A]  = scala.collection.immutable.IndexedSeq[A]
   val  Vec      = scala.collection.immutable.IndexedSeq

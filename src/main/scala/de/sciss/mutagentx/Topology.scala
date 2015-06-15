@@ -14,6 +14,7 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.data.SkipList
+import de.sciss.lucre.event.{InMemory, Sys}
 import de.sciss.lucre.{data, expr}
 import de.sciss.lucre.stm.{Identifiable, Mutable}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
@@ -22,30 +23,32 @@ import scala.annotation.tailrec
 import scala.collection.mutable.{Set => MSet, Stack => MStack}
 
 object Topology {
-  private implicit def ord[V <: Identifiable[S#ID]]: data.Ordering[S#Tx, V] = anyOrd.asInstanceOf[Ord[V]]
+  private implicit def ord[S <: Sys[S], V <: Identifiable[S#ID]]: data.Ordering[S#Tx, V] =
+    anyOrd.asInstanceOf[Ord[S, V]]
 
-  private val anyOrd = new Ord[Identifiable[S#ID]]
+  private val anyOrd = new Ord[InMemory, Identifiable[InMemory#ID]]
 
-  private final class Ord[V <: Identifiable[S#ID]] extends data.Ordering[S#Tx, V] {
+  private final class Ord[S <: Sys[S], V <: Identifiable[S#ID]] extends data.Ordering[S#Tx, V] {
     def compare(a: V, b: V)(implicit tx: S#Tx): Int = {
-      val aid = a.id
-      val bid = b.id
-      val ab  = aid.base
-      val bb  = bid.base
-      if (ab < bb) -1 else if (ab > bb) 1 else {
-        @tailrec def loop(ap: S#Acc,  bp: S#Acc): Int =
-          if (ap.isEmpty) {
-            -1 // we rule out equality before; if (bp.isEmpty) 0 else -1
-          } else if (bp.isEmpty) 1 else {
-            val ah = ap.head.toInt
-            val bh = bp.head.toInt
-            if (ah < bh) -1 else if (ah > bh) 1 else {
-              loop(ap.tail, bp.tail)
-            }
-          }
-
-        if (aid.path == bid.path) 0 else loop(aid.path, bid.path)
-      }
+      ???
+//      val aid = a.id
+//      val bid = b.id
+//      val ab  = aid.base
+//      val bb  = bid.base
+//      if (ab < bb) -1 else if (ab > bb) 1 else {
+//        @tailrec def loop(ap: S#Acc,  bp: S#Acc): Int =
+//          if (ap.isEmpty) {
+//            -1 // we rule out equality before; if (bp.isEmpty) 0 else -1
+//          } else if (bp.isEmpty) 1 else {
+//            val ah = ap.head.toInt
+//            val bh = bp.head.toInt
+//            if (ah < bh) -1 else if (ah > bh) 1 else {
+//              loop(ap.tail, bp.tail)
+//            }
+//          }
+//
+//        if (aid.path == bid.path) 0 else loop(aid.path, bid.path)
+//      }
     }
   }
 
@@ -54,36 +57,40 @@ object Topology {
     * @tparam V   vertex type
     * @tparam E   edge type
     */
-  def empty[V <: Identifiable[S#ID], E <: Edge[V]](implicit tx: S#Tx,
+  def empty[S <: Sys[S], V, E <: Edge[V]](implicit tx: S#Tx,
                                                    vertexSer: Serializer[S#Tx, S#Acc, V],
-                                                   edgeSer  : Serializer[S#Tx, S#Acc, E]) = {
+                                                   edgeSer  : Serializer[S#Tx, S#Acc, E],
+                                                   ord: data.Ordering[S#Tx, V]) = {
     val id = tx.newID()
-    new Topology(id, expr.List.Modifiable[S, V], expr.List.Modifiable[S, E], tx.newIntVar(id, 0),
+    new Topology[S, V, E](id, expr.List.Modifiable[S, V], expr.List.Modifiable[S, E], tx.newIntVar(id, 0),
       SkipList.Map.empty[S, V, Set[E]] /* tx.newDurableIDMap[Set[E]] */)
   }
 
-  implicit def serializer[V <: Identifiable[S#ID], E <: Edge[V]](implicit vertexSer: Serializer[S#Tx, S#Acc, V],
-                                                                          edgeSer  : Serializer[S#Tx, S#Acc, E])
-    : Serializer[S#Tx, S#Acc, Topology[V, E]] = new Ser[V, E]
+  implicit def serializer[S <: Sys[S], V, E <: Edge[V]](implicit vertexSer: Serializer[S#Tx, S#Acc, V],
+                                                                 edgeSer  : Serializer[S#Tx, S#Acc, E],
+                                                        ord: data.Ordering[S#Tx, V])
+    : Serializer[S#Tx, S#Acc, Topology[S, V, E]] = new Ser[S, V, E]
 
-  def read[V <: Identifiable[S#ID], E <: Edge[V]](in: DataInput, access: S#Acc)
-                                                 (implicit tx: S#Tx, vertexSer: Serializer[S#Tx, S#Acc, V],
-                                                                     edgeSer  : Serializer[S#Tx, S#Acc, E]) =
-    serializer[V, E].read(in, access)
+  def read[S <: Sys[S], V, E <: Edge[V]](in: DataInput, access: S#Acc)
+                                        (implicit tx: S#Tx, vertexSer: Serializer[S#Tx, S#Acc, V],
+                                                            edgeSer  : Serializer[S#Tx, S#Acc, E],
+                                         ord: data.Ordering[S#Tx, V]) =
+    serializer[S, V, E].read(in, access)
 
-  private final class Ser[V <: Identifiable[S#ID], E <: Edge[V]](implicit vertexSer: Serializer[S#Tx, S#Acc, V],
-                                                                          edgeSer  : Serializer[S#Tx, S#Acc, E])
-    extends Serializer[S#Tx, S#Acc, Topology[V, E]] {
+  private final class Ser[S <: Sys[S], V, E <: Edge[V]](implicit vertexSer: Serializer[S#Tx, S#Acc, V],
+                                                                 edgeSer  : Serializer[S#Tx, S#Acc, E],
+                                                                 ord: data.Ordering[S#Tx, V])
+    extends Serializer[S#Tx, S#Acc, Topology[S, V, E]] {
 
-    def write(top: Topology[V, E], out: DataOutput): Unit = top.write(out)
+    def write(top: Topology[S, V, E], out: DataOutput): Unit = top.write(out)
 
-    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Topology[V, E] = {
+    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Topology[S, V, E] = {
       val id          = tx.readID(in, access)
       val vertices    = expr.List.Modifiable.read[S, V](in, access)
       val edges       = expr.List.Modifiable.read[S, E](in, access)
       val unconnected = tx.readIntVar(id, in)
       val edgeMap     = SkipList.Map.read[S, V, Set[E]](in, access) // tx.readDurableIDMap[Set[E]](in)
-      new Topology(id, vertices, edges, unconnected, edgeMap)
+      new Topology[S, V, E](id, vertices, edges, unconnected, edgeMap)
     }
   }
 
@@ -121,7 +128,7 @@ object Topology {
   * @tparam V             vertex type
   * @tparam E             edge type
   */
-final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (val id: S#ID,
+final class Topology[S <: Sys[S], V, E <: Topology.Edge[V]] private (val id: S#ID,
                                                         val vertices: expr.List.Modifiable[S, V, Unit],
                                                         val edges   : expr.List.Modifiable[S, E, Unit],
                                                         val unconnected: S#Var[Int],
@@ -130,7 +137,7 @@ final class Topology[V <: Identifiable[S#ID], E <: Topology.Edge[V]] private (va
 
   import Topology.{CycleDetected, Move, MoveAfter, MoveBefore}
 
-  private type T = Topology[V, E]
+  private type T = Topology[S, V, E]
 
   override def toString() = s"Topology($id)" // s"Topology($vertices, $edges)($unconnected, $edgeMap)"
 

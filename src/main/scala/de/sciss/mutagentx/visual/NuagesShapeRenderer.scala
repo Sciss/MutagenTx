@@ -4,15 +4,14 @@ package visual
 import java.awt.Shape
 import java.awt.geom.Ellipse2D
 
+import de.sciss.lucre.event.Sys
 import prefuse.render.AbstractShapeRenderer
 import prefuse.visual.VisualItem
 
 import scala.swing.Graphics2D
 
-class NuagesShapeRenderer(size: Int)
+class NuagesShapeRenderer[S <: Sys[S]](size: Int)
   extends AbstractShapeRenderer {
-
-  import VisualOLD._
 
   private val ellipse = new Ellipse2D.Float()
 
@@ -31,7 +30,7 @@ class NuagesShapeRenderer(size: Int)
   }
 
   override def render(g: Graphics2D, vi: VisualItem): Unit = {
-    val data = vi.get(VisualOLD.COL_MUTA).asInstanceOf[VisualNode]
+    val data = vi.get(Visual.COL_MUTA).asInstanceOf[VisualNode[S]]
     if (data == null) return
     data.update(getShape(vi))
     data.render(g, vi)

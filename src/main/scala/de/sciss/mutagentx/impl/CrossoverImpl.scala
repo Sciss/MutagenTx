@@ -1,6 +1,7 @@
 package de.sciss.mutagentx
 package impl
 
+import de.sciss.lucre.event.Sys
 import de.sciss.lucre.{confluent, stm}
 import de.sciss.mutagentx.Util.coin
 
@@ -9,14 +10,16 @@ import scala.annotation.tailrec
 object CrossoverImpl {
   val DEBUG = false
 
-  def apply(algorithm: Algorithm, sq: Vec[stm.Source[S#Tx, Chromosome]], n: Int,
-                inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] = {
+  def apply[S <: Sys[S]](algorithm: Algorithm[S], sq: Vec[stm.Source[S#Tx, Chromosome[S]]], n: Int,
+                inputAccess: S#Acc): Vec[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)] = {
     import algorithm.global.{rng => random}
-    var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
+    var res = Vector.empty[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)]
     while (res.size < n) {
       val idx0      = res.size << 1
       val chosen0H  = sq( idx0      % sq.size)
       val chosen1H  = sq((idx0 + 1) % sq.size)
+???
+      /*
       val csr       = algorithm.global.forkCursor
       val hs = csr.stepFrom(inputAccess) { implicit tx =>
         implicit val dtx = tx.durable
@@ -48,20 +51,21 @@ object CrossoverImpl {
         val edgesTail2      = edges2.filter(e => tail2.contains(e.sourceVertex) && tail2.contains(e.targetVertex))
 
         val severedHeads1   = edges1.collect {
-          case Edge(source: Vertex.UGen, target, _) if head1.contains(source) && tail1.contains(target) => source
+          case Edge(source: Vertex.UGen[S], target, _) if head1.contains(source) && tail1.contains(target) => source
         }
         val severedHeads2   = edges2.collect {
-          case Edge(source: Vertex.UGen, target, _) if head2.contains(source) && tail2.contains(target) => source
+          case Edge(source: Vertex.UGen[S], target, _) if head2.contains(source) && tail2.contains(target) => source
         }
 
-        @tailrec def shrinkTop(top: Chromosome, target: Int, iter: Int): Unit =
+        @tailrec def shrinkTop(top: Chromosome[S], target: Int, iter: Int): Unit =
           if (top.vertices.size > target && iter != Algorithm.maxNumVertices) {
-            MutationImpl.removeVertex1(top)
+            MutationImpl.removeVertex1[S](top)
             shrinkTop(top, target = target, iter = iter + 1)
           }
 
-        def mkTop(vertices1: Vec[Vertex], edges1: Set[Edge], vertices2: Vec[Vertex], edges2: Set[Edge]): Chromosome = {
-          val c = Topology.empty[Vertex, Edge]
+        def mkTop(vertices1: Vec[Vertex[S]], edges1: Set[Edge[S]], vertices2: Vec[Vertex[S]],
+                  edges2: Set[Edge[S]]): Chromosome[S] = {
+          val c = Topology.empty[S, Vertex[S], Edge[S]]
           vertices1.foreach(c.addVertex)
           edges1   .foreach(c.addEdge /* .get */)  // this is now the first half of the original top
           vertices2.foreach(c.addVertex)
@@ -72,8 +76,8 @@ object CrossoverImpl {
         val c1 = mkTop(head1, edgesHead1, tail2, edgesTail2)
         val c2 = mkTop(head2, edgesHead2, tail1, edgesTail1)
 
-        def complete(top: Chromosome, inc: Set[Vertex.UGen]): Unit = {
-          inc.foreach { v => ChromosomeImpl.completeUGenInputs(top, v) }
+        def complete(top: Chromosome[S], inc: Set[Vertex.UGen[S]]): Unit = {
+          inc.foreach { v => ChromosomeImpl.completeUGenInputs[S](top, v) }
           shrinkTop(chosen1, top.vertices.size, 0)
         }
 
@@ -98,6 +102,7 @@ object CrossoverImpl {
       val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
       if (DEBUG) println(s"$hs - $pos")
       hs.foreach(h => res :+= (pos, h))
+      */
     }
 
     res

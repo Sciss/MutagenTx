@@ -15,6 +15,7 @@ package de.sciss.mutagentx
 package impl
 
 import de.sciss.lucre.confluent.TxnRandom
+import de.sciss.lucre.event.Sys
 import de.sciss.lucre.{confluent, stm}
 
 import scala.annotation.switch
@@ -25,13 +26,13 @@ object MutationImpl {
 
   def printStats(): Unit = println(stats.mkString(", "))
 
-  private def getTargets(top: Chromosome, v: Vertex)(implicit tx: S#Tx): Set[Edge] =
+  private def getTargets[S <: Sys[S]](top: Chromosome[S], v: Vertex[S])(implicit tx: S#Tx): Set[Edge[S]] =
     top.edges.iterator.collect {
       case e @ Edge(_, `v`, _) => e // a vertex `vi` that uses the removed vertex as one of its inlets
     } .toSet
 
-  def removeVertex1(top: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Vertex = {
-    implicit val dtx = tx.durable
+  def removeVertex1[S <: Sys[S]](top: Chromosome[S])
+                                (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Vertex[S] = {
     val vertices    = top.vertices
     val numVertices = vertices.size
     val idx         = random.nextInt(numVertices)
@@ -43,8 +44,8 @@ object MutationImpl {
       // assert(x ne top2)
       top.removeEdge(e)
     }
-    targets.foreach { case Edge(t: Vertex.UGen, _, _) =>
-      ChromosomeImpl.completeUGenInputs(top, t)
+    targets.foreach { case Edge(t: Vertex.UGen[S], _, _) =>
+      ChromosomeImpl.completeUGenInputs[S](top, t)
     }
     v
   }
@@ -54,12 +55,14 @@ object MutationImpl {
     * It assumes the invoking transaction is 'up-to-date' and will cause
     * the selection's cursors to step from this transaction's input access.
     */
-  def apply(algorithm: Algorithm, sq: Vec[stm.Source[S#Tx, Chromosome]], n: Int,
-            inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] = {
-    var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
+  def apply[S <: Sys[S]](algorithm: Algorithm[S], sq: Vec[stm.Source[S#Tx, Chromosome[S]]], n: Int,
+            inputAccess: S#Acc): Vec[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)] = {
+    var res = Vector.empty[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)]
 
     while (res.size < n) {
       val chosenH = sq(res.size % sq.size)
+      ???
+      /*
       val csr     = algorithm.global.forkCursor
       val hOpt    = csr.stepFrom(inputAccess) { implicit tx =>
         import algorithm.global.{rng => random}
@@ -86,12 +89,12 @@ object MutationImpl {
         if (Algorithm.DEBUG) println(s"$h - $pos")
         res :+= (pos, h)
       }
+      */
     }
     res
   }
 
-  private def roulette[A](in: Vec[(A, Int)])(implicit tx: S#Tx, random: TxnRandom[D#Tx]): A = {
-    implicit val dtx = tx.durable
+  private def roulette[S <: Sys[S], A](in: Vec[(A, Int)])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): A = {
     val sum         = in.map(_._2).sum
     val norm        = in.zipWithIndex.map { case ((c, f), j) => (j, f / sum) }
     val sorted      = norm.sortBy(_._2)
@@ -103,17 +106,17 @@ object MutationImpl {
     chosen
   }
 
-  private def addVertex(c: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean = {
+  private def addVertex[S <: Sys[S]](c: Chromosome[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     import Algorithm.maxNumVertices
     if (c.vertices.size >= maxNumVertices) false else {
-      ChromosomeImpl.addVertex(c)
+      ChromosomeImpl.addVertex[S](c)
       checkComplete(c, s"addVertex()")
       stats(0) += 1
       true
     }
   }
 
-  private def removeVertex(c: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean = {
+  private def removeVertex[S <: Sys[S]](c: Chromosome[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     import Algorithm.minNumVertices
     val vertices    = c.vertices
     val numVertices = vertices.size
@@ -125,24 +128,23 @@ object MutationImpl {
     }
   }
 
-  private def changeVertex(top: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean = {
-    implicit val dtx = tx.durable
-
+  private def changeVertex[S <: Sys[S]](top: Chromosome[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     val vertices    = top.vertices
     val numVertices = vertices.size
 
     val idx     = random.nextInt(numVertices)
     val vOld    = vertices(idx)
     vOld match {
-      case f: Vertex.Constant => changeVertexConstant(top, f)
-      case u: Vertex.UGen     => changeVertexUGen    (top, u)
+      case f: Vertex.Constant[S] => changeVertexConstant(top, f)
+      case u: Vertex.UGen[S]     => changeVertexUGen    (top, u)
     }
     stats(2) += 1
 
     true
   }
 
-  private def changeVertexConstant(top: Chromosome, vc: Vertex.Constant)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Unit = {
+  private def changeVertexConstant[S <: Sys[S]](top: Chromosome[S], vc: Vertex.Constant[S])
+                                               (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Unit = {
     val fNew: Float = if (Util.coin())
       ChromosomeImpl.mkConstantValue()            // completely random
     else
@@ -151,7 +153,8 @@ object MutationImpl {
     vc.f() = fNew
   }
 
-  private def changeVertexUGen(top: Chromosome, vu: Vertex.UGen)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Unit = {
+  private def changeVertexUGen[S <: Sys[S]](top: Chromosome[S], vu: Vertex.UGen[S])
+                                           (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Unit = {
     val outlet  = getTargets(top, vu)
     val inlets  = top.edgeMap.get(vu).getOrElse(Set.empty)
     outlet.foreach(top.removeEdge)
@@ -170,7 +173,7 @@ object MutationImpl {
 
     // just as many as possible, leaving tail inlets empty
     val newInlets = vNew match {
-      case vNewU: Vertex.UGen if oldInletNames.nonEmpty =>
+      case vNewU: Vertex.UGen[S] if oldInletNames.nonEmpty =>
         val newInletNames = vNewU.info.inputs.map(_.arg)
         inlets.collect {
           case e if oldInletNames.indexOf(e.inlet) < newInletNames.size =>
@@ -181,16 +184,16 @@ object MutationImpl {
 
     newInlets.foreach(top.addEdge /* .get */)
     vNew match {
-      case vu: Vertex.UGen => ChromosomeImpl.completeUGenInputs(top, vu)
+      case vu: Vertex.UGen[S] => ChromosomeImpl.completeUGenInputs(top, vu)
       case _ =>
     }
   }
 
-  private def changeEdge(top: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean = {
+  private def changeEdge[S <: Sys[S]](top: Chromosome[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     val vertices    = top.vertices
 
     val candidates  = vertices.iterator.collect {
-      case v @ Vertex.UGen(spec) if ChromosomeImpl.geArgs(spec).nonEmpty /* spec.inputs.nonEmpty */ => v
+      case v: Vertex.UGen[S] if ChromosomeImpl.geArgs(v.info).nonEmpty /* spec.inputs.nonEmpty */ => v
     } .toIndexedSeq
 
     if (candidates.isEmpty) false else {
@@ -198,18 +201,18 @@ object MutationImpl {
       val edges = top.edgeMap.get(v).getOrElse(Set.empty)
       if (edges.isEmpty) false else {
         top.removeEdge(Util.choose(edges))
-        ChromosomeImpl.completeUGenInputs(top, v)
+        ChromosomeImpl.completeUGenInputs[S](top, v)
         stats(3) += 1
         true
       }
     }
   }
 
-  private def swapEdge(top: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean = {
+  private def swapEdge[S <: Sys[S]](top: Chromosome[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     val vertices    = top.vertices
 
     val candidates  = vertices.iterator.collect {
-      case v @ Vertex.UGen(spec) if top.edgeMap.get(v).exists(_.size >= 2) => v
+      case v: Vertex.UGen[S] if top.edgeMap.get(v).exists(_.size >= 2) => v
     } .toIndexedSeq
 
     if (candidates.isEmpty) false else {
@@ -231,7 +234,7 @@ object MutationImpl {
   // splits a vertex. candidates are vertices with out degree >= 2.
   // candidate is chosen using roulette algorithm (thus more likely,
   // the higher the out degree).
-  private def splitVertex(top: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean = {
+  private def splitVertex[S <: Sys[S]](top: Chromosome[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     val verticesIn  = top.vertices
     val numVertices = verticesIn.size
     if (numVertices >= Algorithm.maxNumVertices) return false
@@ -244,7 +247,7 @@ object MutationImpl {
     if (weighted.isEmpty) false else {
       val edges = roulette(weighted)
       // import kollflitz.RandomOps._
-      val edgesS: Vec[Edge] = Util.scramble(edges.toVector)
+      val edgesS: Vec[Edge[S]] = Util.scramble(edges.toVector)
       val (_, edgesMove) = edgesS.splitAt(edgesS.size/2)
       val vertexOld = edges.head.targetVertex
       val vertexNew = vertexOld.copy()
@@ -256,7 +259,7 @@ object MutationImpl {
       }
       top.edgeMap.get(vertexOld).foreach { set =>
         vertexNew match {
-          case vNewU: Vertex.UGen =>
+          case vNewU: Vertex.UGen[S] =>
             set.foreach { eOld =>
               val eNew = eOld.copy(sourceVertex = vNewU)
               top.addEdge(eNew) // .get
@@ -271,7 +274,7 @@ object MutationImpl {
   }
 
   // merges two vertices of the same type
-  private def mergeVertex(top: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean = {
+  private def mergeVertex[S <: Sys[S]](top: Chromosome[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     val verticesIn  = top.vertices.iterator.toIndexedSeq
     val numVertices = verticesIn.size
     if (numVertices <= Algorithm.minNumVertices) return false
@@ -280,12 +283,12 @@ object MutationImpl {
     val it = Util.scramble(verticesIn).tails.flatMap {
       case head +: tail =>
         val partners = head match {
-          case Vertex.Constant(_) => tail.filter {
-            case Vertex.Constant(_) => true // any two constants will do
+          case _: Vertex.Constant[S] => tail.filter {
+            case _: Vertex.Constant[S] => true // any two constants will do
             case _ => false
           }
-          case Vertex.UGen(info) => tail.filter {
-            case Vertex.UGen(i1) => i1.name == info.name
+          case v: Vertex.UGen[S] => tail.filter {
+            case v1: Vertex.UGen[S] => v1.info.name == v.info.name
             case _ => false
           }
         }
@@ -321,9 +324,9 @@ object MutationImpl {
     }
   }
 
-  private def checkComplete(succ: Chromosome, message: => String)(implicit tx: S#Tx): Unit =
+  private def checkComplete[S <: Sys[S]](succ: Chromosome[S], message: => String)(implicit tx: S#Tx): Unit =
     succ.vertices.iterator.foreach {
-      case v: Vertex.UGen =>
+      case v: Vertex.UGen[S] =>
         val inc = ChromosomeImpl.findIncompleteUGenInputs(succ, v)
         if (inc.nonEmpty) {
           println("MISSING SLOTS:")

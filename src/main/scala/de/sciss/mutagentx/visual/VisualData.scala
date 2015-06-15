@@ -3,11 +3,12 @@ package visual
 
 import java.awt.Shape
 
+import de.sciss.lucre.event.Sys
 import de.sciss.lucre.stm.Disposable
-import prefuse.data.{Node => PNode, Edge => PEdge}
+import prefuse.data.{Node => PNode}
 import prefuse.visual.VisualItem
 
-import scala.concurrent.stm.{TMap, Ref, TSet}
+import scala.concurrent.stm.TMap
 import scala.swing.Graphics2D
 
 /** The common trait of all visible objects on the
@@ -15,18 +16,18 @@ import scala.swing.Graphics2D
   *
   * The next sub-type is `VisualNode` that is represented by a graph node.
   */
-trait VisualData extends Disposable[S#Tx] {
-  def main: VisualLike
+trait VisualData[S <: Sys[S]] extends Disposable[S#Tx] {
+  def main: VisualLike[S]
 
   def isActive(implicit tx: S#Tx): Boolean
 
   def touch()(implicit tx: S#Tx): Unit
 }
 
-trait VisualNode extends VisualData {
+trait VisualNode[S <: Sys[S]] extends VisualData[S] {
   def pNode: PNode
-  def edgesIn : TMap[(VisualNode, VisualNode), VisualEdge]
-  def edgesOut: TMap[(VisualNode, VisualNode), VisualEdge]
+  def edgesIn : TMap[(VisualNode[S], VisualNode[S]), VisualEdge[S]]
+  def edgesOut: TMap[(VisualNode[S], VisualNode[S]), VisualEdge[S]]
 
   /** GUI property: whether the node is allowed to move around
     * as part of the dynamic layout (`false`) or not (`true`).

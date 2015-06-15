@@ -1,28 +1,31 @@
 package de.sciss.mutagentx
 package visual
 
+import de.sciss.lucre.event.Sys
 import de.sciss.synth.UGenSpec
 
 object VisualUGen {
-  def apply(main: Visual, v: Vertex.UGen)(implicit tx: S#Tx): VisualUGen = impl.VisualUGenImpl(main, v)
+  def apply[S <: Sys[S]](main: Visual[S], v: Vertex.UGen[S])(implicit tx: S#Tx): VisualUGen[S] =
+    impl.VisualUGenImpl(main, v)
 }
-trait VisualUGen extends VisualVertex {
+trait VisualUGen[S <: Sys[S]] extends VisualVertex[S] {
   def info: UGenSpec
 }
 
 object VisualConstant {
-  def apply(main: Visual, v: Vertex.Constant)(implicit tx: S#Tx): VisualConstant = impl.VisualConstantImpl(main, v)
+  def apply[S <: Sys[S]](main: Visual[S], v: Vertex.Constant[S])(implicit tx: S#Tx): VisualConstant[S] =
+    impl.VisualConstantImpl(main, v)
 }
-trait VisualConstant extends VisualVertex {
+trait VisualConstant[S <: Sys[S]] extends VisualVertex[S] {
   var value: Float
 }
 
 object VisualVertex {
-  def apply(main: Visual, v: Vertex)(implicit tx: S#Tx): VisualVertex = v match {
-    case vu: Vertex.UGen      => VisualUGen    (main, vu)
-    case vc: Vertex.Constant  => VisualConstant(main, vc)
+  def apply[S <: Sys[S]](main: Visual[S], v: Vertex[S])(implicit tx: S#Tx): VisualVertex[S] = v match {
+    case vu: Vertex.UGen[S]      => VisualUGen    (main, vu)
+    case vc: Vertex.Constant[S]  => VisualConstant(main, vc)
   }
 }
-sealed trait VisualVertex extends VisualNode {
+sealed trait VisualVertex[S <: Sys[S]] extends VisualNode[S] {
   def name: String
 }

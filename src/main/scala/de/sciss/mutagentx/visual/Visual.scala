@@ -18,16 +18,16 @@ import java.awt.geom.Point2D
 import java.awt.image.BufferedImage
 import java.awt.{Color, Font, LayoutManager, RenderingHints}
 import java.io.FileInputStream
-import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 import javax.swing.JPanel
 
 import de.sciss.file._
 import de.sciss.kollflitz
+import de.sciss.lucre.event.Sys
 import de.sciss.lucre.stm.TxnLike
 import de.sciss.lucre.swing.impl.ComponentHolder
-import de.sciss.lucre.swing.{View, defer, deferTx, requireEDT}
-import de.sciss.mutagentx.visual.impl.{MyEdgeRenderer, MySpringForce, BoxRenderer}
+import de.sciss.lucre.swing.{defer, deferTx, requireEDT}
+import de.sciss.mutagentx.visual.impl.{BoxRenderer, MyEdgeRenderer, MySpringForce}
 import de.sciss.processor.Processor
 import prefuse.action.assignment.ColorAction
 import prefuse.action.layout.graph.ForceDirectedLayout
@@ -35,9 +35,9 @@ import prefuse.action.{ActionList, RepaintAction}
 import prefuse.activity.Activity
 import prefuse.controls.{DragControl, PanControl, WheelZoomControl, ZoomControl}
 import prefuse.data.{Graph => PGraph}
-import prefuse.render.{DefaultRendererFactory, EdgeRenderer}
+import prefuse.render.DefaultRendererFactory
 import prefuse.util.ColorLib
-import prefuse.util.force.{DragForce, NBodyForce, ForceSimulator}
+import prefuse.util.force.{DragForce, ForceSimulator, NBodyForce}
 import prefuse.visual.expression.InGroupPredicate
 import prefuse.visual.{VisualGraph, VisualItem}
 import prefuse.{Constants, Display, Visualization}
@@ -45,9 +45,9 @@ import prefuse.{Constants, Display, Visualization}
 import scala.annotation.tailrec
 import scala.collection.immutable.{IndexedSeq => Vec}
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Promise, ExecutionContext, blocking}
 import scala.concurrent.stm.{Ref, TMap, TxnLocal}
-import scala.swing.{Swing, Component, Dimension, Graphics2D, Rectangle}
+import scala.concurrent.{Await, ExecutionContext, Promise, blocking}
+import scala.swing.{Component, Dimension, Graphics2D, Rectangle, Swing}
 import scala.util.Try
 import scala.util.control.NonFatal
 
@@ -58,9 +58,8 @@ object Visual {
   val VIDEO_HEIGHT    = 1920 / 2 // 576
   val VIDEO_WIDTH_SQR = 1080 / 2 // 1024 // 1024 : 576 = 16 : 9
 
-  def apply(a: Algorithm)(implicit tx: S#Tx): Visual = {
-    val map = TMap.empty[S#ID, VisualVertex]
-    implicit val dtx = tx.durable
+  def apply[S <: Sys[S]](a: Algorithm[S])(implicit tx: S#Tx): Visual[S] = {
+    val map = TMap.empty[S#ID, VisualVertex[S]]
     new Impl(map, a, a.global.cursor.position).init()
   }
 
@@ -98,8 +97,8 @@ object Visual {
   private final val ACTION_COLOR  = "color"
   private final val LAYOUT_TIME   = 50
 
-  private final class Impl(map: TMap[S#ID, VisualVertex], val algorithm: Algorithm, cursorPos0: S#Acc)
-    extends Visual with ComponentHolder[Component] {
+  private final class Impl[S <: Sys[S]](map: TMap[S#ID, VisualVertex[S]], val algorithm: Algorithm[S], cursorPos0: S#Acc)
+    extends Visual[S] with ComponentHolder[Component] {
 
     private[this] var _vis: Visualization       = _
     private[this] var _dsp: Display             = _
@@ -126,7 +125,7 @@ object Visual {
 
     def forceSimulator: ForceSimulator = _lay.getForceSimulator
 
-    private def insertChromosome(c: Chromosome)(implicit tx: S#Tx): Unit = {
+    private def insertChromosome(c: Chromosome[S])(implicit tx: S#Tx): Unit = {
       c.vertices.iterator.foreach { v =>
         if (v.isUGen || c.edges.iterator.filter(_.targetVertex == v).nonEmpty) {
           checkOrInsertVertex(v)
@@ -173,12 +172,12 @@ object Visual {
     @inline private def startAnimation(): Unit =
       _vis.run(ACTION_COLOR)
 
-    private def checkOrInsertVertex(v: Vertex)(implicit tx: S#Tx): Unit =
+    private def checkOrInsertVertex(v: Vertex[S])(implicit tx: S#Tx): Unit =
       map.get(v.id)(tx.peer).fold {
         insertVertex(v)
       } { vv =>
         (v, vv) match {
-          case (vc: Vertex.Constant, vvc: VisualConstant) =>
+          case (vc: Vertex.Constant[S], vvc: VisualConstant[S]) =>
             val value = vc.f()
             if (vvc.value != value) {
               println(f"VALUE ${vvc.value}%1.3f >>> $value%1.3f")
@@ -189,15 +188,15 @@ object Visual {
         vv.touch()
       }
 
-    private def insertVertex(v: Vertex)(implicit tx: S#Tx): Unit = {
+    private def insertVertex(v: Vertex[S])(implicit tx: S#Tx): Unit = {
       implicit val itx = tx.peer
-      val vv = VisualVertex(this, v)
+      val vv = VisualVertex[S](this, v)
       val res = map.put(v.id, vv)
       require(res.isEmpty)
       deferVisTx(insertVertexGUI(vv, locO = None))
     }
 
-    private def initNodeGUI(obj: VisualVertex, vn: VisualVertex, locO: Option[Point2D]): VisualItem = {
+    private def initNodeGUI(obj: VisualVertex[S], vn: VisualVertex[S], locO: Option[Point2D]): VisualItem = {
       val pNode = vn.pNode
       val _vi   = _vis.getVisualItem(GROUP_GRAPH, pNode)
       val same  = vn == obj
@@ -214,11 +213,11 @@ object Visual {
       _vi
     }
 
-    private def insertVertexGUI(v: VisualVertex, locO: Option[Point2D]): Unit = {
+    private def insertVertexGUI(v: VisualVertex[S], locO: Option[Point2D]): Unit = {
       initNodeGUI(v, v, locO)
     }
 
-    private def checkOrInsertLink(e: Edge)(implicit tx: S#Tx): Unit = {
+    private def checkOrInsertLink(e: Edge[S])(implicit tx: S#Tx): Unit = {
       implicit val itx = tx.peer
       val tup = for {
         sourceV <- map.get(e.sourceVertex.id)
@@ -230,7 +229,7 @@ object Visual {
       }
 
       tup.foreach { case (sourceV, targetV) =>
-        val edge = VisualEdge(sourceV, targetV, init = false)
+        val edge = VisualEdge[S](sourceV, targetV, init = false)
         sourceV.edgesOut.get(edge.key).fold[Unit](edge.init())(_.touch())
       }
     }
@@ -238,79 +237,81 @@ object Visual {
     def dispose()(implicit tx: S#Tx): Unit = ()
 
     private def shrink(in: S#Acc): S#Acc = {
-      val prevIdx = in.take(in.size - 3)
-      if (prevIdx.isEmpty) prevIdx else  prevIdx :+ prevIdx.term
+      ???
+//      val prevIdx = in.take(in.size - 3)
+//      if (prevIdx.isEmpty) prevIdx else  prevIdx :+ prevIdx.term
     }
 
     def previousIteration(): Unit = {
-      val pos = cursorPos.single.transformAndGet(c => shrink(c) /* c.take(c.size - 2) */)
-      // if (pos.isEmpty) return
-      if (pos.size <= 2) return
-
-      algorithm.global.forkCursor.stepFrom(pos) { implicit tx =>
-        implicit val itx = tx.peer
-        val mapOld = map.snapshot
-        map.clear()
-        var toRemove = Set.empty[VisualData]
-        mapOld.foreach { case (idOld, v) =>
-          val pathOld = idOld.path
-          val pathNew = shrink(pathOld)
-          if (pathNew.isEmpty) {
-            toRemove += v
-          } else {
-            val idNew = idOld.copy(pathNew)
-            if (map.contains(idNew)) {
-              toRemove += v
-            } else {
-              map.put(idNew, v)
-            }
-          }
-        }
-
-        // for (i <- 1 to 1) {
-        val cs      = algorithm.genome.chromosomes()
-        val csSz    = cs.size
-        var lastProg= 0
-        var csi     = 0
-        val ancestors = cs.filter { c =>
-          val vs = c.vertices
-          val res = vs.iterator.filter { v =>
-            val vid = v.id
-            map.contains(vid)
-          } .nonEmpty
-          csi += 1
-          val prog = csi * 100 / csSz
-          while (lastProg < prog) {
-            print('#')
-            lastProg += 1
-          }
-          res
-        }
-        println(s"\nNum-ancestors = ${ancestors.size}")
-        ancestors.foreach { c =>
-          insertChromosome(c)
-        }
-        // }
-
-        map.foreach { case (_, v) =>
-          if (!v.isActive) toRemove += v
-
-          def checkEdges(es: TMap[_, VisualEdge]): Unit = es.foreach {
-            case (_, e) => if (!e.isActive) toRemove += e
-          }
-
-          checkEdges(v.edgesIn )
-          checkEdges(v.edgesOut)
-        }
-
-        if (DEBUG) {
-          val numVertices = toRemove.count(_.isInstanceOf[VisualVertex])
-          val numEdges    = toRemove.count(_.isInstanceOf[VisualEdge  ])
-          println(s"map.size = ${mapOld.size} -> ${map.size}; toRemove.size = $numVertices vertices / $numEdges edges")
-        }
-
-        toRemove.foreach(_.dispose())
-      }
+      ???
+//      val pos = cursorPos.single.transformAndGet(c => shrink(c) /* c.take(c.size - 2) */)
+//      // if (pos.isEmpty) return
+//      if (pos.size <= 2) return
+//
+//      algorithm.global.forkCursor.stepFrom(pos) { implicit tx =>
+//        implicit val itx = tx.peer
+//        val mapOld = map.snapshot
+//        map.clear()
+//        var toRemove = Set.empty[VisualData[S]]
+//        mapOld.foreach { case (idOld, v) =>
+//          val pathOld = idOld.path
+//          val pathNew = shrink(pathOld)
+//          if (pathNew.isEmpty) {
+//            toRemove += v
+//          } else {
+//            val idNew = idOld.copy(pathNew)
+//            if (map.contains(idNew)) {
+//              toRemove += v
+//            } else {
+//              map.put(idNew, v)
+//            }
+//          }
+//        }
+//
+//        // for (i <- 1 to 1) {
+//        val cs      = algorithm.genome.chromosomes()
+//        val csSz    = cs.size
+//        var lastProg= 0
+//        var csi     = 0
+//        val ancestors = cs.filter { c =>
+//          val vs = c.vertices
+//          val res = vs.iterator.filter { v =>
+//            val vid = v.id
+//            map.contains(vid)
+//          } .nonEmpty
+//          csi += 1
+//          val prog = csi * 100 / csSz
+//          while (lastProg < prog) {
+//            print('#')
+//            lastProg += 1
+//          }
+//          res
+//        }
+//        println(s"\nNum-ancestors = ${ancestors.size}")
+//        ancestors.foreach { c =>
+//          insertChromosome(c)
+//        }
+//        // }
+//
+//        map.foreach { case (_, v) =>
+//          if (!v.isActive) toRemove += v
+//
+//          def checkEdges(es: TMap[_, VisualEdge[S]]): Unit = es.foreach {
+//            case (_, e) => if (!e.isActive) toRemove += e
+//          }
+//
+//          checkEdges(v.edgesIn )
+//          checkEdges(v.edgesOut)
+//        }
+//
+//        if (DEBUG) {
+//          val numVertices = toRemove.count(_.isInstanceOf[VisualVertex[S]])
+//          val numEdges    = toRemove.count(_.isInstanceOf[VisualEdge  [S]])
+//          println(s"map.size = ${mapOld.size} -> ${map.size}; toRemove.size = $numVertices vertices / $numEdges edges")
+//        }
+//
+//        toRemove.foreach(_.dispose())
+//      }
     }
 
     private def mkActionColor(): Unit = {
@@ -353,7 +354,7 @@ object Visual {
       _vg    = _vis.addGraph(GROUP_GRAPH, _g)
       _vg.addColumn(COL_MUTA, classOf[AnyRef])
 
-      val procRenderer = new BoxRenderer(this) // new NuagesShapeRenderer(50)
+      val procRenderer = new BoxRenderer[S](this) // new NuagesShapeRenderer(50)
       val edgeRenderer = new MyEdgeRenderer
       // edgeRenderer.setArrowHeadSize(8, 8)
 
@@ -524,8 +525,9 @@ object Visual {
 
     def saveFrameSeriesAsPNG(settings: VideoSettings): Processor[Unit] = {
       import settings._
+
       import ExecutionContext.Implicits.global
-      val numVersions = cursorPos.single.get.size / 2
+      val numVersions = ??? : Int // cursorPos.single.get.size / 2
 
       def toFrames(sec: Double) = (sec * framesPerSecond + 0.5).toInt
 
@@ -589,7 +591,7 @@ object Visual {
           val m = m0.toIndexedSeq.scramble()
           val framesPlop = toFrames(plopDur)
           // println(s"FRAMES-PLOP $framesPlop")
-          @tailrec def loop(sq: Vec[VisualVertex]): Unit = sq match {
+          @tailrec def loop(sq: Vec[VisualVertex[S]]): Unit = sq match {
             case head +: tail =>
               // println(s"DISPOSE $head")
               algorithm.global.cursor.step { implicit tx =>
@@ -629,8 +631,8 @@ object Visual {
     def addLayoutComponent(name: String, comp: java.awt.Component) = ()
   }
 }
-trait Visual extends VisualLike {
-  def algorithm: Algorithm
+trait Visual[S <: Sys[S]] extends VisualLike[S] {
+  def algorithm: Algorithm[S]
 
   def forceSimulator: ForceSimulator
 

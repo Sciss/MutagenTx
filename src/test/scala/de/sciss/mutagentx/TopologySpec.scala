@@ -84,7 +84,7 @@ class TopologySpec extends FlatSpec with Matchers {
     val (_, cursor) = system.cursorRoot(_ => ()) { implicit tx => _ => system.newCursor() }
 
     val (mc0, mc1, mc2, sc0, sc1, sc2, sc3) = cursor.step { implicit tx =>
-      val tc = TopologyC.empty[VC, EC]
+      val tc = ??? : TopologyC[S, VC, EC] // TopologyC.empty[S, VC, EC]
       val vca = VC("a")
       val vcb = VC("b")
       val vcc = VC("c")
@@ -157,7 +157,7 @@ class TopologySpec extends FlatSpec with Matchers {
     val (_, cursor) = system.cursorRoot(_ => ()) { implicit tx => _ => system.newCursor() }
 
     val (mcs, sc0, sc1, sc2) = cursor.step { implicit tx =>
-      val tc = TopologyC.empty[VC, EC]
+      val tc = ??? : TopologyC[S, VC, EC] // TopologyC.empty[S, VC, EC]
       val vLinX = VC("LinXFade2")
       val vC22  = VC("Constant22")
       val vC38  = VC("Constant38")

@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
 
 import de.sciss.file._
 import de.sciss.filecache.{TxnConsumer, TxnProducer}
+import de.sciss.lucre.event.Sys
 import de.sciss.lucre.stm.TxnLike
 import de.sciss.lucre.synth.InMemory
 import de.sciss.processor.Processor
@@ -177,9 +178,9 @@ object EvaluationImpl {
     bnc0
   }
 
-  def evaluate(c: Chromosome, algorithm: Algorithm, inputSpec: AudioFileSpec, inputExtr: File)
+  def evaluate[S <: Sys[S]](c: Chromosome[S], algorithm: Algorithm[S], inputSpec: AudioFileSpec, inputExtr: File)
               (implicit tx: S#Tx): Future[Float] = {
-    val graph       = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = false) // c.graph
+    val graph = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = false) // c.graph
     // val cH          = tx.newHandle(c)
     val numVertices = c.vertices.size
     val p           = Promise[Float]()

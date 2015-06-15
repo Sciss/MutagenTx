@@ -5,6 +5,7 @@ import java.text.SimpleDateFormat
 import java.util.{Date, Locale}
 
 import de.sciss.file._
+import de.sciss.lucre.event.Sys
 import de.sciss.processor.Processor
 import prefuse.util.ui.JForcePanel
 
@@ -28,7 +29,7 @@ object VertexApp extends App {
     }
   }
 
-  def guiInit(v: Visual): Unit = {
+  def guiInit[S <: Sys[S]](v: Visual[S]): Unit = {
     val ggHead = Button("Head") {
       v.initChromosome(100)
     }

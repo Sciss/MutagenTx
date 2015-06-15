@@ -3,6 +3,7 @@ package de.sciss.mutagentx
 import com.alee.laf.WebLookAndFeel
 import de.sciss.file._
 import de.sciss.kollflitz
+import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.swing.defer
 
 import scala.concurrent.duration.Duration
@@ -11,6 +12,8 @@ import scala.swing.{BorderPanel, Button, CheckBox, FlowPanel, Frame, Label, Swin
 import scala.util.control.NonFatal
 
 object GeneratorApp extends SwingApplication {
+  type S = ConfluentReactive
+
   def startup(args: Array[String]): Unit = {
     WebLookAndFeel.install()
 
@@ -33,10 +36,10 @@ object GeneratorApp extends SwingApplication {
       new Label("Iter:"  ), ggIter
     )
 
-    var algorithm = Option.empty[Algorithm]
+    var algorithm = Option.empty[Algorithm[S]]
     import Algorithm.executionContext
 
-    def updateStats(a: Algorithm): Unit = {
+    def updateStats(a: Algorithm[S]): Unit = {
       val csr = a.global.cursor
       val (fit: Vec[Float], inp: S#Acc) = csr.step { implicit tx =>
         implicit val dtx = tx.durable
@@ -50,7 +53,7 @@ object GeneratorApp extends SwingApplication {
       ggIter  .text = (inp.size / 2).toString
     }
 
-    def init(): Future[Algorithm] = Future {
+    def init(): Future[Algorithm[S]] = Future {
       val dir = file("database"  ) / (if (args.length > 0) args(0) else "betanovuss")
       val in  = file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
       val algorithm = blocking(Algorithm(dir = dir, input = in))
@@ -70,7 +73,7 @@ object GeneratorApp extends SwingApplication {
       algorithm
     }
 
-    def iter(a: Algorithm): Future[Unit] = Future {
+    def iter(a: Algorithm[S]): Future[Unit] = Future {
       val peer = a.iterate()
       Await.result(peer, Duration.Inf)
     }

@@ -17,21 +17,23 @@ package impl
 import java.util
 
 import de.sciss.lucre.confluent.TxnRandom
+import de.sciss.lucre.event.Sys
 import de.sciss.synth.ugen.{BinaryOpUGen, Constant, SampleRate}
 import de.sciss.synth.{doNothing, GE, Lazy, Rate, SynthGraph, UGenSpec, UndefinedRate, ugen}
 
 import scala.annotation.tailrec
 
 object ChromosomeImpl {
-  def mkSynthGraph(c: Chromosome, mono: Boolean, removeNaNs: Boolean, config: Boolean)
+  def mkSynthGraph[S <: Sys[S]](c: Chromosome[S], mono: Boolean, removeNaNs: Boolean, config: Boolean)
                   (implicit tx: S#Tx /*, random: TxnRandom[D#Tx] */): SynthGraph = {
     val top = c
 
-    @tailrec def loop(rem: Vec[Vertex], real: Map[Vertex, GE]): Map[Vertex, GE] = rem match {
+    @tailrec def loop(rem: Vec[Vertex[S]], real: Map[Vertex[S], GE]): Map[Vertex[S], GE] = rem match {
       case init :+ last =>
         val value: GE = last match {
-          case Vertex.Constant(f) => ugen.Constant(f)
-          case u @ Vertex.UGen(spec) =>
+          case vf: Vertex.Constant[S] => ugen.Constant(vf.f())
+          case u: Vertex.UGen[S] =>
+            val spec = u.info
             val ins = spec.args.map { arg =>
               val res: (AnyRef, Class[_]) = arg.tpe match {
                 case UGenSpec.ArgumentType.Int =>
@@ -51,7 +53,7 @@ object ChromosomeImpl {
                   val inGE = inGEOpt.getOrElse {
                     val xOpt = arg.defaults.get(UndefinedRate)
                     val x    = xOpt.getOrElse {
-                      val inc = findIncompleteUGenInputs(top, u)
+                      val inc = findIncompleteUGenInputs[S](top, u)
                       println("INCOMPLETE:")
                       inc.foreach(println)
                       println(top.debugString)
@@ -86,7 +88,7 @@ object ChromosomeImpl {
       val vertices = top.vertices.iterator.toIndexedSeq
       val map   = loop(vertices, Map.empty)
       val ugens = vertices.collect {
-        case ugen: Vertex.UGen => ugen
+        case ugen: Vertex.UGen[S] => ugen
       }
       if (ugens.nonEmpty) {
         val roots = getRoots(top)
@@ -106,7 +108,7 @@ object ChromosomeImpl {
     }
   }
 
-  def findIncompleteUGenInputs(t1: Chromosome, v: Vertex.UGen)(implicit tx: S#Tx): Vec[String] = {
+  def findIncompleteUGenInputs[S <: Sys[S]](t1: Chromosome[S], v: Vertex.UGen[S])(implicit tx: S#Tx): Vec[String] = {
     val spec      = v.info
     val edgeSet   = t1.edgeMap.get(v).getOrElse(Set.empty)
     val argsFree  = geArgs(spec).filter { arg => !edgeSet.exists(_.inlet == arg.name) }
@@ -125,9 +127,9 @@ object ChromosomeImpl {
     res
   }
 
-  private def getRoots(top: Chromosome)(implicit tx: S#Tx): Vec[Vertex.UGen] = {
+  private def getRoots[S <: Sys[S]](top: Chromosome[S])(implicit tx: S#Tx): Vec[Vertex.UGen[S]] = {
     val ugens = top.vertices.iterator.collect {
-      case ugen: Vertex.UGen => ugen
+      case ugen: Vertex.UGen[S] => ugen
     }
     val edges = top.edges.iterator.toList
     val f = ugens.filter { ugen =>
@@ -136,7 +138,7 @@ object ChromosomeImpl {
     f.toIndexedSeq
   }
 
-  def addVertex(c: Chromosome)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Vertex = {
+  def addVertex[S <: Sys[S]](c: Chromosome[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Vertex[S] = {
     import Algorithm.constProb
     import Util.coin
 
@@ -153,7 +155,8 @@ object ChromosomeImpl {
     }
   }
 
-  def completeUGenInputs(c: Chromosome, v: Vertex.UGen)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean = {
+  def completeUGenInputs[S <: Sys[S]](c: Chromosome[S], v: Vertex.UGen[S])
+                                                  (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     import Algorithm.nonDefaultProb
     import Util.{choose, coin}
 
@@ -196,19 +199,19 @@ object ChromosomeImpl {
     }
   }
 
-  def mkUGen()(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Vertex.UGen = {
+  def mkUGen[S <: Sys[S]]()(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Vertex.UGen[S] = {
     import Util.choose
     val spec    = choose(UGens.seq)
-    val v       = Vertex.UGen(spec)
+    val v       = Vertex.UGen[S](spec)
     v
   }
 
-  def mkConstant()(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Vertex.Constant = {
-    val v = Vertex.Constant(mkConstantValue())
+  def mkConstant[S <: Sys[S]]()(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Vertex.Constant[S] = {
+    val v = Vertex.Constant[S](mkConstantValue())
     v
   }
 
-  def mkConstantValue()(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Float = {
+  def mkConstantValue[S <: Sys[S]]()(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Float = {
     import Util.{coin, exprand}
     val f0  = exprand(0.001, 10000.001) - 0.001
     val f   = if (coin(0.25)) -f0 else f0

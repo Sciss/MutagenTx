@@ -1,6 +1,7 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.confluent.TxnRandom
+import de.sciss.lucre.stm.Sys
 import de.sciss.synth.SynthGraph
 
 import scala.collection.generic.CanBuildFrom
@@ -10,23 +11,22 @@ object Util {
   // ---- random functions ----
   // cf. https://github.com/Sciss/Dissemination/blob/master/src/main/scala/de/sciss/semi/Util.scala
 
-  def rrand  (lo: Int   , hi: Int   )(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Int    =
-    lo + random.nextInt(hi - lo + 1)(tx.durable)
+  def rrand[S <: Sys[S]](lo: Int, hi: Int)(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Int =
+    lo + random.nextInt(hi - lo + 1)
 
-  def exprand(lo: Double, hi: Double)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Double =
-    lo * math.exp(math.log(hi / lo) * random.nextDouble()(tx.durable))
+  def exprand[S <: Sys[S]](lo: Double, hi: Double)(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Double =
+    lo * math.exp(math.log(hi / lo) * random.nextDouble())
 
-  def coin(p: Double = 0.5)(implicit tx: S#Tx, random: TxnRandom[D#Tx]): Boolean =
-    random.nextDouble()(tx.durable) < p
+  def coin[S <: Sys[S]](p: Double = 0.5)(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean =
+    random.nextDouble() < p
 
-  def choose[A](xs: Iterable[A])(implicit tx: S#Tx, random: TxnRandom[D#Tx]): A =
-    xs.toIndexedSeq(random.nextInt(xs.size)(tx.durable))
+  def choose[S <: Sys[S], A](xs: Iterable[A])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): A =
+    xs.toIndexedSeq(random.nextInt(xs.size))
 
-  def scramble[A, CC[~] <: IndexedSeq[~], To](in: CC[A])(implicit tx: S#Tx, random: TxnRandom[D#Tx],
+  def scramble[S <: Sys[S], A, CC[~] <: IndexedSeq[~], To](in: CC[A])(implicit tx: S#Tx, random: TxnRandom[S#Tx],
                                                          cbf: CanBuildFrom[CC[A], A, To]): To = {
     val b = cbf(in)
     var rem = in: IndexedSeq[A]
-    implicit val dtx = tx.durable
     while (rem.nonEmpty) {
       val idx = random.nextInt(rem.size)
       val e = rem(idx)

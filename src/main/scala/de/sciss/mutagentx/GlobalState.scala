@@ -13,36 +13,43 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.confluent
 import de.sciss.lucre.confluent.TxnRandom
+import de.sciss.lucre.confluent.reactive.ConfluentReactive
+import de.sciss.lucre.stm.Sys
+import de.sciss.lucre.{confluent, stm}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
-import de.sciss.synth.proc.Confluent
 
 object GlobalState {
-  def apply()(implicit tx: D#Tx, system: Confluent): GlobalState = new GlobalState {
-    val rng         = TxnRandom.Persistent[D](8L) // XXX TODO -- seed frozen for testing
+  type S = ConfluentReactive
+  type D = ConfluentReactive#D
+
+  def apply()(implicit tx: D#Tx, system: S): GlobalState[S] = new GlobalState[S] {
+    val rng         = ??? : TxnRandom[S#Tx] // TxnRandom.Persistent[D](8L) // XXX TODO -- seed frozen for testing
     val cursor      = confluent.Cursor[S, D]()
     val forkCursor  = confluent.Cursor[S, D]()
   }
 
-  implicit def serializer(implicit system: Confluent): Serializer[D#Tx, D#Acc, GlobalState] = new Ser
+  implicit def serializer(implicit system: S): Serializer[D#Tx, D#Acc, GlobalState[S]] = new Ser
 
-  private final class Ser(implicit system: Confluent) extends Serializer[D#Tx, D#Acc, GlobalState] {
-    def read(in: DataInput, access: D#Acc)(implicit tx: D#Tx): GlobalState = new GlobalState {
-      val rng         = TxnRandom.Persistent.read[D](in, access)
+  private final class Ser(implicit system: S) extends Serializer[D#Tx, D#Acc, GlobalState[S]] {
+    def read(in: DataInput, access: D#Acc)(implicit tx: D#Tx): GlobalState[S] = new GlobalState[S] {
+      val rng         = ??? : TxnRandom[S#Tx] // TxnRandom.Persistent.read[D](in, access)
       val cursor      = confluent.Cursor.read[S, D](in)
       val forkCursor  = confluent.Cursor.read[S, D](in)
     }
 
-    def write(g: GlobalState, out: DataOutput): Unit = {
-      g.rng       .write(out)
-      g.cursor    .write(out)
-      g.forkCursor.write(out)
+    def write(g: GlobalState[S], out: DataOutput): Unit = {
+      ???
+      // g.rng       .write(out)
+      // g.cursor    .write(out)
+      // g.forkCursor.write(out)
     }
   }
 }
-trait GlobalState {
-  implicit def rng: TxnRandom.Persistent[D]
-  def cursor    : confluent.Cursor[S, D]
-  def forkCursor: confluent.Cursor[S, D]
+trait GlobalState[S <: Sys[S]] {
+  implicit def rng: TxnRandom[S#Tx]
+  //  def cursor    : confluent.Cursor[S, D]
+  //  def forkCursor: confluent.Cursor[S, D]
+
+  def cursor: stm.Cursor[S]
 }

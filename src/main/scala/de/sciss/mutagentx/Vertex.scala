@@ -13,6 +13,7 @@
 
 package de.sciss.mutagentx
 
+import de.sciss.lucre.event.{InMemory, Sys}
 import de.sciss.lucre.stm.{Mutable, Identifiable}
 import de.sciss.serial.{Writable, DataInput, Serializer, DataOutput}
 import de.sciss.synth.GE
@@ -35,16 +36,20 @@ import de.sciss.synth.ugen.BinaryOpUGen
 //}
 
 object Vertex {
-  implicit object Ser extends Serializer[S#Tx, S#Acc, Vertex] {
-    def write(v: Vertex, out: DataOutput): Unit = v.write(out)
+  implicit def Ser[S <: Sys[S]]: Serializer[S#Tx, S#Acc, Vertex[S]] = anySer.asInstanceOf[Ser[S]]
 
-    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Vertex = {
+  private val anySer = new Ser[InMemory]
+
+  private final class Ser[S <: Sys[S]] extends Serializer[S#Tx, S#Acc, Vertex[S]] {
+    def write(v: Vertex[S], out: DataOutput): Unit = v.write(out)
+
+    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Vertex[S] = {
       val id  = tx.readID(in, access)
       val tpe = in.readByte()
       tpe match {
         case 0 =>
           val f = tx.readVar[Float](id, in)
-          new Constant(id, f)
+          new Constant[S](id, f)
         case 1 =>
           // val name  = in.readUTF()
           UGen.readIdentified(id, in, access)
@@ -53,31 +58,35 @@ object Vertex {
   }
 
   object UGen {
-    def apply(info: UGenSpec)(implicit tx: S#Tx): UGen = {
+    def apply[S <: Sys[S]](info: UGenSpec)(implicit tx: S#Tx): UGen[S] = {
       val index = UGens.seq.indexOf(info)
-      new Impl(tx.newID(), index, info)
+      new Impl[S](tx.newID(), index, info)
     }
-    def unapply(v: UGen): Option[UGenSpec] = Some(v.info)
 
-    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): UGen = {
+    def unapply[S <: Sys[S]](v: UGen[S]): Option[UGenSpec] = Some(v.info)
+
+    def read[S <: Sys[S]](in: DataInput, access: S#Acc)(implicit tx: S#Tx): UGen[S] = {
       val id  = tx.readID(in, access)
       val tpe = in.readByte()
       require(tpe == 1, s"Expected Vertex.UGen cookie 1 but found $tpe")
       readIdentified(id, in, access)
     }
 
-    private[Vertex] def readIdentified(id: S#ID, in: DataInput, access: S#Acc)(implicit tx: S#Tx): UGen = {
+    private[Vertex] def readIdentified[S <: Sys[S]](id: S#ID, in: DataInput, access: S#Acc)
+                                                   (implicit tx: S#Tx): UGen[S] = {
       val index = in.readShort()
       val spec  = UGens.seq(index)
-      new UGen.Impl(id, index, spec)
+      new UGen.Impl[S](id, index, spec)
     }
 
-    private[Vertex] final class Impl(val id: S#ID, index: Int, val info: UGenSpec) extends UGen with Mutable.Impl[S] {
+    private[Vertex] final class Impl[S <: Sys[S]](val id: S#ID, index: Int, val info: UGenSpec)
+      extends UGen[S] with Mutable.Impl[S] {
+
       private def isBinOp: Boolean = info.name.startsWith("Bin_")
 
       def isUGen = true
 
-      def copy()(implicit tx: S#Tx): UGen = UGen(info)
+      def copy()(implicit tx: S#Tx): UGen[S] = UGen(info)
 
       protected def disposeData()(implicit tx: S#Tx) = ()
 
@@ -102,28 +111,6 @@ object Vertex {
         } else {
           info.name
         }
-
-      //      private def mkBinOpString(ins: Vec[String]): String = {
-      //        val nu = boxName
-      //        s"(${ins(0)} $nu ${ins(1)})"
-      //      }
-
-      //      private def mkRegularString(ins: Vec[String]): String = {
-      //        val rates = info.rates
-      //        val consName0 = rates.method match {
-      //          case UGenSpec.RateMethod.Alias (name) => name
-      //          case UGenSpec.RateMethod.Custom(name) => name
-      //          case UGenSpec.RateMethod.Default =>
-      //            val rate = rates.set.max
-      //            rate.methodName
-      //        }
-      //        val consName  = if (consName0 == "apply") "" else s".$consName0"
-      //        val nameCons  = s"${info.name}$consName"
-      //        if (ins.isEmpty && consName.nonEmpty)   // e.g. SampleRate.ir
-      //          nameCons
-      //        else
-      //          ins.mkString(s"$nameCons(", ", ", ")")
-      //      }
 
       private def mkBinOpUGen(ins: Vec[(AnyRef, Class[_])]): GE = {
         val id = info.name.substring(4).toInt
@@ -152,7 +139,7 @@ object Vertex {
       }
     }
   }
-  trait UGen extends Vertex {
+  trait UGen[S <: Sys[S]] extends Vertex[S] {
     def info: UGenSpec
 
     def boxName: String
@@ -167,18 +154,18 @@ object Vertex {
   //    override def toString = s"${info.name}@${hashCode().toHexString}"
   //  }
   object Constant {
-    def apply(f: Float)(implicit tx: S#Tx): Constant = {
+    def apply[S <: Sys[S]](f: Float)(implicit tx: S#Tx): Constant[S] = {
       val id = tx.newID()
-      new Constant(id, tx.newVar(id, f))
+      new Constant[S](id, tx.newVar(id, f))
     }
-    def unapply(v: Constant)(implicit tx: S#Tx): Option[Float] = Some(v.f())
+    def unapply[S <: Sys[S]](v: Constant[S])(implicit tx: S#Tx): Option[Float] = Some(v.f())
   }
-  class Constant(val id: S#ID, val f: S#Var[Float]) extends Vertex with Mutable.Impl[S] {
+  class Constant[S <: Sys[S]](val id: S#ID, val f: S#Var[Float]) extends Vertex[S] with Mutable.Impl[S] {
     override def toString() = s"Constant$id"
 
     def isUGen = false
 
-    def copy()(implicit tx: S#Tx): Constant = Constant(f())
+    def copy()(implicit tx: S#Tx): Constant[S] = Constant(f())
 
     // def boxName = f.toString
     protected def disposeData()(implicit tx: S#Tx): Unit = f.dispose()
@@ -189,12 +176,12 @@ object Vertex {
     }
   }
 }
-sealed trait Vertex extends Identifiable[S#ID] with Writable {
+sealed trait Vertex[S <: Sys[S]] extends Identifiable[S#ID] with Writable {
   /** Creates an structurally identical copy, but wrapped in a new vertex (object identity).
     * Theoretically, a better approach would be fork and merge, but it doesn't fit well
     * into the current implementation of mutation.
     */
-  def copy()(implicit tx: S#Tx): Vertex
+  def copy()(implicit tx: S#Tx): Vertex[S]
 
   def isUGen: Boolean
   def isConstant: Boolean = !isUGen

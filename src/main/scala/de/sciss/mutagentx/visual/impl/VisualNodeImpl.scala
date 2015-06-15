@@ -5,6 +5,7 @@ package impl
 import java.awt.geom.{AffineTransform, GeneralPath, Ellipse2D, Rectangle2D, Line2D, Arc2D}
 import java.awt.{Font, Shape, BasicStroke, Color}
 
+import de.sciss.lucre.event.Sys
 import prefuse.data.{Node => PNode}
 import prefuse.render.Renderer
 import prefuse.util.ColorLib
@@ -40,13 +41,13 @@ object VisualNodeImpl {
 
   // final val threeDigits   = new MathContext(3, RoundingMode.HALF_UP)
 }
-trait VisualNodeImpl extends VisualNode with VisualDataImpl {
+trait VisualNodeImpl[S <: Sys[S]] extends VisualNode[S] with VisualDataImpl[S] {
   import VisualNodeImpl._
 
   private[this] var _pNode: PNode = _
 
-  val edgesIn  = TMap.empty[(VisualNode, VisualNode), VisualEdge]
-  val edgesOut = TMap.empty[(VisualNode, VisualNode), VisualEdge]
+  val edgesIn  = TMap.empty[(VisualNode[S], VisualNode[S]), VisualEdge[S]]
+  val edgesOut = TMap.empty[(VisualNode[S], VisualNode[S]), VisualEdge[S]]
 
   def dispose()(implicit tx: S#Tx): Unit = {
     implicit val itx = tx.peer
@@ -71,7 +72,7 @@ trait VisualNodeImpl extends VisualNode with VisualDataImpl {
     touch()
     main.deferVisTx {
       mkPNode()
-      if (VisualOLD.DEBUG) println(s"MAKE NODE $this")
+      if (Visual.DEBUG) println(s"MAKE NODE $this")
     }
   }
 
@@ -79,8 +80,8 @@ trait VisualNodeImpl extends VisualNode with VisualDataImpl {
     if (_pNode != null) throw new IllegalStateException(s"Component $this has already been initialized")
     _pNode  = main.graph.addNode()
     val vis = main.visualization
-    val vi  = vis.getVisualItem(VisualOLD.GROUP_GRAPH, _pNode)
-    vi.set(VisualOLD.COL_MUTA, this)
+    val vi  = vis.getVisualItem(Visual.GROUP_GRAPH, _pNode)
+    vi.set(Visual.COL_MUTA, this)
     //      val sz  = nodeSize
     //      if (sz != 1.0f) vi.set(VisualItem.SIZE, sz)
     //      parent.aggr.addItem(vi)
@@ -201,8 +202,8 @@ trait VisualNodeImpl extends VisualNode with VisualDataImpl {
   protected def renderDetail(g: Graphics2D, vi: VisualItem): Unit
 }
 
-trait VisualVertexImpl extends VisualNodeImpl {
-  _: VisualVertex =>
+trait VisualVertexImpl[S <: Sys[S]] extends VisualNodeImpl[S] {
+  _: VisualVertex[S] =>
 
   protected def fontSize: Float = 12f
 

@@ -14,9 +14,11 @@
 package de.sciss.mutagentx
 
 import de.sciss.file.File
+import de.sciss.lucre.confluent.reactive.ConfluentReactive
+import de.sciss.lucre.event.Sys
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
-import de.sciss.lucre.{confluent, stm}
+import de.sciss.lucre.{confluent, data, stm}
 import de.sciss.synth.io.AudioFileSpec
 import de.sciss.synth.proc.Confluent
 import de.sciss.synth.{UGenSpec, UndefinedRate}
@@ -59,34 +61,39 @@ object Algorithm {
     // ExecutionContext.fromExecutor(ex)
   }
 
-  def tmp(input: File): Algorithm = {
+  def tmp(input: File): Algorithm[ConfluentReactive] = {
     val cfg = BerkeleyDB.Config()
     // cfg.lockTimeout = Duration(2000, TimeUnit.MILLISECONDS)
     val dbf = BerkeleyDB.tmp(cfg)
     create(dbf, input)
   }
 
-  def apply(dir: File, input: File): Algorithm = {
+  def apply(dir: File, input: File): Algorithm[ConfluentReactive] = {
     val dbf = BerkeleyDB.factory(dir)
     create(dbf, input)
   }
 
-  private def create(dbf: DataStoreFactory[DataStore], _input: File): Algorithm = {
+  private def create(dbf: DataStoreFactory[DataStore], _input: File): Algorithm[ConfluentReactive] = {
     val futInput = TxnExecutor.defaultAtomic { implicit tx =>
       impl.EvaluationImpl.getInputSpec(_input)
     }
     val (_inputExtr, _inputSpec) = Await.result(futInput, Duration.Inf)
 
-    new Algorithm {
-      implicit val system = Confluent(dbf)
-      val (handle, global) = system.rootWithDurable { implicit tx =>
+    type S = ConfluentReactive
+
+    new Algorithm[S] {
+      implicit val system = ConfluentReactive(dbf)
+      implicit val genomeSer = Genome.Ser[S]
+      val (handle: stm.Source[S#Tx, Genome[S]], global: GlobalState[S]) = system.rootWithDurable { implicit tx =>
         implicit val dtx = system.durableTx(tx)
-        Genome.empty
+        Genome.empty[S]
       } { implicit tx =>
-        GlobalState()
+        ??? : GlobalState[S] // GlobalState()
       }
 
-      def genome(implicit tx: S#Tx): Genome = handle()
+      implicit def ord: data.Ordering[S#Tx, Vertex[S]] = ???
+
+      def genome(implicit tx: S#Tx): Genome[S] = handle()
 
       val input     = _input
       val inputExtr = _inputExtr
@@ -94,11 +101,13 @@ object Algorithm {
     }
   }
 }
-trait Algorithm {
+trait Algorithm[S <: Sys[S]] {
   import Algorithm.{DEBUG, constProb, maxNumVertices, minNumVertices, mutationProb, numElitism, selectionFrac}
   import Util.{choose, coin, exprand, rrand}
 
-  def genome(implicit tx: S#Tx): Genome
+  type C = Chromosome[S]
+
+  def genome(implicit tx: S#Tx): Genome[S]
 
   def input: File
   def inputExtr: File
@@ -106,28 +115,30 @@ trait Algorithm {
 
   def system: S
 
-  val global: GlobalState
+  val global: GlobalState[S]
+
+  implicit def ord: data.Ordering[S#Tx, Vertex[S]]
 
   import global.rng
 
   def init(n: Int)(implicit tx: S#Tx): Unit =
     genome.chromosomes() = Vector.fill(n)(mkIndividual())
 
-  def mkIndividual()(implicit tx: S#Tx): Chromosome = {
+  def mkIndividual()(implicit tx: S#Tx): C = {
     val num = rrand(minNumVertices, maxNumVertices)
-    val res = Topology.empty[Vertex, Edge]
+    val res = Topology.empty[S, Vertex[S], Edge[S]]
     for (i <- 0 until num) addVertex(res)
     res // new Chromosome(t0, seed = random.nextLong())
   }
 
-  def addVertex(c: Chromosome)(implicit tx: S#Tx): Unit = {
+  def addVertex(c: C)(implicit tx: S#Tx): Unit = {
     if (coin(constProb)) {
       val v = mkConstant()
       if (DEBUG) println(s"addVertex($v)")
       c.addVertex(v)
 
     } else {
-      val v   = mkUGen()
+      val v = mkUGen()
       c.addVertex(v)
       if (DEBUG) println(s"addVertex($v)")
       completeUGenInputs(c, v)
@@ -145,7 +156,7 @@ trait Algorithm {
     res
   }
 
-  def completeUGenInputs(c: Chromosome, v: Vertex.UGen)(implicit tx: S#Tx): Unit = {
+  def completeUGenInputs(c: C, v: Vertex.UGen[S])(implicit tx: S#Tx): Unit = {
     import Algorithm.nonDefaultProb
     val spec    = v.info
     // An edge's source is the consuming UGen, i.e. the one whose inlet is occupied!
@@ -161,19 +172,19 @@ trait Algorithm {
     @tailrec def loopVertex(rem: Vec[UGenSpec.Argument]): Unit = rem match {
       case head +: tail =>
         val options = c.vertices.iterator.filter { vi =>
-          val e = Edge.make(v, vi, head.name)
+          val e = Edge.make[S](v, vi, head.name)
           c.canAddEdge(e)
         }
         if (options.nonEmpty) {
           val vi  = choose(options.toIndexedSeq)
-          val e   = Edge.make(v, vi, head.name)
+          val e   = Edge.make[S](v, vi, head.name)
           if (DEBUG) println(s"addEdge($e)")
           c.addEdge(e) // .get // ._1
         } else {
           val vi  = mkConstant()
           if (DEBUG) println(s"addVertex($vi)")
           c.addVertex(vi)
-          val e   = Edge.make(v, vi, head.name)
+          val e   = Edge.make[S](v, vi, head.name)
           if (DEBUG) println(s"addEdge($e)")
           c.addEdge(e) // .get
         }
@@ -186,14 +197,14 @@ trait Algorithm {
     loopVertex(findDef)
   }
 
-  def mkConstant()(implicit tx: S#Tx): Vertex.Constant = {
+  def mkConstant()(implicit tx: S#Tx): Vertex.Constant[S] = {
     val f0  = exprand(0.001, 10000.001) - 0.001
     val f   = if (coin(0.25)) -f0 else f0
     val v   = Vertex.Constant(f.toFloat)
     v
   }
 
-  def mkUGen()(implicit tx: S#Tx): Vertex.UGen =  {
+  def mkUGen()(implicit tx: S#Tx): Vertex.UGen[S] = {
     val spec    = choose(UGens.seq)
     val v       = Vertex.UGen(spec)
     v
@@ -268,13 +279,11 @@ trait Algorithm {
 //      if (DEBUG) s"$s0  ${cH.debugString}" else s0
 //    } .mkString("\n")
 
-  def select(all: Vec[(Chromosome, Float)])(implicit tx: S#Tx): Set[Chromosome] = {
-    implicit val dtx = tx.durable
-
+  def select(all: Vec[(Chromosome[S], Float)])(implicit tx: S#Tx): Set[Chromosome[S]] = {
     val pop   = all.size
     val n     = (pop * selectionFrac + 0.5).toInt
 
-    @tailrec def loop(rem: Int, in: Set[(Chromosome, Float)], out: Set[Chromosome]): Set[Chromosome] =
+    @tailrec def loop(rem: Int, in: Set[(Chromosome[S], Float)], out: Set[Chromosome[S]]): Set[Chromosome[S]] =
       if (rem == 0) out else {
         val sum     = in.view.map(_._2).sum
         val rem1    = rem - 1
@@ -282,7 +291,7 @@ trait Algorithm {
           val chosen = in.head
           loop(rem1, in - chosen, out + chosen._1)
         } else {
-          val inIdx       = in.zipWithIndex[(Chromosome, Float), Vec[((Chromosome, Float), Int)]](breakOut)
+          val inIdx       = in.zipWithIndex[(Chromosome[S], Float), Vec[((Chromosome[S], Float), Int)]](breakOut)
           val norm        = inIdx.map {
             case ((c, f), j) => (j, f / sum)
           }
@@ -302,11 +311,11 @@ trait Algorithm {
     sel
   }
 
-  def elitism(all: Vec[(Chromosome, Float)])(implicit tx: S#Tx): Vec[Chromosome] =
+  def elitism(all: Vec[(Chromosome[S], Float)])(implicit tx: S#Tx): Vec[Chromosome[S]] =
     if (numElitism == 0) Vector.empty else {
       // ensure that elite choices are distinct (don't want to accumulate five identical chromosomes over time)!
       val eliteCandidates = all.sortBy(-_._2)
-      val res = Vector.newBuilder[Chromosome]
+      val res = Vector.newBuilder[Chromosome[S]]
       res.sizeHint(numElitism)
       val it = eliteCandidates.iterator
       var sz = 0
@@ -327,8 +336,8 @@ trait Algorithm {
     * It assumes the invoking transaction is 'up-to-date' and will cause
     * the selection's cursors to step from this transaction's input access.
     */
-  def crossover(sq: Vec[stm.Source[S#Tx, Chromosome]], n: Int,
-                inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] =
+  def crossover(sq: Vec[stm.Source[S#Tx, Chromosome[S]]], n: Int,
+                inputAccess: S#Acc): Vec[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)] =
     impl.CrossoverImpl(this, sq, n, inputAccess)
 
 //    var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
@@ -384,8 +393,8 @@ trait Algorithm {
     * It assumes the invoking transaction is 'up-to-date' and will cause
     * the selection's cursors to step from this transaction's input access.
     */
-  def mutate(sq: Vec[stm.Source[S#Tx, Chromosome]], n: Int,
-             inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome])] =
+  def mutate(sq: Vec[stm.Source[S#Tx, Chromosome[S]]], n: Int,
+             inputAccess: S#Acc): Vec[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)] =
     impl.MutationImpl(this, sq, n, inputAccess)
 
   /** Performs one iteration of the algorithm, assuming that current population
@@ -397,38 +406,31 @@ trait Algorithm {
     * - evaluation
     */
   def iterate(): Future[Unit] = {
-    val (el, sel, pop, inputAccess) = global.cursor.step { implicit tx =>
-      if (DEBUG) println(s"iterate - inputAccess ${tx.inputAccess}")
-      val cs    = genome.chromosomes()
-      val fit   = genome.fitness()
-      val all   = cs zip fit
-      val _el   = elitism(all) // .toSet
-      val _sel  = select (all) .map(tx.newHandle(_))
-      (_el, Util.scramble(_sel.toIndexedSeq), all.size, tx.inputAccess)
-    }
-
-    val nGen    = pop - el.size
-    val nMut    = (mutationProb * nGen + 0.5).toInt
-    val nCross  = nGen - nMut
-
-    // if (DEBUG) println(s"pop $pop, el ${el.size}, sel ${sel.size}, nMut $nMut, nCross $nCross")
-
-    val mut     = mutate    (sel, nMut  , inputAccess)
-    val cross   = crossover (sel, nCross, inputAccess)
-
-    global.cursor.step { implicit tx =>
-      genome.chromosomes() = el ++ (mut ++ cross).map { case (access, h) =>
-        h.meld(access)
-      }
-      evaluateAndUpdate()
-    }
-//    import Algorithm.executionContext
-//    futEval.map { fit =>
-//      blocking {
-//        global.cursor.step { implicit tx =>
-//          genome.fitness() = fit
-//        }
+    ???
+//    val (el, sel, pop, inputAccess) = global.cursor.step { implicit tx =>
+//      // if (DEBUG) println(s"iterate - inputAccess ${tx.inputAccess}")
+//      val cs    = genome.chromosomes()
+//      val fit   = genome.fitness()
+//      val all   = cs zip fit
+//      val _el   = elitism(all) // .toSet
+//      val _sel  = select (all) .map(tx.newHandle(_))
+//      (_el, Util.scramble(_sel.toIndexedSeq), all.size, tx.inputAccess)
+//    }
+//
+//    val nGen    = pop - el.size
+//    val nMut    = (mutationProb * nGen + 0.5).toInt
+//    val nCross  = nGen - nMut
+//
+//    // if (DEBUG) println(s"pop $pop, el ${el.size}, sel ${sel.size}, nMut $nMut, nCross $nCross")
+//
+//    val mut     = mutate    (sel, nMut  , inputAccess)
+//    val cross   = crossover (sel, nCross, inputAccess)
+//
+//    global.cursor.step { implicit tx =>
+//      genome.chromosomes() = el ++ (mut ++ cross).map { case (access, h) =>
+//        h.meld(access)
 //      }
+//      evaluateAndUpdate()
 //    }
   }
 }

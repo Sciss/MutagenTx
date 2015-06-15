@@ -5,6 +5,7 @@ package impl
 import java.awt.geom.{Line2D, Rectangle2D}
 import java.awt.{BasicStroke, FontMetrics, Color, Graphics2D, Shape}
 
+import de.sciss.lucre.event.Sys
 import prefuse.render.{Renderer, AbstractShapeRenderer}
 import prefuse.util.ColorLib
 import prefuse.visual.VisualItem
@@ -26,7 +27,7 @@ object BoxRenderer {
   // private final val strkShpPend = new BasicStroke(1f, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER, 10f, Array[Float](6, 4), 0f)
   private final val portColr    = Color.gray // Style.portColor
 }
-final class BoxRenderer(d: Visual) extends AbstractShapeRenderer {
+final class BoxRenderer[S <: Sys[S]](d: Visual[S]) extends AbstractShapeRenderer {
   import BoxRenderer._
 
   private val r   = new Rectangle2D.Float()
@@ -38,8 +39,8 @@ final class BoxRenderer(d: Visual) extends AbstractShapeRenderer {
     var y    = vi.getY
     if (y.isNaN || y.isInfinity) y = 0.0
 
-    vi.get(VisualOLD.COL_MUTA) match {
-      case data: VisualVertex =>
+    vi.get(Visual.COL_MUTA) match {
+      case data: VisualVertex[S] =>
         // UGenRenderer.getShape(x, y, data)
         data.getShape(x, y)
       case _ =>
@@ -70,8 +71,8 @@ final class BoxRenderer(d: Visual) extends AbstractShapeRenderer {
     g.setFont(Visual.condensedFont) // Style.font
       // val fm  = Renderer.DEFAULT_GRAPHICS.getFontMetrics(Style.font)
 
-    vi.get(VisualOLD.COL_MUTA) match {
-      case data: VisualVertex =>
+    vi.get(Visual.COL_MUTA) match {
+      case data: VisualVertex[S] =>
         data.render(g, vi)
         // UGenRenderer.paint(g, b, data)
         // data.renderer.paint(g, b, data)
@@ -97,18 +98,18 @@ final class BoxRenderer(d: Visual) extends AbstractShapeRenderer {
   }
 }
 
-trait ElementRenderer {
-  def getShape(x: Double, y: Double           , data: VisualVertex): Shape
+trait ElementRenderer[S <: Sys[S]] {
+  def getShape(x: Double, y: Double, data: VisualVertex[S]): Shape
 
-  def paint(g: Graphics2D, bounds: Rectangle2D, data: VisualVertex): Unit
+  def paint(g: Graphics2D, bounds: Rectangle2D, data: VisualVertex[S]): Unit
 }
 
-trait StringRendererLike extends ElementRenderer {
+trait StringRendererLike[S <: Sys[S]] extends ElementRenderer[S] {
   private val r = new Rectangle2D.Float()
 
-  protected def dataToString(data: VisualVertex): String
+  protected def dataToString(data: VisualVertex[S]): String
 
-  def getShape(x: Double, y: Double, data: VisualVertex): Shape = {
+  def getShape(x: Double, y: Double, data: VisualVertex[S]): Shape = {
     val fm    = BoxRenderer.defaultFontMetrics
     val w1    = fm.stringWidth(dataToString(data))
     val w2    = math.max(BoxRenderer.MinBoxWidth, w1 + 6)
@@ -119,7 +120,7 @@ trait StringRendererLike extends ElementRenderer {
     r
   }
 
-  def paint(g: Graphics2D, bounds: Rectangle2D, data: VisualVertex): Unit = {
+  def paint(g: Graphics2D, bounds: Rectangle2D, data: VisualVertex[S]): Unit = {
     val x   = bounds.getX.toFloat
     val y   = bounds.getY.toFloat
     // g.setFont(Style.font)
@@ -156,6 +157,6 @@ trait StringRendererLike extends ElementRenderer {
 //    }
 //}
 
-object UGenRenderer extends StringRendererLike {
-  protected def dataToString(data: VisualVertex) = data.name
+final class UGenRenderer[S <: Sys[S]] extends StringRendererLike[S] {
+  protected def dataToString(data: VisualVertex[S]) = data.name
 }
