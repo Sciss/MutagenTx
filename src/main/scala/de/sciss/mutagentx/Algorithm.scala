@@ -13,8 +13,6 @@
 
 package de.sciss.mutagentx
 
-import java.util.concurrent.Executors
-
 import de.sciss.file.File
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
@@ -27,17 +25,17 @@ import scala.annotation.tailrec
 import scala.collection.breakOut
 import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
-import scala.concurrent.{Promise, Await, ExecutionContext, Future, blocking}
+import scala.concurrent.{Await, ExecutionContext, Future, Promise, blocking}
 import scala.language.higherKinds
 
 object Algorithm {
   val DEBUG = false
 
   // ---- generation ----
-  val population      : Int     = 20 // 1500
+  val population      : Int     = 1000
   val constProb       : Double  = 0.5
-  val minNumVertices  : Int     = 4 // 20
-  val maxNumVertices  : Int     = 10 // 100
+  val minNumVertices  : Int     = 30
+  val maxNumVertices  : Int     = 100
   val nonDefaultProb  : Double  = 0.99 // 0.5
 
   // ---- evaluation ----
@@ -49,7 +47,7 @@ object Algorithm {
 
   // ---- breeding ----
   val selectionFrac   : Double  = 0.33
-  val numElitism      : Int     = 0 // 5
+  val numElitism      : Int     = 5
   val mutMin          : Int     = 2
   val mutMax          : Int     = 4
   val mutationProb    : Double  = 0.5 // 0.75
@@ -97,7 +95,7 @@ object Algorithm {
   }
 }
 trait Algorithm {
-  import Algorithm.{DEBUG, constProb, maxNumVertices, minNumVertices, numElitism, selectionFrac, mutationProb}
+  import Algorithm.{DEBUG, constProb, maxNumVertices, minNumVertices, mutationProb, numElitism, selectionFrac}
   import Util.{choose, coin, exprand, rrand}
 
   def genome(implicit tx: S#Tx): Genome

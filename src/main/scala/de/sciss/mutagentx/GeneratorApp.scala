@@ -133,6 +133,7 @@ object GeneratorApp extends SwingApplication {
       if (busy.isEmpty) {
         val num = math.max(1, ggStepNum.text.toInt)
         algorithm.foreach { a =>
+          val t0  = System.currentTimeMillis()
           val fut = Future {
             for (i <- 1 to num) {
               println(s"-------------STEP $i-------------")
@@ -141,6 +142,8 @@ object GeneratorApp extends SwingApplication {
             }
           }
           fut.onSuccess { case _ =>
+            val t1 = System.currentTimeMillis()
+            println(f"---------TOOK ${(t1-t0)*0.001}%1.3f sec.---------")
             defer {
               updateStats(a)
             }
