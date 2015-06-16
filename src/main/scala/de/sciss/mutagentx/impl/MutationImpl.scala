@@ -55,19 +55,15 @@ object MutationImpl {
     * It assumes the invoking transaction is 'up-to-date' and will cause
     * the selection's cursors to step from this transaction's input access.
     */
-  def apply[S <: Sys[S]](algorithm: Algorithm[S], sq: Vec[stm.Source[S#Tx, Chromosome[S]]], n: Int,
-            inputAccess: S#Acc): Vec[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)] = {
-    var res = Vector.empty[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)]
+  def apply[S <: Sys[S]](algorithm: Algorithm[S], chosen: Chromosome[S])(implicit tx: S#Tx): Boolean = {
+    // var res = Vector.empty[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)]
 
-    while (res.size < n) {
-      val chosenH = sq(res.size % sq.size)
-      ???
-      /*
-      val csr     = algorithm.global.forkCursor
-      val hOpt    = csr.stepFrom(inputAccess) { implicit tx =>
+    // while (res.size < n) {
+      // val chosenH = sq(res.size % sq.size)
+      // val csr     = algorithm.global.forkCursor
+      // val hOpt    = csr.stepFrom(inputAccess) { implicit tx =>
         import algorithm.global.{rng => random}
-        implicit val dtx = tx.durable
-        val chosen        = chosenH()
+        // val chosen        = chosenH()
         val mutationIter  = Util.rrand(Algorithm.mutMin, Algorithm.mutMax)
         require(mutationIter > 0)
         val success       = (false /: (1 to mutationIter)) { case (success0, iter) =>
@@ -82,16 +78,15 @@ object MutationImpl {
           }
           success0 | success1 // i.e. at least one mutation was applied
         }
-        if (success) Some(tx.newHandleM(chosen)) else None
-      }
-      hOpt.foreach { h =>
-        val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
-        if (Algorithm.DEBUG) println(s"$h - $pos")
-        res :+= (pos, h)
-      }
-      */
-    }
-    res
+        success // if (success) Some(tx.newHandleM(chosen)) else None
+//      }
+//      hOpt.foreach { h =>
+//        val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
+//        if (Algorithm.DEBUG) println(s"$h - $pos")
+//        res :+= (pos, h)
+//      }
+//    }
+//    res
   }
 
   private def roulette[S <: Sys[S], A](in: Vec[(A, Int)])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): A = {

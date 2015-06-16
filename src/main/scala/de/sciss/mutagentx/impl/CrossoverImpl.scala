@@ -1,6 +1,7 @@
 package de.sciss.mutagentx
 package impl
 
+import de.sciss.lucre.data
 import de.sciss.lucre.event.Sys
 import de.sciss.lucre.{confluent, stm}
 import de.sciss.mutagentx.Util.coin
@@ -10,21 +11,20 @@ import scala.annotation.tailrec
 object CrossoverImpl {
   val DEBUG = false
 
-  def apply[S <: Sys[S]](algorithm: Algorithm[S], sq: Vec[stm.Source[S#Tx, Chromosome[S]]], n: Int,
-                inputAccess: S#Acc): Vec[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)] = {
+  def apply[S <: Sys[S]](algorithm: Algorithm[S], chosen1: Chromosome[S], chosen2: Chromosome[S])
+                        (implicit tx: S#Tx, ord: data.Ordering[S#Tx, Vertex[S]]): Unit = {
     import algorithm.global.{rng => random}
-    var res = Vector.empty[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)]
-    while (res.size < n) {
-      val idx0      = res.size << 1
-      val chosen0H  = sq( idx0      % sq.size)
-      val chosen1H  = sq((idx0 + 1) % sq.size)
-???
-      /*
-      val csr       = algorithm.global.forkCursor
-      val hs = csr.stepFrom(inputAccess) { implicit tx =>
-        implicit val dtx = tx.durable
-        val chosen1 = chosen0H()
-        val chosen2 = chosen1H()
+//    var res = Vector.empty[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)]
+//    while (res.size < n) {
+//      val idx0      = res.size << 1
+//      val chosen0H  = sq( idx0      % sq.size)
+//      val chosen1H  = sq((idx0 + 1) % sq.size)
+
+//      val csr       = algorithm.global.forkCursor
+//      val hs = csr.stepFrom(inputAccess) { implicit tx =>
+//        implicit val dtx = tx.durable
+//        val chosen1 = chosen0H()
+//        val chosen2 = chosen1H()
         val v1      = chosen1.vertices
         val v2      = chosen2.vertices
 
@@ -90,21 +90,20 @@ object CrossoverImpl {
           println(s"crossover. $s1. $s2")
         }
 
-        val _res0 = tx.newHandleM(chosen1)
-        val _res1 = if (res.size + 1 == n) _res0 :: Nil else {
-          _res0 :: tx.newHandleM(chosen2) :: Nil
-        }
-
-        _res1
-        // Vector(c1, c2)
-      }
-
-      val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
-      if (DEBUG) println(s"$hs - $pos")
-      hs.foreach(h => res :+= (pos, h))
-      */
-    }
-
-    res
+//        val _res0 = tx.newHandleM(chosen1)
+//        val _res1 = if (res.size + 1 == n) _res0 :: Nil else {
+//          _res0 :: tx.newHandleM(chosen2) :: Nil
+//        }
+//
+//        _res1
+//        // Vector(c1, c2)
+//      }
+//
+//      val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
+//      if (DEBUG) println(s"$hs - $pos")
+//      hs.foreach(h => res :+= (pos, h))
+//    }
+//
+//    res
   }
 }

@@ -91,7 +91,7 @@ object Algorithm {
         ??? : GlobalState[S] // GlobalState()
       }
 
-      implicit def ord: data.Ordering[S#Tx, Vertex[S]] = ???
+      implicit val ord: data.Ordering[S#Tx, Vertex[S]] = ConfluentOrdering[Vertex[S]]
 
       def genome(implicit tx: S#Tx): Genome[S] = handle()
 
@@ -210,22 +210,6 @@ trait Algorithm[S <: Sys[S]] {
     v
   }
 
-  //  def evaluate()(implicit tx: S#Tx): Future[Vec[Evaluated]] = {
-  //    val futs = genome.chromosomes().map { c =>
-  //      impl.EvaluationImpl(c, this)(tx, global.cursor)
-  //    }
-  //    import Algorithm.executionContext
-  //    Future.sequence(futs)
-  //  }
-
-  //  def evaluate()(implicit tx: S#Tx): Future[Vec[Float]] = {
-  //    val futs = genome.chromosomes().map { c =>
-  //      impl.EvaluationImpl.evaluate(c, this, inputSpec, inputExtr)
-  //    }
-  //    import Algorithm.executionContext
-  //    Future.sequence(futs)
-  //  }
-
   def evaluate()(implicit tx: S#Tx): Future[Vec[Float]] = {
     val p = Promise[Vec[Float]]()
     val c = genome.chromosomes().map(tx.newHandle(_))
@@ -257,27 +241,6 @@ trait Algorithm[S <: Sys[S]] {
       }
     }
   }
-
-    //  def evaluate()(implicit tx: S#Tx): Unit =
-//    genome.chromosomes().foreach { cH =>
-//      val b = cH.bits
-//      val h = b.size / 2
-//      // simple example function: lhs should be true, rhs should be false
-//      val c = b.zipWithIndex.count { case (v, i) => v == (i < h) }
-//      cH.fitness() = c.toDouble / b.size
-//    }
-
-//  def print()(implicit tx: S#Tx): Unit = {
-//    val s = mkString()
-//    tx.afterCommit(println(s))
-//  }
-
-//  def mkString()(implicit tx: S#Tx): String =
-//    genome.chromosomes().zipWithIndex.map { case (cH, i) =>
-//      val b  = cH.bits.map { v => if (v) '1' else '0' } .mkString
-//      val s0 = f"${i + 1}%2d  ${cH.fitness()}%1.3f  $b"
-//      if (DEBUG) s"$s0  ${cH.debugString}" else s0
-//    } .mkString("\n")
 
   def select(all: Vec[(Chromosome[S], Float)])(implicit tx: S#Tx): Set[Chromosome[S]] = {
     val pop   = all.size
@@ -338,55 +301,7 @@ trait Algorithm[S <: Sys[S]] {
     */
   def crossover(sq: Vec[stm.Source[S#Tx, Chromosome[S]]], n: Int,
                 inputAccess: S#Acc): Vec[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)] =
-    impl.CrossoverImpl(this, sq, n, inputAccess)
-
-//    var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome])]
-//    while (res.size < n) {
-//      val idx0      = res.size << 1
-//      val chosen0H  = sq( idx0      % sq.size)
-//      val chosen1H  = sq((idx0 + 1) % sq.size)
-//      val csr       = global.forkCursor
-//      val hs0 = csr.stepFrom(inputAccess) { implicit tx =>
-//        implicit val dtx = tx.durable
-//        val chosen0 = chosen0H()
-//        val chosen1 = chosen1H()
-//        val numBits = chosen0.size
-//        require(numBits > 1)
-//        val split   = rng.nextInt(numBits - 1) + 1
-//
-//        @tailrec def loop(rem: Int, next0: S#Var[Option[Bit]], next1: S#Var[Option[Bit]]): (S#Var[Option[Bit]], S#Var[Option[Bit]]) =
-//          if (rem == 0) (next0, next1) else {
-//            val nn0 = next0().get
-//            val nn1 = next1().get
-//            loop(rem - 1, nn0.next, nn1.next)
-//          }
-//
-//        val (p0, p1) = loop(split, chosen0.head, chosen1.head)
-//        val p0v = p0()
-//        val p1v = p1()
-//
-//        if (DEBUG) println(s"cross ($chosen0, $chosen1) at $split")
-//
-//        val _res0 = {
-//          p0() = p1v
-//          // if (DEBUG) println(s"$p0() = $p1v")
-//          tx.newHandle(chosen0)
-//        }
-//        val _res1 = if (res.size + 1 == n) _res0 :: Nil else {
-//          p1() = p0v
-//          // if (DEBUG) println(s"$p1() = $p0v")
-//          _res0 :: tx.newHandle(chosen1) :: Nil
-//        }
-//
-//        _res1
-//      }
-//      val hs  = hs0 // csr.step { implicit tx => hs0.map(h => tx.newHandle(h())) }
-//      val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
-//      if (DEBUG) println(s"$hs - $pos")
-//      hs.foreach(h => res :+= (pos, h))
-//    }
-//    res
-//  }
+    ??? // impl.CrossoverImpl(this, sq, n, inputAccess)
 
   /** Produces a sequence of `n` items by mutating the input `sel` selection.
     *
@@ -395,7 +310,7 @@ trait Algorithm[S <: Sys[S]] {
     */
   def mutate(sq: Vec[stm.Source[S#Tx, Chromosome[S]]], n: Int,
              inputAccess: S#Acc): Vec[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)] =
-    impl.MutationImpl(this, sq, n, inputAccess)
+    ??? // impl.MutationImpl(this, sq, n, inputAccess)
 
   /** Performs one iteration of the algorithm, assuming that current population
     * was already evaluated. Steps:
