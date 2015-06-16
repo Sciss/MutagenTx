@@ -83,15 +83,14 @@ object Algorithm {
 
     new Algorithm[S] {
       implicit val system = ConfluentReactive(dbf)
+      implicit val ord: data.Ordering[S#Tx, Vertex[S]] = ConfluentOrdering[Vertex[S]]
       implicit val genomeSer = Genome.Ser[S]
       val (handle: stm.Source[S#Tx, Genome[S]], global: GlobalState[S]) = system.rootWithDurable { implicit tx =>
         implicit val dtx = system.durableTx(tx)
         Genome.empty[S]
       } { implicit tx =>
-        ??? : GlobalState[S] // GlobalState()
+        GlobalState()
       }
-
-      implicit val ord: data.Ordering[S#Tx, Vertex[S]] = ConfluentOrdering[Vertex[S]]
 
       def genome(implicit tx: S#Tx): Genome[S] = handle()
 
