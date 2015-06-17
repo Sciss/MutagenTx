@@ -4,6 +4,7 @@ package impl
 
 import java.math.{MathContext, RoundingMode}
 
+import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.event.Sys
 import prefuse.visual.VisualItem
 
@@ -34,7 +35,8 @@ object VisualConstantImpl {
 
       mkName()
 
-      val active = ??? : Ref[Int] // Ref(tx.inputAccess.term.toInt)
+      val ctx = tx.asInstanceOf[ConfluentReactive.Txn]  // XXX TODO
+      val active = Ref(ctx.inputAccess.term.toInt)
 
       override def toString = s"VisualConstant($value)@${hashCode.toHexString}"
 

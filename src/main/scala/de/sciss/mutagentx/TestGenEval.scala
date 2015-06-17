@@ -6,7 +6,7 @@ import scala.util.{Success, Failure}
 
 object TestGenEval extends App {
   val in        = file("audio_work") / "Betanovuss150410_1Cut.aif"
-  val algorithm = Algorithm.tmp(in)
+  val algorithm = Algorithm.tmpConfluent(in)
 
   import Algorithm.executionContext
 

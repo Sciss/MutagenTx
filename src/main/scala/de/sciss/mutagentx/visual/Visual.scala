@@ -23,6 +23,7 @@ import javax.swing.JPanel
 
 import de.sciss.file._
 import de.sciss.kollflitz
+import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.event.Sys
 import de.sciss.lucre.stm.TxnLike
 import de.sciss.lucre.swing.impl.ComponentHolder
@@ -58,8 +59,11 @@ object Visual {
   val VIDEO_HEIGHT    = 1920 / 2 // 576
   val VIDEO_WIDTH_SQR = 1080 / 2 // 1024 // 1024 : 576 = 16 : 9
 
-  def apply[S <: Sys[S]](a: Algorithm[S])(implicit tx: S#Tx): Visual[S] = {
+  type S = ConfluentReactive
+
+  def apply(a: Algorithm.Confluent)(implicit tx: S#Tx): Visual[S] = {
     val map = TMap.empty[S#ID, VisualVertex[S]]
+    implicit val dtx = tx.durable
     new Impl(map, a, a.global.cursor.position).init()
   }
 
@@ -97,7 +101,7 @@ object Visual {
   private final val ACTION_COLOR  = "color"
   private final val LAYOUT_TIME   = 50
 
-  private final class Impl[S <: Sys[S]](map: TMap[S#ID, VisualVertex[S]], val algorithm: Algorithm[S], cursorPos0: S#Acc)
+  private final class Impl(map: TMap[S#ID, VisualVertex[S]], val algorithm: Algorithm.Confluent, cursorPos0: S#Acc)
     extends Visual[S] with ComponentHolder[Component] {
 
     private[this] var _vis: Visualization       = _
@@ -237,81 +241,79 @@ object Visual {
     def dispose()(implicit tx: S#Tx): Unit = ()
 
     private def shrink(in: S#Acc): S#Acc = {
-      ???
-//      val prevIdx = in.take(in.size - 3)
-//      if (prevIdx.isEmpty) prevIdx else  prevIdx :+ prevIdx.term
+      val prevIdx = in.take(in.size - 3)
+      if (prevIdx.isEmpty) prevIdx else  prevIdx :+ prevIdx.term
     }
 
     def previousIteration(): Unit = {
-      ???
-//      val pos = cursorPos.single.transformAndGet(c => shrink(c) /* c.take(c.size - 2) */)
-//      // if (pos.isEmpty) return
-//      if (pos.size <= 2) return
-//
-//      algorithm.global.forkCursor.stepFrom(pos) { implicit tx =>
-//        implicit val itx = tx.peer
-//        val mapOld = map.snapshot
-//        map.clear()
-//        var toRemove = Set.empty[VisualData[S]]
-//        mapOld.foreach { case (idOld, v) =>
-//          val pathOld = idOld.path
-//          val pathNew = shrink(pathOld)
-//          if (pathNew.isEmpty) {
-//            toRemove += v
-//          } else {
-//            val idNew = idOld.copy(pathNew)
-//            if (map.contains(idNew)) {
-//              toRemove += v
-//            } else {
-//              map.put(idNew, v)
-//            }
-//          }
-//        }
-//
-//        // for (i <- 1 to 1) {
-//        val cs      = algorithm.genome.chromosomes()
-//        val csSz    = cs.size
-//        var lastProg= 0
-//        var csi     = 0
-//        val ancestors = cs.filter { c =>
-//          val vs = c.vertices
-//          val res = vs.iterator.filter { v =>
-//            val vid = v.id
-//            map.contains(vid)
-//          } .nonEmpty
-//          csi += 1
-//          val prog = csi * 100 / csSz
-//          while (lastProg < prog) {
-//            print('#')
-//            lastProg += 1
-//          }
-//          res
-//        }
-//        println(s"\nNum-ancestors = ${ancestors.size}")
-//        ancestors.foreach { c =>
-//          insertChromosome(c)
-//        }
-//        // }
-//
-//        map.foreach { case (_, v) =>
-//          if (!v.isActive) toRemove += v
-//
-//          def checkEdges(es: TMap[_, VisualEdge[S]]): Unit = es.foreach {
-//            case (_, e) => if (!e.isActive) toRemove += e
-//          }
-//
-//          checkEdges(v.edgesIn )
-//          checkEdges(v.edgesOut)
-//        }
-//
-//        if (DEBUG) {
-//          val numVertices = toRemove.count(_.isInstanceOf[VisualVertex[S]])
-//          val numEdges    = toRemove.count(_.isInstanceOf[VisualEdge  [S]])
-//          println(s"map.size = ${mapOld.size} -> ${map.size}; toRemove.size = $numVertices vertices / $numEdges edges")
-//        }
-//
-//        toRemove.foreach(_.dispose())
-//      }
+      val pos = cursorPos.single.transformAndGet(c => shrink(c) /* c.take(c.size - 2) */)
+      // if (pos.isEmpty) return
+      if (pos.size <= 2) return
+
+      algorithm.global.forkCursor.stepFrom(pos) { implicit tx =>
+        implicit val itx = tx.peer
+        val mapOld = map.snapshot
+        map.clear()
+        var toRemove = Set.empty[VisualData[S]]
+        mapOld.foreach { case (idOld, v) =>
+          val pathOld = idOld.path
+          val pathNew = shrink(pathOld)
+          if (pathNew.isEmpty) {
+            toRemove += v
+          } else {
+            val idNew = idOld.copy(pathNew)
+            if (map.contains(idNew)) {
+              toRemove += v
+            } else {
+              map.put(idNew, v)
+            }
+          }
+        }
+
+        // for (i <- 1 to 1) {
+        val cs      = algorithm.genome.chromosomes()
+        val csSz    = cs.size
+        var lastProg= 0
+        var csi     = 0
+        val ancestors = cs.filter { c =>
+          val vs = c.vertices
+          val res = vs.iterator.filter { v =>
+            val vid = v.id
+            map.contains(vid)
+          } .nonEmpty
+          csi += 1
+          val prog = csi * 100 / csSz
+          while (lastProg < prog) {
+            print('#')
+            lastProg += 1
+          }
+          res
+        }
+        println(s"\nNum-ancestors = ${ancestors.size}")
+        ancestors.foreach { c =>
+          insertChromosome(c)
+        }
+        // }
+
+        map.foreach { case (_, v) =>
+          if (!v.isActive) toRemove += v
+
+          def checkEdges(es: TMap[_, VisualEdge[S]]): Unit = es.foreach {
+            case (_, e) => if (!e.isActive) toRemove += e
+          }
+
+          checkEdges(v.edgesIn )
+          checkEdges(v.edgesOut)
+        }
+
+        if (DEBUG) {
+          val numVertices = toRemove.count(_.isInstanceOf[VisualVertex[S]])
+          val numEdges    = toRemove.count(_.isInstanceOf[VisualEdge  [S]])
+          println(s"map.size = ${mapOld.size} -> ${map.size}; toRemove.size = $numVertices vertices / $numEdges edges")
+        }
+
+        toRemove.foreach(_.dispose())
+      }
     }
 
     private def mkActionColor(): Unit = {
@@ -527,7 +529,7 @@ object Visual {
       import settings._
 
       import ExecutionContext.Implicits.global
-      val numVersions = ??? : Int // cursorPos.single.get.size / 2
+      val numVersions = cursorPos.single.get.size / 2
 
       def toFrames(sec: Double) = (sec * framesPerSecond + 0.5).toInt
 

@@ -2,6 +2,7 @@ package de.sciss.mutagentx
 package visual
 package impl
 
+import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.event.Sys
 import prefuse.visual.VisualItem
 
@@ -18,7 +19,8 @@ object VisualUGenImpl {
 
       val main  = _main
 
-      val active = ??? : Ref[Int] // Ref(tx.inputAccess.term.toInt)
+      val ctx = tx.asInstanceOf[ConfluentReactive.Txn]  // XXX TODO
+      val active = Ref(ctx.inputAccess.term.toInt)
 
       override def toString = s"VisualUGen($name)@${hashCode.toHexString}"
 
