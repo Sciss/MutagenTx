@@ -8,7 +8,7 @@ import com.alee.laf.progressbar.WebProgressBarStyle
 import de.sciss.file._
 import de.sciss.kollflitz
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.event.{InMemory, Sys}
+import de.sciss.lucre.event.{Durable, InMemory, Sys}
 import de.sciss.lucre.swing.defer
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
@@ -36,12 +36,18 @@ object GeneratorApp extends SwingApplication {
       case "--in-memory" +: sfName +: _ =>
         val in = file("audio_work") / sfName
         new InMemoryApp(in)
-        
+
+      case "--durable" +: dbName +: sfName +: _ =>
+        val dir = file("database"  ) / dbName
+        val in  = file("audio_work") / sfName
+        new DurableApp(dir = dir, input = in)
+
       case _ =>
         Console.err.println(
           """Invocation:
             |
             |--confluent [<database-name> <sf-name>]
+            |--durable <database-name> <sf-name>
             |--in-memory <sf-name>
             |""".stripMargin)
         sys.exit(1)
@@ -52,22 +58,58 @@ object GeneratorApp extends SwingApplication {
     private var iterCount = 0
 
     type S = InMemory
+    type A = Algorithm[InMemory]
 
-    def getIteration(a: Algorithm[S], iterInc: Int): Int = {
+    def getIteration(a: A, iterInc: Int): Int = {
       iterCount += iterInc
       iterCount
     }
 
-    def init(): Processor[Algorithm[S]] = {
+    def init(): Processor[A] = {
       import Algorithm.executionContext
       val res = new Init
       res.start()
       res
     }
 
-    private final class Init extends ProcessorImpl[Algorithm[S], Processor[Algorithm[S]]] with Processor[Algorithm[S]] {
-      def body(): Algorithm[S] = {
+    private final class Init extends ProcessorImpl[A, Processor[A]] with Processor[A] {
+      def body(): A = {
         val algorithm = Algorithm.inMemory(input)
+        val fut1 = algorithm.system.step { implicit tx =>
+          algorithm.initialize(Algorithm.population)
+        }
+        await(fut1, 0.0, 0.5)
+        val fut2 = algorithm.system.step { implicit tx =>
+          algorithm.evaluateAndUpdate()
+        }
+        await(fut2, 0.5, 0.5)
+        algorithm
+      }
+    }
+  }
+
+  final class DurableApp(dir: File, input: File) extends GenApp[Durable] {
+    private var iterCount = 0
+
+    type S = Durable
+    type A = Algorithm.Durable
+
+    def getIteration(a: A, iterInc: Int): Int = {
+      a.global.cursor.step { implicit tx => a.global.iter }
+      iterCount += iterInc
+      iterCount
+    }
+
+    def init(): Processor[A] = {
+      import Algorithm.executionContext
+      val res = new Init
+      res.start()
+      res
+    }
+
+    private final class Init extends ProcessorImpl[A, Processor[A]] with Processor[A] {
+      def body(): A = {
+        val algorithm = Algorithm.durable(dir = dir, input = input)
         val fut1 = algorithm.system.step { implicit tx =>
           algorithm.initialize(Algorithm.population)
         }
@@ -83,8 +125,9 @@ object GeneratorApp extends SwingApplication {
 
   final class ConfluentApp(args: Vec[String]) extends GenApp[ConfluentReactive] {
     type S = ConfluentReactive
+    type A = Algorithm.Confluent
 
-    def getIteration(a: Algorithm[S], iterInc: Int): Int = {
+    def getIteration(a: A, iterInc: Int): Int = {
       val csr = a.global.cursor
       val inp = csr.step { implicit tx =>
         implicit val dtx = tx.durable
@@ -93,17 +136,15 @@ object GeneratorApp extends SwingApplication {
       inp.size / 2
     }
 
-    def init(): Processor[Algorithm[S]] = {
+    def init(): Processor[A] = {
       import Algorithm.executionContext
       val res = new Init
       res.start()
       res
     }
 
-    private final class Init
-      extends ProcessorImpl[Algorithm[S], Processor[Algorithm[S]]] with Processor[Algorithm[S]] {
-
-      protected def body(): Algorithm[S] = {
+    private final class Init extends ProcessorImpl[A, Processor[A]] with Processor[A] {
+      protected def body(): A = {
         val dir = file("database"  ) / (if (args.length > 0) args(0) else "betanovuss")
         val in  = file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
         val algorithm = blocking(Algorithm.confluent(dir = dir, input = in))
@@ -148,12 +189,14 @@ trait GenApp[S <: Sys[S]] {
     new Label("Iter:"  ), ggIter
   )
 
-  var algorithm = Option.empty[Algorithm[S]]
+  type A <: Algorithm[S]
+
+  var algorithm = Option.empty[A]
   import Algorithm.executionContext
 
-  def getIteration(a: Algorithm[S], iterInc: Int): Int
+  def getIteration(a: A, iterInc: Int): Int
 
-  def updateStats(a: Algorithm[S], iterInc: Int): Unit = {
+  def updateStats(a: A, iterInc: Int): Unit = {
     val csr = a.global.cursor
     val fit: Vec[Float] = csr.step { implicit tx => a.genome.fitness() }
     import kollflitz.Ops._
@@ -164,9 +207,9 @@ trait GenApp[S <: Sys[S]] {
     ggIter  .text = getIteration(a, iterInc).toString
   }
 
-  def init(): Processor[Algorithm[S]]
+  def init(): Processor[A]
 
-  def iter(a: Algorithm[S]): Processor[Unit] = a.iterate()
+  def iter(a: A): Processor[Unit] = a.iterate()
 
 //      .andThen { case Success(_) =>
 //        a.global.cursor.step { implicit tx =>
@@ -268,7 +311,7 @@ trait GenApp[S <: Sys[S]] {
     }
   }
 
-  private[this] final class StepN(num: Int, a: Algorithm[S])
+  private[this] final class StepN(num: Int, a: A)
     extends ProcessorImpl[Unit, Processor[Unit]] with Processor[Unit] {
 
     protected def body(): Unit = {

@@ -15,7 +15,9 @@ package de.sciss.mutagentx
 
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.stm.Sys
+import de.sciss.lucre.event.DurableLike.Txn
+import de.sciss.lucre.stm.DurableLike.ID
+import de.sciss.lucre.stm.{MutableSerializer, Sys}
 import de.sciss.lucre.{confluent, event => evt, stm}
 import de.sciss.mutagentx.impl.TxnRandomBridge
 import de.sciss.serial.{DataInput, DataOutput, Serializer, Writable}
@@ -28,6 +30,49 @@ object GlobalState {
       val rng: TxnRandom[S#Tx] = TxnRandom(tx.newID())
       val cursor: stm.Cursor[S] = tx.system
     }
+  }
+
+  object Durable {
+    type S = evt.Durable
+
+    def apply()(implicit tx: S#Tx): Durable = new Impl {
+      val id    = tx.newID()
+      val rng   = TxnRandom.Persistent[S]
+      val iter  = tx.newIntVar(id, 0)
+
+      val cursor: stm.Cursor[S] = tx.system
+    }
+
+    implicit def serializer(implicit system: S): Serializer[S#Tx, S#Acc, Durable] = new Ser
+
+    private trait Impl extends Durable with stm.Mutable.Impl[S] {
+      override def rng: TxnRandom.Persistent[S]
+
+      protected def disposeData()(implicit tx: Txn[S]): Unit = {
+        rng .dispose()
+        iter.dispose()
+      }
+
+      protected def writeData(out: DataOutput): Unit = {
+        rng .write(out)
+        iter.write(out)
+      }
+    }
+
+    private final class Ser(implicit system: S) extends MutableSerializer[S, Durable] {
+      protected def readData(in: DataInput, _id: ID[S])(implicit tx: Txn[S]): Durable = new Impl {
+        val id    = _id
+        val rng   = TxnRandom.Persistent.read[S](in, ())
+        val iter  = tx.readIntVar(id, in)
+
+        val cursor: stm.Cursor[S] = tx.system
+      }
+    }
+  }
+  trait Durable extends GlobalState[evt.Durable] with stm.Mutable[evt.Durable#ID, evt.Durable#Tx] {
+    type S = evt.Durable
+
+    def iter: S#Var[Int]
   }
 
   object Confluent {

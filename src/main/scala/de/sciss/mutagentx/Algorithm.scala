@@ -15,7 +15,7 @@ package de.sciss.mutagentx
 
 import de.sciss.file.File
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.{stm, data}
+import de.sciss.lucre.{stm, data, event => evt}
 import de.sciss.lucre.event.{Txn, InMemory, Sys}
 import de.sciss.processor.Processor
 import de.sciss.synth.UGenSpec
@@ -61,9 +61,13 @@ object Algorithm {
   def confluent(dir: File, input: File): Confluent =
     impl.ConfluentAlgorithm.apply(dir = dir, input = input)
 
-  def inMemory(input: File): Algorithm[InMemory] = {
-    type S = InMemory
-    implicit val system = InMemory()
+  def durable(dir: File, input: File): Durable = {
+    ???
+  }
+
+  def inMemory(input: File): Algorithm[evt.InMemory] = {
+    type S = evt.InMemory
+    implicit val system = evt.InMemory()
 
     implicit object VertexOrd extends data.Ordering[S#Tx, Vertex[S]] {
       def compare(a: Vertex[S], b: Vertex[S])(implicit tx: Txn[S]): Int = {
@@ -78,6 +82,14 @@ object Algorithm {
     }
 
     impl.CopyingAlgorithm[S](system = system, input = input, global = global, genomeH = genomeH)
+  }
+
+  type InMemory = Algorithm[evt.InMemory] {
+    type Global = GlobalState[evt.InMemory]
+  }
+
+  trait Durable extends Algorithm[evt.Durable] {
+    type Global = GlobalState.Durable
   }
 
   trait Confluent extends Algorithm[ConfluentReactive] {
