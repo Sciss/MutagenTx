@@ -16,7 +16,6 @@ package impl
 
 import de.sciss.file._
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.confluent.reactive.ConfluentReactive.Txn
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
 import de.sciss.lucre.{confluent, data, stm}
@@ -64,13 +63,13 @@ object ConfluentAlgorithm {
 
   private final class Impl(val system: S, handle: stm.Source[S#Tx, Genome[S]], val global: GlobalState.Confluent,
                            val input: File, val inputExtr: File, val inputSpec: AudioFileSpec)
-    extends Algorithm.Confluent { algo =>
+    extends AlgorithmImpl[S] with Algorithm.Confluent { algo =>
 
     override def toString = s"ConfluentAlgorithm(input = $input)@${hashCode().toHexString}"
 
     implicit val ord: data.Ordering[S#Tx, Vertex[S]] = ConfluentOrdering[Vertex[S]]
 
-    def genome(implicit tx: Txn): Genome[S] = handle()
+    def genome(implicit tx: S#Tx): Genome[S] = handle()
 
     import global.rng
 

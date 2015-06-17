@@ -11,13 +11,15 @@ object TestGenEval extends App {
   import Algorithm.executionContext
 
   val cursor    = algorithm.global.cursor
-  cursor.step { implicit tx =>
-    algorithm.init(100)
-  }
   val fut0 = cursor.step { implicit tx =>
-    algorithm.evaluateAndUpdate()
+    algorithm.initialize(100)
   }
-  val fut = fut0.map { _ =>
+  val fut1 = fut0.map { _ =>
+    cursor.step { implicit tx =>
+      algorithm.evaluateAndUpdate()
+    }
+  }
+  val fut = fut1.map { _ =>
     algorithm.iterate()
   }
 
