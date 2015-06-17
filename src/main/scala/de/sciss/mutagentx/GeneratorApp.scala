@@ -3,10 +3,12 @@ package de.sciss.mutagentx
 import java.awt.Color
 
 import com.alee.laf.WebLookAndFeel
+import com.alee.laf.checkbox.WebCheckBoxStyle
+import com.alee.laf.progressbar.WebProgressBarStyle
 import de.sciss.file._
 import de.sciss.kollflitz
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.event.{InMemory, Sys}
 import de.sciss.lucre.swing.defer
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
@@ -18,15 +20,23 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 object GeneratorApp extends SwingApplication {
-  type S = ConfluentReactive
-
   def startup(args: Array[String]): Unit = {
     WebLookAndFeel.install()
+    WebCheckBoxStyle   .animated            = false
+    WebProgressBarStyle.progressTopColor    = Color.lightGray
+    WebProgressBarStyle.progressBottomColor = Color.gray
+    // XXX TODO: how to really turn of animation?
+    WebProgressBarStyle.highlightWhite      = new Color(255, 255, 255, 0)
+    WebProgressBarStyle.highlightDarkWhite  = new Color(255, 255, 255, 0)
+
     args.toIndexedSeq match {
       case "--confluent" +: tail =>
-        new Confluent(tail)
+        new ConfluentApp(tail)
 
-      case "--in-memory" +: sfPath +: _ =>
+      case "--in-memory" +: sfName +: _ =>
+        val in = file("audio_work") / sfName
+        new InMemoryApp(in)
+        
       case _ =>
         Console.err.println(
           """Invocation:
@@ -38,10 +48,43 @@ object GeneratorApp extends SwingApplication {
     }
   }
 
-  final class Confluent(args: Vec[String]) extends GenApp[ConfluentReactive] {
+  final class InMemoryApp(input: File) extends GenApp[InMemory] {
+    private var iterCount = 0
+
+    type S = InMemory
+
+    def getIteration(a: Algorithm[S], iterInc: Int): Int = {
+      iterCount += iterInc
+      iterCount
+    }
+
+    def init(): Processor[Algorithm[S]] = {
+      import Algorithm.executionContext
+      val res = new Init
+      res.start()
+      res
+    }
+
+    private final class Init extends ProcessorImpl[Algorithm[S], Processor[Algorithm[S]]] with Processor[Algorithm[S]] {
+      def body(): Algorithm[S] = {
+        val algorithm = Algorithm.inMemory(input)
+        val fut1 = algorithm.system.step { implicit tx =>
+          algorithm.initialize(Algorithm.population)
+        }
+        await(fut1, 0.0, 0.5)
+        val fut2 = algorithm.system.step { implicit tx =>
+          algorithm.evaluateAndUpdate()
+        }
+        await(fut2, 0.5, 0.5)
+        algorithm
+      }
+    }
+  }
+
+  final class ConfluentApp(args: Vec[String]) extends GenApp[ConfluentReactive] {
     type S = ConfluentReactive
 
-    def getIteration(a: Algorithm[S]): Int = {
+    def getIteration(a: Algorithm[S], iterInc: Int): Int = {
       val csr = a.global.cursor
       val inp = csr.step { implicit tx =>
         implicit val dtx = tx.durable
@@ -108,9 +151,9 @@ trait GenApp[S <: Sys[S]] {
   var algorithm = Option.empty[Algorithm[S]]
   import Algorithm.executionContext
 
-  def getIteration(a: Algorithm[S]): Int
+  def getIteration(a: Algorithm[S], iterInc: Int): Int
 
-  def updateStats(a: Algorithm[S]): Unit = {
+  def updateStats(a: Algorithm[S], iterInc: Int): Unit = {
     val csr = a.global.cursor
     val fit: Vec[Float] = csr.step { implicit tx => a.genome.fitness() }
     import kollflitz.Ops._
@@ -118,7 +161,7 @@ trait GenApp[S <: Sys[S]] {
     ggBest  .text = f"${sorted.last  }%1.3f"
     ggAvg   .text = f"${sorted.mean  }%1.3f"
     ggMedian.text = f"${sorted.median}%1.3f"
-    ggIter  .text = getIteration(a).toString
+    ggIter  .text = getIteration(a, iterInc).toString
   }
 
   def init(): Processor[Algorithm[S]]
@@ -143,6 +186,10 @@ trait GenApp[S <: Sys[S]] {
     busy = Some(fut)
     ggProgress.background = Color.yellow
     ggAbort.enabled = false
+
+    fut.addListener {
+      case p @ Processor.Progress(_, _) => defer { ggProgress.value = p.toInt }
+    }
 
     fut.onComplete {
       case _ => defer {
@@ -177,7 +224,7 @@ trait GenApp[S <: Sys[S]] {
         case a =>
           defer {
             algorithm = Some(a)
-            updateStats(a)
+            updateStats(a, 0)
           }
       }
       setBusy(fut)
@@ -192,7 +239,7 @@ trait GenApp[S <: Sys[S]] {
           val t1 = System.currentTimeMillis()
           println(f"---------TOOK ${(t1-t0)*0.001}%1.3f sec.---------")
           defer {
-            updateStats(a)
+            updateStats(a, 1)
           }
         }
         setBusy(fut)
@@ -213,7 +260,7 @@ trait GenApp[S <: Sys[S]] {
           val t1 = System.currentTimeMillis()
           println(f"---------TOOK ${(t1-t0)*0.001}%1.3f sec.---------")
           defer {
-            updateStats(a)
+            updateStats(a, num)
           }
         }
         setBusy(fut)

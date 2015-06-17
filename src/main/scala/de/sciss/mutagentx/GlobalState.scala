@@ -16,11 +16,20 @@ package de.sciss.mutagentx
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.stm.Sys
-import de.sciss.lucre.{confluent, stm}
+import de.sciss.lucre.{confluent, event => evt, stm}
 import de.sciss.mutagentx.impl.TxnRandomBridge
-import de.sciss.serial.{Writable, DataInput, DataOutput, Serializer}
+import de.sciss.serial.{DataInput, DataOutput, Serializer, Writable}
 
 object GlobalState {
+  object InMemory {
+    type S = evt.InMemory
+
+    def apply()(implicit tx: S#Tx): GlobalState[S] = new GlobalState[S] {
+      val rng: TxnRandom[S#Tx] = TxnRandom(tx.newID())
+      val cursor: stm.Cursor[S] = tx.system
+    }
+  }
+
   object Confluent {
     type S = ConfluentReactive
     type D = ConfluentReactive#D

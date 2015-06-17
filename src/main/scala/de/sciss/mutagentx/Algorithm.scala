@@ -15,8 +15,8 @@ package de.sciss.mutagentx
 
 import de.sciss.file.File
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.data
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.{stm, data}
+import de.sciss.lucre.event.{Txn, InMemory, Sys}
 import de.sciss.processor.Processor
 import de.sciss.synth.UGenSpec
 import de.sciss.synth.io.AudioFileSpec
@@ -28,7 +28,7 @@ object Algorithm {
   val DEBUG = false
 
   // ---- generation ----
-  val population      : Int     = 1000
+  val population      : Int     = 100 // 1000
   val constProb       : Double  = 0.5
   val minNumVertices  : Int     = 30
   val maxNumVertices  : Int     = 100
@@ -60,6 +60,25 @@ object Algorithm {
 
   def confluent(dir: File, input: File): Confluent =
     impl.ConfluentAlgorithm.apply(dir = dir, input = input)
+
+  def inMemory(input: File): Algorithm[InMemory] = {
+    type S = InMemory
+    implicit val system = InMemory()
+
+    implicit object VertexOrd extends data.Ordering[S#Tx, Vertex[S]] {
+      def compare(a: Vertex[S], b: Vertex[S])(implicit tx: Txn[S]): Int = {
+        val aid = stm.Escape.inMemoryID(a.id)
+        val bid = stm.Escape.inMemoryID(b.id)
+        if (aid < bid) -1 else if (aid > bid) 1 else 0
+      }
+    }
+
+    val (global: GlobalState[S], genomeH: stm.Source[S#Tx, Genome[S]]) = system.step { implicit tx =>
+      (GlobalState.InMemory(), tx.newHandle(Genome.empty[S]))
+    }
+
+    impl.CopyingAlgorithm[S](system = system, input = input, global = global, genomeH = genomeH)
+  }
 
   trait Confluent extends Algorithm[ConfluentReactive] {
     type Global = GlobalState.Confluent
