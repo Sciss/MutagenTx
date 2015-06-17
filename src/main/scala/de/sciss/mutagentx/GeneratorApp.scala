@@ -110,14 +110,22 @@ object GeneratorApp extends SwingApplication {
     private final class Init extends ProcessorImpl[A, Processor[A]] with Processor[A] {
       def body(): A = {
         val algorithm = Algorithm.durable(dir = dir, input = input)
-        val fut1 = algorithm.system.step { implicit tx =>
-          algorithm.initialize(Algorithm.population)
+        val cursor = algorithm.global.cursor
+
+        val isNew = cursor.step { implicit tx =>
+          val _isNew = algorithm.genome.chromosomes().isEmpty
+          if (_isNew) {
+            val futInit = algorithm.initialize(Algorithm.population)
+            await(futInit, 0, 0.5)
+          }
+          _isNew
         }
-        await(fut1, 0.0, 0.5)
-        val fut2 = algorithm.system.step { implicit tx =>
-          algorithm.evaluateAndUpdate()
+        if (isNew) {
+          val fut0 = cursor.step { implicit tx =>
+            algorithm.evaluateAndUpdate()
+          }
+          await(fut0, 0.5, 0.5)
         }
-        await(fut2, 0.5, 0.5)
         algorithm
       }
     }

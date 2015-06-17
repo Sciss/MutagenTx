@@ -63,7 +63,9 @@ object ConfluentAlgorithm {
 
   private final class Impl(val system: S, handle: stm.Source[S#Tx, Genome[S]], val global: GlobalState.Confluent,
                            val input: File, val inputExtr: File, val inputSpec: AudioFileSpec)
-    extends AlgorithmImpl[S] with Algorithm.Confluent { algo =>
+    extends AlgorithmImpl[S] /* with Algorithm.Confluent */ { algo =>
+
+    type Global = GlobalState.Confluent
 
     override def toString = s"ConfluentAlgorithm(input = $input)@${hashCode().toHexString}"
 

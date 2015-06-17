@@ -27,18 +27,18 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
 
 object CopyingAlgorithm {
-  def apply[S <: Sys[S]](system: S, input: File, global: GlobalState[S], genomeH: stm.Source[S#Tx, Genome[S]])
-                        (implicit cursor: stm.Cursor[S], ord: data.Ordering[S#Tx, Vertex[S]]): Algorithm[S] = {
+  def apply[S <: Sys[S], G <: GlobalState[S]](system: S, input: File, global: G, genomeH: stm.Source[S#Tx, Genome[S]])
+                        (implicit cursor: stm.Cursor[S], ord: data.Ordering[S#Tx, Vertex[S]]): Algorithm[S] { type Global = G } = {
     val futInput = TxnExecutor.defaultAtomic { implicit tx =>
       impl.EvaluationImpl.getInputSpec(input)
     }
     val (_inputExtr, _inputSpec) = Await.result(futInput, Duration.Inf)
 
-    new Impl(system, genomeH, global, input = input, inputExtr = _inputExtr, inputSpec = _inputSpec)
+    new Impl[S, G](system, genomeH, global, input = input, inputExtr = _inputExtr, inputSpec = _inputSpec)
   }
 
-  private final class Impl[S <: Sys[S]](val system: S, handle: stm.Source[S#Tx, Genome[S]],
-                                        val global: GlobalState[S],
+  private final class Impl[S <: Sys[S], G <: GlobalState[S]](val system: S, handle: stm.Source[S#Tx, Genome[S]],
+                                        val global: G,
                                         val input: File, val inputExtr: File, val inputSpec: AudioFileSpec)
                                        (implicit val ord: data.Ordering[S#Tx, Vertex[S]])
     extends AlgorithmImpl[S] { algo =>
@@ -47,7 +47,7 @@ object CopyingAlgorithm {
 
     def genome(implicit tx: S#Tx): Genome[S] = handle()
 
-    type Global = GlobalState[S]
+    type Global = G
 
     import global.rng
 
@@ -88,8 +88,11 @@ object CopyingAlgorithm {
       }
       in.edges.iterator.foreach {
         case Edge(srcIn, tgtIn, inlet) =>
-          val srcOut  = map.get(srcIn).asInstanceOf[Vertex.UGen[S]]
-          val tgtOut  = map.get(tgtIn)
+          val srcOut  = Option(map.get(srcIn)) match {
+            case Some(vu: Vertex.UGen[S]) => vu
+            case _ => throw new NoSuchElementException
+          }
+          val tgtOut = Option(map.get(tgtIn)).getOrElse(throw new NoSuchElementException)
           val eOut = Edge(sourceVertex = srcOut, targetVertex = tgtOut, inletIndex = inlet)
           top.addEdge(eOut)
       }

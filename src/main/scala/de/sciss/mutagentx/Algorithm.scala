@@ -15,8 +15,9 @@ package de.sciss.mutagentx
 
 import de.sciss.file.File
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.{stm, data, event => evt}
-import de.sciss.lucre.event.{Txn, InMemory, Sys}
+import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.store.BerkeleyDB
+import de.sciss.lucre.{data, event => evt, stm}
 import de.sciss.processor.Processor
 import de.sciss.synth.UGenSpec
 import de.sciss.synth.io.AudioFileSpec
@@ -62,7 +63,32 @@ object Algorithm {
     impl.ConfluentAlgorithm.apply(dir = dir, input = input)
 
   def durable(dir: File, input: File): Durable = {
-    ???
+    type S = evt.Durable
+    val dbf = BerkeleyDB.factory(dir)
+    implicit val system = evt.Durable(dbf)
+
+    implicit object VertexOrd extends data.Ordering[S#Tx, Vertex[S]] {
+      def compare(a: Vertex[S], b: Vertex[S])(implicit tx: S#Tx): Int = {
+        val aid = stm.Escape.durableID(a.id)
+        val bid = stm.Escape.durableID(b.id)
+        if (aid < bid) -1 else if (aid > bid) 1 else 0
+      }
+    }
+
+    val rootH = system.root[(GlobalState.Durable, Genome[S])] { implicit tx =>
+      (GlobalState.Durable(), Genome.empty[S])
+    }
+    // Yes, I know... Not nice...
+    val (global, genomeH) = system.step { implicit tx =>
+      val (_global, _genome) = rootH()
+      (_global, tx.newHandle(_genome))
+    }
+
+    //    val (global: GlobalState.Durable, genomeH: stm.Source[S#Tx, Genome[S]]) = system.step { implicit tx =>
+    //      (GlobalState.Durable(), tx.newHandle(Genome.empty[S]))
+    //    }
+
+    impl.CopyingAlgorithm[S, GlobalState.Durable](system = system, input = input, global = global, genomeH = genomeH)
   }
 
   def inMemory(input: File): Algorithm[evt.InMemory] = {
@@ -70,7 +96,7 @@ object Algorithm {
     implicit val system = evt.InMemory()
 
     implicit object VertexOrd extends data.Ordering[S#Tx, Vertex[S]] {
-      def compare(a: Vertex[S], b: Vertex[S])(implicit tx: Txn[S]): Int = {
+      def compare(a: Vertex[S], b: Vertex[S])(implicit tx: S#Tx): Int = {
         val aid = stm.Escape.inMemoryID(a.id)
         val bid = stm.Escape.inMemoryID(b.id)
         if (aid < bid) -1 else if (aid > bid) 1 else 0
@@ -81,18 +107,18 @@ object Algorithm {
       (GlobalState.InMemory(), tx.newHandle(Genome.empty[S]))
     }
 
-    impl.CopyingAlgorithm[S](system = system, input = input, global = global, genomeH = genomeH)
+    impl.CopyingAlgorithm[S, GlobalState[S]](system = system, input = input, global = global, genomeH = genomeH)
   }
 
   type InMemory = Algorithm[evt.InMemory] {
     type Global = GlobalState[evt.InMemory]
   }
 
-  trait Durable extends Algorithm[evt.Durable] {
+  type Durable = Algorithm[evt.Durable] {
     type Global = GlobalState.Durable
   }
 
-  trait Confluent extends Algorithm[ConfluentReactive] {
+  type Confluent = Algorithm[ConfluentReactive] {
     type Global = GlobalState.Confluent
   }
 }
