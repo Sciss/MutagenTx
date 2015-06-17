@@ -78,9 +78,9 @@ object ConfluentAlgorithm {
       * It assumes the invoking transaction is 'up-to-date' and will cause
       * the selection's cursors to step from this transaction's input access.
       */
-    def crossover(sq: Vec[stm.Source[S#Tx, Chromosome[S]]], n: Int,
-                          inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome[S]])] = {
-      var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome[S]])]
+    def crossover(sq: Vec[stm.Source[S#Tx, C]], n: Int,
+                          inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, C])] = {
+      var res = Vector.empty[(S#Acc, confluent.Source[S, C])]
       while (res.size < n) {
         val idx0      = res.size << 1
         val chosen0H  = sq( idx0      % sq.size)
@@ -114,9 +114,9 @@ object ConfluentAlgorithm {
       * It assumes the invoking transaction is 'up-to-date' and will cause
       * the selection's cursors to step from this transaction's input access.
       */
-    def mutate(sq: Vec[stm.Source[S#Tx, Chromosome[S]]], n: Int,
-                       inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, Chromosome[S]])] = {
-      var res = Vector.empty[(S#Acc, confluent.Source[S, Chromosome[S]])]
+    def mutate(sq: Vec[stm.Source[S#Tx, C]], n: Int,
+                       inputAccess: S#Acc): Vec[(S#Acc, confluent.Source[S, C])] = {
+      var res = Vector.empty[(S#Acc, confluent.Source[S, C])]
 
       while (res.size < n) {
         val chosenH = sq(res.size % sq.size)

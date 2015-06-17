@@ -86,8 +86,6 @@ object Vertex {
 
       def isUGen = true
 
-      def copy()(implicit tx: S#Tx): UGen[S] = UGen(info)
-
       protected def disposeData()(implicit tx: S#Tx) = ()
 
       protected def writeData(out: DataOutput): Unit = {
@@ -149,6 +147,8 @@ object Vertex {
     def instantiate(ins: Vec[(AnyRef, Class[_])]): GE
 
     // def asCompileString(ins: Vec[String]): String
+
+    def copy()(implicit tx: S#Tx): UGen[S] = UGen(info)
   }
   //  class UGen(val info: UGenSpec) extends Vertex {
   //    override def toString = s"${info.name}@${hashCode().toHexString}"
