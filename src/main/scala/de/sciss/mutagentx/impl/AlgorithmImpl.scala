@@ -38,17 +38,29 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
     res
   }
 
+  protected def ephemeral: Boolean
+
   private[this] final class Initializer(n: Int)
     extends ProcessorImpl[Unit, Processor[Unit]] with Processor[Unit] {
 
-    protected def body(): Unit = {
-      // XXX TODO -- would be great if we could chunk this, i.e. re-write existing version
-      blocking {
-        global.cursor.step { implicit tx =>
+    protected def body(): Unit = blocking {
+      val cursor = global.cursor
+      if (ephemeral) {
+        val sq = Vector.tabulate(n) { i =>
+          val res = cursor.step { implicit tx => mkIndividual() }
+          progress = ((i + 1).toDouble / n) * 0.8
+          res
+        }
+        cursor.step { implicit tx =>
+          genome.chromosomes() = sq
+        }
+      } else {
+        cursor.step { implicit tx =>
           val sq = Vector.fill(n)(mkIndividual())
           genome.chromosomes() = sq
         }
       }
+
       progress = 1.0
       checkAborted()
     }
@@ -188,6 +200,7 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
       if (updateGenome)
         global.cursor.step { implicit tx =>
           genome.fitness() = fit
+          global.numIterations() = global.numIterations() + 1
         }
 
       map(fit)

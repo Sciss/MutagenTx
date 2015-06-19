@@ -14,10 +14,10 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.event.{InMemory, Sys}
-import de.sciss.lucre.stm.{Mutable, Identifiable}
-import de.sciss.serial.{Writable, DataInput, Serializer, DataOutput}
-import de.sciss.synth.GE
-import de.sciss.synth.UGenSpec
+import de.sciss.lucre.stm
+import de.sciss.lucre.stm.Mutable
+import de.sciss.serial.{DataInput, DataOutput, Serializer}
+import de.sciss.synth.{GE, UGenSpec}
 import de.sciss.synth.ugen.BinaryOpUGen
 
 //object Vertex {
@@ -137,7 +137,7 @@ object Vertex {
       }
     }
   }
-  trait UGen[S <: Sys[S]] extends Vertex[S] {
+  trait UGen[S <: Sys[S]] extends Vertex[S] with stm.Mutable[S#ID, S#Tx] {
     def info: UGenSpec
 
     def boxName: String
@@ -176,7 +176,7 @@ object Vertex {
     }
   }
 }
-sealed trait Vertex[S <: Sys[S]] extends Identifiable[S#ID] with Writable {
+sealed trait Vertex[S <: Sys[S]] extends stm.Mutable[S#ID, S#Tx] {
   /** Creates an structurally identical copy, but wrapped in a new vertex (object identity).
     * Theoretically, a better approach would be fork and merge, but it doesn't fit well
     * into the current implementation of mutation.

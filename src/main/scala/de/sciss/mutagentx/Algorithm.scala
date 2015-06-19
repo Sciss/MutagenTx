@@ -13,6 +13,8 @@
 
 package de.sciss.mutagentx
 
+import java.util.concurrent.TimeUnit
+
 import de.sciss.file.File
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.event.Sys
@@ -23,6 +25,7 @@ import de.sciss.synth.UGenSpec
 import de.sciss.synth.io.AudioFileSpec
 
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration.Duration
 import scala.language.higherKinds
 
 object Algorithm {
@@ -64,7 +67,9 @@ object Algorithm {
 
   def durable(dir: File, input: File): Durable = {
     type S = evt.Durable
-    val dbf = BerkeleyDB.factory(dir)
+    val dbc = BerkeleyDB.Config()
+    dbc.lockTimeout = Duration(0, TimeUnit.SECONDS)
+    val dbf = BerkeleyDB.factory(dir, dbc)
     implicit val system = evt.Durable(dbf)
 
     implicit object VertexOrd extends data.Ordering[S#Tx, Vertex[S]] {
@@ -88,7 +93,25 @@ object Algorithm {
     //      (GlobalState.Durable(), tx.newHandle(Genome.empty[S]))
     //    }
 
-    impl.CopyingAlgorithm[S, GlobalState.Durable](system = system, input = input, global = global, genomeH = genomeH)
+    lazy val cleaner = { (_tx: S#Tx, elite: Vec[Chromosome[S]]) =>
+      implicit val tx = _tx
+      val g   = a.genome
+      val old = g.chromosomes()
+      g.chromosomes() = Vector.empty
+      val eliteSet = elite.toSet
+      old.foreach { c =>
+        if (!eliteSet.contains(c)) {
+          val v = c.vertices.iterator.toIndexedSeq
+          c.dispose()
+          v.foreach(_.dispose())
+        }
+      }
+      ()
+    }
+
+    lazy val a: Algorithm.Durable = impl.CopyingAlgorithm[S, GlobalState.Durable](system = system, input = input,
+      global = global, genomeH = genomeH, ephemeral = true, cleaner = Some(cleaner))
+    a
   }
 
   def inMemory(input: File): Algorithm[evt.InMemory] = {
@@ -107,7 +130,8 @@ object Algorithm {
       (GlobalState.InMemory(), tx.newHandle(Genome.empty[S]))
     }
 
-    impl.CopyingAlgorithm[S, GlobalState[S]](system = system, input = input, global = global, genomeH = genomeH)
+    impl.CopyingAlgorithm[S, GlobalState[S]](system = system, input = input, global = global,
+      genomeH = genomeH, ephemeral = true)
   }
 
   type InMemory = Algorithm[evt.InMemory] {

@@ -73,6 +73,8 @@ object ConfluentAlgorithm {
 
     def genome(implicit tx: S#Tx): Genome[S] = handle()
 
+    def ephemeral = false
+
     import global.rng
 
     /** Produces a sequence of `n` items by crossing each two parents from the input `sel` selection.

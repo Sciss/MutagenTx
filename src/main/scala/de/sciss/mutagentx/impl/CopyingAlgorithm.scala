@@ -14,8 +14,6 @@
 package de.sciss.mutagentx
 package impl
 
-import java.util
-
 import de.sciss.file._
 import de.sciss.lucre.event.Sys
 import de.sciss.lucre.{data, stm}
@@ -27,19 +25,23 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
 
 object CopyingAlgorithm {
-  def apply[S <: Sys[S], G <: GlobalState[S]](system: S, input: File, global: G, genomeH: stm.Source[S#Tx, Genome[S]])
+  def apply[S <: Sys[S], G <: GlobalState[S]](system: S, input: File, global: G, genomeH: stm.Source[S#Tx, Genome[S]],
+                                              ephemeral: Boolean, cleaner: Option[(S#Tx, Vec[Chromosome[S]]) => Unit] = None)
                         (implicit cursor: stm.Cursor[S], ord: data.Ordering[S#Tx, Vertex[S]]): Algorithm[S] { type Global = G } = {
     val futInput = TxnExecutor.defaultAtomic { implicit tx =>
       impl.EvaluationImpl.getInputSpec(input)
     }
     val (_inputExtr, _inputSpec) = Await.result(futInput, Duration.Inf)
 
-    new Impl[S, G](system, genomeH, global, input = input, inputExtr = _inputExtr, inputSpec = _inputSpec)
+    new Impl[S, G](system, genomeH, global, input = input, inputExtr = _inputExtr, inputSpec = _inputSpec,
+      ephemeral = ephemeral, cleaner = cleaner)
   }
 
   private final class Impl[S <: Sys[S], G <: GlobalState[S]](val system: S, handle: stm.Source[S#Tx, Genome[S]],
                                         val global: G,
-                                        val input: File, val inputExtr: File, val inputSpec: AudioFileSpec)
+                                        val input: File, val inputExtr: File, val inputSpec: AudioFileSpec,
+                                        val ephemeral: Boolean,
+                                        cleaner: Option[(S#Tx, Vec[Chromosome[S]]) => Unit])
                                        (implicit val ord: data.Ordering[S#Tx, Vertex[S]])
     extends AlgorithmImpl[S] { algo =>
 
@@ -79,20 +81,20 @@ object CopyingAlgorithm {
     }
 
     def mkCopy(in: C)(implicit tx: S#Tx): C = {
-      val map = new util.IdentityHashMap[Vertex[S], Vertex[S]]()
+      var map = Map.empty[Vertex[S], Vertex[S]]
       val top = Topology.empty[S, Vertex[S], Edge[S]]
       in.vertices.iterator.foreach { vIn =>
         val vOut = vIn.copy()
-        map.put(vIn, vOut)
+        map += vIn -> vOut
         top.addVertex(vOut)
       }
       in.edges.iterator.foreach {
         case Edge(srcIn, tgtIn, inlet) =>
-          val srcOut  = Option(map.get(srcIn)) match {
+          val srcOut  = map.get(srcIn) match {
             case Some(vu: Vertex.UGen[S]) => vu
             case _ => throw new NoSuchElementException
           }
-          val tgtOut = Option(map.get(tgtIn)).getOrElse(throw new NoSuchElementException)
+          val tgtOut = map.getOrElse(tgtIn, throw new NoSuchElementException)
           val eOut = Edge(sourceVertex = srcOut, targetVertex = tgtOut, inletIndex = inlet)
           top.addEdge(eOut)
       }
@@ -140,6 +142,9 @@ object CopyingAlgorithm {
       val cross   = crossover (sel, nCross)
 
       global.cursor.step { implicit tx =>
+        cleaner.foreach { c =>
+          c.apply(tx, el)
+        }
         genome.chromosomes() = el ++ (mut ++ cross).map(_.apply())
         evaluateAndUpdate()
       }

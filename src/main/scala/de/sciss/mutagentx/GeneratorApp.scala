@@ -60,10 +60,10 @@ object GeneratorApp extends SwingApplication {
     type S = InMemory
     type A = Algorithm[InMemory]
 
-    def getIteration(a: A, iterInc: Int): Int = {
-      iterCount += iterInc
-      iterCount
-    }
+    //    def getIteration(a: A, iterInc: Int): Int = {
+    //      iterCount += iterInc
+    //      iterCount
+    //    }
 
     def init(): Processor[A] = {
       import Algorithm.executionContext
@@ -89,16 +89,16 @@ object GeneratorApp extends SwingApplication {
   }
 
   final class DurableApp(dir: File, input: File) extends GenApp[Durable] {
-    private var iterCount = 0
-
     type S = Durable
     type A = Algorithm.Durable
 
-    def getIteration(a: A, iterInc: Int): Int = {
-      a.global.cursor.step { implicit tx => a.global.iter }
-      iterCount += iterInc
-      iterCount
-    }
+    //    def getIteration(a: A, iterInc: Int): Int =
+    //      a.global.cursor.step { implicit tx =>
+    //        val i = a.global.iter()
+    //        val j = i + iterInc
+    //        a.global.iter() = j
+    //        j
+    //      }
 
     def init(): Processor[A] = {
       import Algorithm.executionContext
@@ -113,12 +113,11 @@ object GeneratorApp extends SwingApplication {
         val cursor = algorithm.global.cursor
 
         val isNew = cursor.step { implicit tx =>
-          val _isNew = algorithm.genome.chromosomes().isEmpty
-          if (_isNew) {
-            val futInit = algorithm.initialize(Algorithm.population)
-            await(futInit, 0, 0.5)
-          }
-          _isNew
+          algorithm.genome.chromosomes().isEmpty
+        }
+        if (isNew) {
+          val futInit = cursor.step { implicit tx => algorithm.initialize(Algorithm.population) }
+          await(futInit, 0, 0.5)
         }
         if (isNew) {
           val fut0 = cursor.step { implicit tx =>
@@ -135,14 +134,14 @@ object GeneratorApp extends SwingApplication {
     type S = ConfluentReactive
     type A = Algorithm.Confluent
 
-    def getIteration(a: A, iterInc: Int): Int = {
-      val csr = a.global.cursor
-      val inp = csr.step { implicit tx =>
-        implicit val dtx = tx.durable
-        csr.position
-      }
-      inp.size / 2
-    }
+    //    def getIteration(a: A, iterInc: Int): Int = {
+    //      val csr = a.global.cursor
+    //      val inp = csr.step { implicit tx =>
+    //        implicit val dtx = tx.durable
+    //        csr.position
+    //      }
+    //      inp.size / 2
+    //    }
 
     def init(): Processor[A] = {
       import Algorithm.executionContext
@@ -202,22 +201,18 @@ trait GenApp[S <: Sys[S]] {
   var algorithm = Option.empty[A]
   import Algorithm.executionContext
 
-  def getIteration(a: A, iterInc: Int): Int
-
-  def updateStats(a: A, iterInc: Int): Unit = {
+  def updateStats(a: A): Unit = {
     val csr = a.global.cursor
-    val fit: Vec[Float] = csr.step { implicit tx => a.genome.fitness() }
+    val (fit: Vec[Float], numIter: Int) = csr.step { implicit tx => a.genome.fitness() -> a.global.numIterations() }
     import kollflitz.Ops._
     val sorted = fit.sortedT
     ggBest  .text = f"${sorted.last  }%1.3f"
     ggAvg   .text = f"${sorted.mean  }%1.3f"
     ggMedian.text = f"${sorted.median}%1.3f"
-    ggIter  .text = getIteration(a, iterInc).toString
+    ggIter  .text = numIter.toString
   }
 
   def init(): Processor[A]
-
-  def iter(a: A): Processor[Unit] = a.iterate()
 
 //      .andThen { case Success(_) =>
 //        a.global.cursor.step { implicit tx =>
@@ -235,8 +230,9 @@ trait GenApp[S <: Sys[S]] {
 
   def setBusy(fut: Processor[Any]): Unit = {
     busy = Some(fut)
+    ggProgress.value      = 0
     ggProgress.background = Color.yellow
-    ggAbort.enabled = false
+    ggAbort.enabled       = true
 
     fut.addListener {
       case p @ Processor.Progress(_, _) => defer { ggProgress.value = p.toInt }
@@ -245,7 +241,7 @@ trait GenApp[S <: Sys[S]] {
     fut.onComplete {
       case _ => defer {
         busy = None
-        ggAbort.enabled = true
+        ggAbort.enabled = false
       }
     }
 
@@ -275,34 +271,16 @@ trait GenApp[S <: Sys[S]] {
         case a =>
           defer {
             algorithm = Some(a)
-            updateStats(a, 0)
+            updateStats(a)
           }
       }
       setBusy(fut)
     }
   }
-  val ggStep1 = Button("Step 1") {
+
+  def stepN(num0: Int): Unit =
     if (busy.isEmpty) {
-      algorithm.foreach { a =>
-        val t0  = System.currentTimeMillis()
-        val fut = iter(a)
-        fut.onSuccess { case _ =>
-          val t1 = System.currentTimeMillis()
-          println(f"---------TOOK ${(t1-t0)*0.001}%1.3f sec.---------")
-          defer {
-            updateStats(a, 1)
-          }
-        }
-        setBusy(fut)
-      }
-    }
-  }
-  val ggStepNum = new TextField(3) {
-    text = 100.toString
-  }
-  val ggStepN = Button("Step N") {
-    if (busy.isEmpty) {
-      val num = math.max(1, ggStepNum.text.toInt)
+      val num = math.max(1, num0)
       algorithm.foreach { a =>
         val t0  = System.currentTimeMillis()
         val fut = new StepN(num, a)
@@ -311,12 +289,21 @@ trait GenApp[S <: Sys[S]] {
           val t1 = System.currentTimeMillis()
           println(f"---------TOOK ${(t1-t0)*0.001}%1.3f sec.---------")
           defer {
-            updateStats(a, num)
+            updateStats(a)
           }
         }
         setBusy(fut)
       }
     }
+
+  val ggStep1 = Button("Step 1") {
+    stepN(1)
+  }
+  val ggStepNum = new TextField(3) {
+    text = 100.toString
+  }
+  val ggStepN = Button("Step N") {
+    stepN(ggStepNum.text.toInt)
   }
 
   private[this] final class StepN(num: Int, a: A)
@@ -326,7 +313,7 @@ trait GenApp[S <: Sys[S]] {
       val weight = 1.0 / num
       for (i <- 0 until num) {
         // println(s"-------------STEP $i-------------")
-        val futI = iter(a)
+        val futI = a.iterate()
         await(futI, offset = i * weight, weight = weight)
         Await.result(futI, Duration.Inf) // Duration(60, TimeUnit.SECONDS))
       }
