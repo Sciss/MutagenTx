@@ -15,12 +15,13 @@ package de.sciss.mutagentx
 
 import java.util.concurrent.TimeUnit
 
-import de.sciss.file.File
+import de.sciss.file._
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
 import de.sciss.lucre.event.Sys
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.{data, event => evt, stm}
 import de.sciss.processor.Processor
+import de.sciss.serial.DataOutput
 import de.sciss.synth.UGenSpec
 import de.sciss.synth.io.AudioFileSpec
 
@@ -32,7 +33,7 @@ object Algorithm {
   val DEBUG = false
 
   // ---- generation ----
-  val population      : Int     = 100 // 1000
+  val population      : Int     = 1000
   val constProb       : Double  = 0.5
   val minNumVertices  : Int     = 30
   val maxNumVertices  : Int     = 100
@@ -97,15 +98,29 @@ object Algorithm {
       implicit val tx = _tx
       val g   = a.genome
       val old = g.chromosomes()
+      val fit = g.fitness()
       g.chromosomes() = Vector.empty
       val eliteSet = elite.toSet
-      old.foreach { c =>
+      // val ser   = SynthGraphs.ValueSerializer //implicitly[ImmutableSerializer[SynthGraph]]
+      val iter  = a.global.numIterations()
+      val store = iter % 10 == 0
+      val f     = dir.parent / s"${dir.name}_iter$iter.bin"
+      lazy val out = DataOutput.open(f)
+
+      (old zip fit).foreach { case (c, f) =>
         if (!eliteSet.contains(c)) {
+          if (store && f > 0.4f) {
+            val graph = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true)
+            val input = SOMGenerator.Input(graph, iter = iter, fitness = f)
+            SOMGenerator.Input.serializer.write(input, out)
+          }
           val v = c.vertices.iterator.toIndexedSeq
           c.dispose()
           v.foreach(_.dispose())
         }
       }
+
+      if (store) out.close()
       ()
     }
 
