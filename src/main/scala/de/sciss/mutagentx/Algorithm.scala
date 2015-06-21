@@ -36,7 +36,7 @@ object Algorithm {
   val population      : Int     = 1000
   val constProb       : Double  = 0.5
   val minNumVertices  : Int     = 30
-  val maxNumVertices  : Int     = 100
+  val maxNumVertices  : Int     = 256 // 100
   val nonDefaultProb  : Double  = 0.99 // 0.5
 
   // ---- evaluation ----
@@ -51,7 +51,7 @@ object Algorithm {
   val numElitism      : Int     = 5
   val mutMin          : Int     = 2
   val mutMax          : Int     = 4
-  val mutationProb    : Double  = 0.5 // 0.75
+  val mutationProb    : Double  = 0.75
 
   implicit val executionContext: ExecutionContext = {
     ExecutionContext.Implicits.global
