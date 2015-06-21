@@ -262,7 +262,7 @@ object SOMGenerator extends App {
   }
 
   def run(name: String, audioName: String): Unit = {
-    ConfigOut.NO_NORMALIZE = true // yukk
+    ConfigOut.NORMALIZE = true // yukk
 
     val dir   = file("database"  ) / name
     val in    = file("audio_work") / audioName // (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")

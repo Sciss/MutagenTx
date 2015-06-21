@@ -107,11 +107,11 @@ object Algorithm {
       val f     = dir.parent / s"${dir.name}_iter$iter.bin"
       lazy val out = DataOutput.open(f)
 
-      (old zip fit).foreach { case (c, f) =>
+      (old zip fit).foreach { case (c, fit0) =>
         if (!eliteSet.contains(c)) {
-          if (store && f > 0.4f) {
+          if (store && fit0 > 0.4f) {
             val graph = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true)
-            val input = SOMGenerator.Input(graph, iter = iter, fitness = f)
+            val input = SOMGenerator.Input(graph, iter = iter, fitness = fit0)
             SOMGenerator.Input.serializer.write(input, out)
           }
           val v = c.vertices.iterator.toIndexedSeq
