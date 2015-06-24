@@ -12,6 +12,7 @@ import de.sciss.lucre.event.{Durable, InMemory, Sys}
 import de.sciss.lucre.swing.defer
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
+import de.sciss.synth.ugen.ConfigOut
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, blocking}
@@ -28,6 +29,8 @@ object GeneratorApp extends SwingApplication {
     // XXX TODO: how to really turn of animation?
     WebProgressBarStyle.highlightWhite      = new Color(255, 255, 255, 0)
     WebProgressBarStyle.highlightDarkWhite  = new Color(255, 255, 255, 0)
+
+    ConfigOut.CLIP = true
 
     args.toIndexedSeq match {
       case "--confluent" +: tail =>

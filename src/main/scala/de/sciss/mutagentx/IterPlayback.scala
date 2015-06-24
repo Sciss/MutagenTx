@@ -25,6 +25,9 @@ object IterPlayback {
   case class Config(targetFile: File = file(""))
 
   def main(args: Array[String]): Unit = {
+    ConfigOut.PAN2 = true
+    ConfigOut.CLIP = true
+
     val parser = new scopt.OptionParser[Config]("IterPlayback") {
       opt[File]('t', "target") required() text "target audio file" action { (x, c) => c.copy(targetFile = x) }
     }
@@ -33,7 +36,6 @@ object IterPlayback {
       val inputSpec = AudioFile.readSpec(targetFile)
       Swing.onEDT {
         WebLookAndFeel.install()
-        ConfigOut.PAN2 = true
         guiInit(inputFile = targetFile, inputSpec = inputSpec)
       }
     }
