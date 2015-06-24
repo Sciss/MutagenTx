@@ -149,6 +149,8 @@ object Vertex {
     // def asCompileString(ins: Vec[String]): String
 
     def copy()(implicit tx: S#Tx): UGen[S] = UGen(info)
+
+    def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Vertex[T] = UGen[T](info)
   }
   //  class UGen(val info: UGenSpec) extends Vertex {
   //    override def toString = s"${info.name}@${hashCode().toHexString}"
@@ -167,6 +169,8 @@ object Vertex {
 
     def copy()(implicit tx: S#Tx): Constant[S] = Constant(f())
 
+    def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Constant[T] = Constant[T](f())
+
     // def boxName = f.toString
     protected def disposeData()(implicit tx: S#Tx): Unit = f.dispose()
 
@@ -182,6 +186,8 @@ sealed trait Vertex[S <: Sys[S]] extends stm.Mutable[S#ID, S#Tx] {
     * into the current implementation of mutation.
     */
   def copy()(implicit tx: S#Tx): Vertex[S]
+
+  def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Vertex[T]
 
   def isUGen: Boolean
   def isConstant: Boolean = !isUGen

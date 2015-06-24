@@ -18,12 +18,33 @@ import java.util
 
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.event.Sys
-import de.sciss.synth.ugen.{BinaryOpUGen, Constant, SampleRate}
+import de.sciss.synth.ugen.{RandSeed, Mix, ConfigOut, BinaryOpUGen, Constant, SampleRate}
 import de.sciss.synth.{doNothing, GE, Lazy, Rate, SynthGraph, UGenSpec, UndefinedRate, ugen}
 
 import scala.annotation.tailrec
 
 object ChromosomeImpl {
+//  def mkChromosome[S <: Sys[S]](g: SynthGraph)(implicit tx: S#Tx): Chromosome[S] = {
+//    val c = Topology.empty[S, Vertex[S], Edge[S]]
+//    var m = new util.IdentityHashMap[Lazy, Vertex.UGen[S]]
+//
+//    g.sources.foreach {
+//      case _: ConfigOut | _: Mix | _: Mix.Mono | _: RandSeed =>
+//
+//      case ge: BinaryOpUGen =>
+//        val info = ??? : UGenSpec
+//        val v    = Vertex.UGen(info)
+//        m.put(ge, v)
+//
+//      case ge: GE =>
+//        val info = UGens.map(ge.productPrefix)
+//        val v    = Vertex.UGen(info)
+//        c.addVertex(v)
+//        m.put(ge, v)
+//    }
+//    ???
+//  }
+
   def mkSynthGraph[S <: Sys[S]](c: Chromosome[S], mono: Boolean, removeNaNs: Boolean, config: Boolean)
                   (implicit tx: S#Tx /*, random: TxnRandom[D#Tx] */): SynthGraph = {
     val top = c
@@ -99,7 +120,7 @@ object ChromosomeImpl {
             Gate.ar(sig1, isOk)
           }
         val sig3  = if (config) sig2 else Limiter.ar(LeakDC.ar(sig2))
-        val sig   = if (mono) sig3 else Pan2.ar(sig3) // SplayAz.ar(numChannels = 2, in = sig3)
+        val sig   = if (mono)   sig3 else Pan2.ar(sig3) // SplayAz.ar(numChannels = 2, in = sig3)
         if (config)
           ConfigOut(sig)
         else

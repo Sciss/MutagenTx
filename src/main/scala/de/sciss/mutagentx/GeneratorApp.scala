@@ -55,7 +55,7 @@ object GeneratorApp extends SwingApplication {
   }
 
   final class InMemoryApp(input: File) extends GenApp[InMemory] {
-    private var iterCount = 0
+    // private var iterCount = 0
 
     type S = InMemory
     type A = Algorithm[InMemory]
@@ -88,6 +88,37 @@ object GeneratorApp extends SwingApplication {
     }
   }
 
+  def DurableInit(dir: File, input: File, init: Boolean): Processor[Algorithm.Durable] = {
+    val res = new DurableInit(dir = dir, input = input, init = init)
+    import Algorithm.executionContext
+    res.start()
+    res
+  }
+
+  private final class DurableInit(dir: File, input: File, init: Boolean)
+    extends ProcessorImpl[Algorithm.Durable, Processor[Algorithm.Durable]] with Processor[Algorithm.Durable] {
+
+    def body(): Algorithm.Durable = {
+      val algorithm = Algorithm.durable(dir = dir, input = input)
+      val cursor = algorithm.global.cursor
+
+      val isNew = cursor.step { implicit tx =>
+        algorithm.genome.chromosomes().isEmpty
+      }
+      if (isNew && init) {
+        val futInit = cursor.step { implicit tx => algorithm.initialize(Algorithm.population) }
+        await(futInit, 0, 0.5)
+      }
+      if (isNew && init) {
+        val fut0 = cursor.step { implicit tx =>
+          algorithm.evaluateAndUpdate()
+        }
+        await(fut0, 0.5, 0.5)
+      }
+      algorithm
+    }
+  }
+
   final class DurableApp(dir: File, input: File) extends GenApp[Durable] {
     type S = Durable
     type A = Algorithm.Durable
@@ -102,31 +133,9 @@ object GeneratorApp extends SwingApplication {
 
     def init(): Processor[A] = {
       import Algorithm.executionContext
-      val res = new Init
+      val res = new DurableInit(dir = dir, input = input, init = true)
       res.start()
       res
-    }
-
-    private final class Init extends ProcessorImpl[A, Processor[A]] with Processor[A] {
-      def body(): A = {
-        val algorithm = Algorithm.durable(dir = dir, input = input)
-        val cursor = algorithm.global.cursor
-
-        val isNew = cursor.step { implicit tx =>
-          algorithm.genome.chromosomes().isEmpty
-        }
-        if (isNew) {
-          val futInit = cursor.step { implicit tx => algorithm.initialize(Algorithm.population) }
-          await(futInit, 0, 0.5)
-        }
-        if (isNew) {
-          val fut0 = cursor.step { implicit tx =>
-            algorithm.evaluateAndUpdate()
-          }
-          await(fut0, 0.5, 0.5)
-        }
-        algorithm
-      }
     }
   }
 

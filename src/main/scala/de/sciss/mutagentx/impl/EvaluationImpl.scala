@@ -139,7 +139,7 @@ object EvaluationImpl {
   /** Bounces a synth def to an audio file.
     *
     * @param graph       the synth graph to play and evaluate
-    * @param audioF      the audio outpt file to bounce to
+    * @param audioF      the audio output file to bounce to
     * @param inputSpec   the spec of the original target sound
     * @param duration0   the duration to bounce in seconds or `-1` to bounce the duration of the target sound
     */
@@ -180,7 +180,7 @@ object EvaluationImpl {
 
   def evaluate[S <: Sys[S]](c: Chromosome[S], algorithm: Algorithm[S], inputSpec: AudioFileSpec, inputExtr: File)
               (implicit tx: S#Tx): Future[Float] = {
-    val graph = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = false) // c.graph
+    val graph = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true /* false */) // c.graph
     // val cH          = tx.newHandle(c)
     val numVertices = c.vertices.size
     val p           = Promise[Float]()
@@ -190,17 +190,50 @@ object EvaluationImpl {
     p.future
   }
 
+  def evaluateBounce(bounce: File, input: File): Future[Float] = {
+    val futSpec = TxnExecutor.defaultAtomic { implicit itx =>
+      implicit val tx = TxnLike.wrap(itx)
+      getInputSpec(input)
+    }
+    futSpec.map { case (inputExtr, inputSpec) =>
+      val fut = eval1(wait = None, bounceF = bounce, inputSpec = inputSpec, inputExtr = inputExtr)
+      val res = Await.result(fut, Duration.Inf)
+      res.toFloat
+    }
+  }
+
   private def evaluateFut(graph: SynthGraph, inputSpec: AudioFileSpec,
                           inputExtr: File, numVertices: Int): Future[Float] = {
-    val audioF = File.createTemp(prefix = "muta_bnc", suffix = ".aif")
-    val bnc0 = bounce(graph, audioF = audioF, inputSpec = inputSpec)
+    val audioF  = File.createTemp(prefix = "muta_bnc", suffix = ".aif")
+    val bnc0    = bounce(graph, audioF = audioF, inputSpec = inputSpec)
+    val simFut  = eval1(wait = Some(bnc0), bounceF = audioF, inputSpec = inputSpec, inputExtr = inputExtr)
+    val res = simFut.map { sim0 =>
+      import numbers.Implicits._
+      val pen = Algorithm.vertexPenalty
+//      if (sim0 > 0.46) {
+//        println(s"DEBUG $audioF")
+//      }
+      val sim = if (pen <= 0) sim0 else
+        sim0 - numVertices.linlin(Algorithm.minNumVertices, Algorithm.maxNumVertices, 0, pen)
+      sim.toFloat // new Evaluated(cH, sim)
+    }
+    res.onComplete { case _ =>
+      audioF.delete()
+    }
+    res
+  }
+
+  private def eval1(wait: Option[Processor[Any]], bounceF: File, inputSpec: AudioFileSpec,
+                    inputExtr: File): Future[Double] = {
     val bnc = Future {
-      Await.result(bnc0, Duration(4.0, TimeUnit.SECONDS))
+      wait.foreach { bnc0 =>
+        Await.result(bnc0, Duration(4.0, TimeUnit.SECONDS))
+      }
       // XXX TODO -- would be faster if we could use a Poll during
       // the bounce and instruct the bounce proc to immediately terminate
       // when seeing a particular message in the console?
       blocking {
-        val af = AudioFile.openRead(audioF)
+        val af = AudioFile.openRead(bounceF)
         try {
           val bufSize = 512
           val b       = af.buffer(bufSize)
@@ -228,9 +261,6 @@ object EvaluationImpl {
         }
       }
     }
-    //    bnc.onFailure {
-    //      case t => println(s"bnc failed with $t")
-    //    }
 
     val genFolder           = File.createTemp(prefix = "muta_eval", directory = true)
     val genExtr             = genFolder / "gen_feat.xml"
@@ -249,7 +279,7 @@ object EvaluationImpl {
 
     val ex = bnc.flatMap { _ =>
       val exCfg             = FeatureExtraction.Config()
-      exCfg.audioInput      = audioF
+      exCfg.audioInput      = bounceF
       exCfg.featureOutput   = featF
       exCfg.metaOutput      = Some(genExtr)
       exCfg.numCoeffs       = Algorithm.numCoeffs
@@ -302,22 +332,16 @@ object EvaluationImpl {
 
       case _: TimeoutException =>
         if (DEBUG) println("Bounce timeout!")
-        bnc0.abort()
+        wait.foreach { bnc0 => bnc0.abort() }
         0.0    // we aborted the process after 4 seconds
     }
 
-    val res = simFut.map { sim0 =>
-      import numbers.Implicits._
-      val pen = Algorithm.vertexPenalty
-      val sim = if (pen <= 0) sim0 else
-        sim0 - numVertices.linlin(Algorithm.minNumVertices, Algorithm.maxNumVertices, 0, pen)
-      sim.toFloat // new Evaluated(cH, sim)
-    }
+    val res = simFut
 
     res.onComplete { case _ =>
       if (Algorithm.normalizeCoeffs) normF.delete()
       featF     .delete()
-      audioF    .delete()
+      // audioF    .delete()
       genExtr   .delete()
       genFolder .delete()
     }

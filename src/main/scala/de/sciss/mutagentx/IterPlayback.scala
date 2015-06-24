@@ -1,31 +1,45 @@
 package de.sciss.mutagentx
 
+import javax.swing.SpinnerNumberModel
 import javax.swing.table.DefaultTableModel
 
 import com.alee.laf.WebLookAndFeel
 import de.sciss.audiowidgets.Transport
-import de.sciss.desktop.{DialogSource, FileDialog}
+import de.sciss.desktop.{DialogSource, FileDialog, OptionPane}
 import de.sciss.file._
 import de.sciss.lucre.swing.defer
 import de.sciss.serial.DataInput
+import de.sciss.swingplus.Spinner
 import de.sciss.synth.impl.DefaultUGenGraphBuilderFactory
+import de.sciss.synth.io.{AudioFile, AudioFileSpec}
 import de.sciss.synth.swing.ServerStatusPanel
-import de.sciss.synth.ugen.ConfigOut
+import de.sciss.synth.ugen.{Out, ConfigOut}
 import de.sciss.synth.{Server, ServerConnection, Synth, SynthDef, SynthGraph}
 
 import scala.collection.breakOut
 import scala.concurrent.{Future, blocking}
-import scala.swing.{SwingApplication, BorderPanel, Button, FlowPanel, MainFrame, ScrollPane, Table}
-import scala.util.Try
+import scala.swing.{BorderPanel, Button, FlowPanel, Label, MainFrame, ScrollPane, Swing, Table}
+import scala.util.{Success, Failure, Try}
 
-object IterPlayback extends SwingApplication {
-  def startup(args: Array[String]): Unit = {
-    WebLookAndFeel.install()
-    ConfigOut.PAN2 = true
-    guiInit()
+object IterPlayback {
+  case class Config(targetFile: File = file(""))
+
+  def main(args: Array[String]): Unit = {
+    val parser = new scopt.OptionParser[Config]("IterPlayback") {
+      opt[File]('t', "target") required() text "target audio file" action { (x, c) => c.copy(targetFile = x) }
+    }
+    parser.parse(args, Config()).fold(sys.exit(1)) { cfg =>
+      import cfg._
+      val inputSpec = AudioFile.readSpec(targetFile)
+      Swing.onEDT {
+        WebLookAndFeel.install()
+        ConfigOut.PAN2 = true
+        guiInit(inputFile = targetFile, inputSpec = inputSpec)
+      }
+    }
   }
 
-  def guiInit(): Unit = {
+  def guiInit(inputFile: File, inputSpec: AudioFileSpec): Unit = {
     var synthOpt      = Option.empty[Synth]
     var synthGraphOpt = Option.empty[SynthGraph]
     var lastFile      = Option.empty[File]
@@ -84,20 +98,26 @@ object IterPlayback extends SwingApplication {
 
     import de.sciss.synth.Ops._
 
+    def selectedGraph(): Option[SynthGraph] = ggTable.selection.rows.headOption.map { row => graphs(row).graph }
+
     def stopSynth(): Unit = synthOpt.foreach { synth =>
       synthOpt = None
       if (synth.server.isRunning) synth.free() // synth.release(3.0) // free()
     }
+
     def playSynth(): Unit = {
       stopSynth()
       for {
         s      <- Try(Server.default).toOption
-        selRow <- ggTable.selection.rows.headOption
+        graph0 <- selectedGraph()
       } {
-        val graph = graphs(selRow).graph
+        val graph = graph0.copy(sources = graph0.sources.collect {
+          case ConfigOut(in) => Out.ar(0, in)
+          case x => x
+        })
         val df    = SynthDef("test", graph.expand(DefaultUGenGraphBuilderFactory))
-        val x     = df.play(s, args = Seq("out" -> 0))
-        synthOpt      = Some(x)
+        val syn   = df.play(s, args = Seq("out" -> 0))
+        synthOpt      = Some(syn)
         synthGraphOpt = Some(graph)
       }
     }
@@ -128,7 +148,32 @@ object IterPlayback extends SwingApplication {
         println(x)
       }
     }
-    val tp = new FlowPanel(ggOpen, pStatus, butKill, bs, ggPrint)
+
+    val mBounceDur  = new SpinnerNumberModel(inputSpec.numFrames/inputSpec.sampleRate, 0.0, 3600.0, 0.1)
+    val ggBounceDur = new Spinner(mBounceDur)
+    val pBounceDur  = new FlowPanel(new Label("Duration [s]:"), ggBounceDur)
+    var fBounce     = Option.empty[File]
+
+    val ggBounce = Button("Bounce…") {
+      selectedGraph().foreach { graph =>
+        val opt = OptionPane(message = pBounceDur, optionType = OptionPane.Options.OkCancel, focus = Some(ggBounceDur))
+        if (opt.show(None) == OptionPane.Result.Ok) {
+          val fDlg = FileDialog.save(fBounce, title = "Bounce Synth Graph")
+          fDlg.show(None).foreach { f =>
+            fBounce = Some(f)
+            val fut = impl.EvaluationImpl.bounce(graph = graph, audioF = f, inputSpec = inputSpec,
+              duration0 = mBounceDur.getNumber.doubleValue())
+            import Algorithm.executionContext
+            fut.onComplete {
+              case Success(_) => println("Done.")
+              case Failure(ex) => DialogSource.Exception(ex -> "Bounce").show(None)
+            }
+          }
+        }
+      }
+    }
+
+    val tp = new FlowPanel(ggOpen, pStatus, butKill, bs, ggPrint, ggBounce)
 
     new MainFrame {
       contents = new BorderPanel {

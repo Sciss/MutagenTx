@@ -66,20 +66,22 @@ object Algorithm {
   def confluent(dir: File, input: File): Confluent =
     impl.ConfluentAlgorithm.apply(dir = dir, input = input)
 
+  implicit object DurableVertexOrdering extends data.Ordering[evt.Durable#Tx, Vertex[evt.Durable]] {
+    type S = evt.Durable
+
+    def compare(a: Vertex[S], b: Vertex[S])(implicit tx: S#Tx): Int = {
+      val aid = stm.Escape.durableID(a.id)
+      val bid = stm.Escape.durableID(b.id)
+      if (aid < bid) -1 else if (aid > bid) 1 else 0
+    }
+  }
+
   def durable(dir: File, input: File): Durable = {
     type S = evt.Durable
     val dbc = BerkeleyDB.Config()
     dbc.lockTimeout = Duration(0, TimeUnit.SECONDS)
     val dbf = BerkeleyDB.factory(dir, dbc)
     implicit val system = evt.Durable(dbf)
-
-    implicit object VertexOrd extends data.Ordering[S#Tx, Vertex[S]] {
-      def compare(a: Vertex[S], b: Vertex[S])(implicit tx: S#Tx): Int = {
-        val aid = stm.Escape.durableID(a.id)
-        val bid = stm.Escape.durableID(b.id)
-        if (aid < bid) -1 else if (aid > bid) 1 else 0
-      }
-    }
 
     val rootH = system.root[(GlobalState.Durable, Genome[S])] { implicit tx =>
       (GlobalState.Durable(), Genome.empty[S])

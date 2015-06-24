@@ -28,7 +28,7 @@ final case class ConfigOut(in: GE) extends UGenSource.ZeroOut with WritesBus {
       Normalizer.ar(sig3, level = -0.2.dbamp, dur = normDur) * DelayN.ar(env, normDur, normDur)
     }
     val bus = "out".kr(0f)
-    val sig = if (ConfigOut.PAN2) Pan2.ar(sig4) else sig4
+    val sig = if (!ConfigOut.PAN2) sig4 else Pan2.ar(sig4)
     Out.ar(bus, sig)
   }
 }
