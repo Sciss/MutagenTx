@@ -30,7 +30,8 @@ object GeneratorApp extends SwingApplication {
     WebProgressBarStyle.highlightWhite      = new Color(255, 255, 255, 0)
     WebProgressBarStyle.highlightDarkWhite  = new Color(255, 255, 255, 0)
 
-    ConfigOut.CLIP = true
+    // ConfigOut.CLIP = true
+    ConfigOut.LIMITER = true
 
     args.toIndexedSeq match {
       case "--confluent" +: tail =>
