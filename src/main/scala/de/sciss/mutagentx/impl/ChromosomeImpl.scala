@@ -18,7 +18,7 @@ import java.util
 
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.event.Sys
-import de.sciss.synth.ugen.{RandSeed, Mix, ConfigOut, BinaryOpUGen, Constant, SampleRate}
+import de.sciss.synth.ugen.{UnaryOpUGen, RandSeed, Mix, ConfigOut, BinaryOpUGen, Constant, SampleRate}
 import de.sciss.synth.{doNothing, GE, Lazy, Rate, SynthGraph, UGenSpec, UndefinedRate, ugen}
 
 import scala.annotation.tailrec
@@ -420,17 +420,24 @@ object ChromosomeImpl {
           if (ai == 0 && argName == "in") valString else s"$argName = $valString"
         }
       }
-      val invoke  = if (line.elemName == "BinaryOpUGen") {
+      val invoke = if (line.elemName == "BinaryOpUGen") {
         line.args.head.value match {
           case op: BinaryOpUGen.Op =>
             val opS = uncapitalize(op.name)
             val Seq(_, a0, b) = args
             // XXX TODO --- stupid workaround for ScalaCollider #52
             val a = if ((opS == "min" || opS == "max") && line.args(1).value.isInstanceOf[Constant])
-                s"Constant($a0)" else a0
+              s"Constant($a0)"
+            else a0
             s"$a $opS $b"
         }
-
+      } else if (line.elemName == "UnaryOpUGen") {
+        line.args.head.value match {
+          case op: UnaryOpUGen.Op =>
+            val opS = uncapitalize(op.name)
+            val Seq(_, a) = args
+            s"$a.$opS"
+        }
       } else {
         val cons      = if (line.constructor == "apply") "" else s".${line.constructor}"
         val elemName  = line.elemName.replace('$', '.')

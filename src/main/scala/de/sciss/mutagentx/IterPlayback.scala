@@ -5,28 +5,30 @@ import javax.swing.table.DefaultTableModel
 
 import com.alee.laf.WebLookAndFeel
 import de.sciss.audiowidgets.Transport
-import de.sciss.desktop.{DialogSource, FileDialog, OptionPane}
+import de.sciss.desktop
+import de.sciss.desktop.{KeyStrokes, DialogSource, FileDialog, FocusType, OptionPane}
 import de.sciss.file._
 import de.sciss.lucre.swing.defer
 import de.sciss.serial.DataInput
-import de.sciss.swingplus.Spinner
+import de.sciss.swingplus.{DoClickAction, Spinner}
 import de.sciss.synth.impl.DefaultUGenGraphBuilderFactory
 import de.sciss.synth.io.{AudioFile, AudioFileSpec}
 import de.sciss.synth.swing.ServerStatusPanel
-import de.sciss.synth.ugen.{Out, ConfigOut}
+import de.sciss.synth.ugen.{ConfigOut, Out}
 import de.sciss.synth.{Server, ServerConnection, Synth, SynthDef, SynthGraph}
 
 import scala.collection.breakOut
 import scala.concurrent.{Future, blocking}
+import scala.swing.event.Key
 import scala.swing.{BorderPanel, Button, FlowPanel, Label, MainFrame, ScrollPane, Swing, Table}
-import scala.util.{Success, Failure, Try}
+import scala.util.{Failure, Success, Try}
 
 object IterPlayback {
   case class Config(targetFile: File = file(""))
 
   def main(args: Array[String]): Unit = {
     ConfigOut.PAN2 = true
-    ConfigOut.CLIP = true
+    ConfigOut.LIMITER /* CLIP */ = true
 
     val parser = new scopt.OptionParser[Config]("IterPlayback") {
       opt[File]('t', "target") required() text "target audio file" action { (x, c) => c.copy(targetFile = x) }
@@ -66,6 +68,8 @@ object IterPlayback {
     val ggTable   = new Table()
     val ggScroll  = new ScrollPane(ggTable)
 
+    val hideUGens = Set[String]("RandSeed", "Mix", "Mix$Mono", "ConfigOut")
+
     val ggOpen = Button("Open...") {
       val fInit = lastFile.getOrElse(file("database").absolute)
       if (busy.isEmpty) {
@@ -86,12 +90,13 @@ object IterPlayback {
             case sq => defer {
               graphs = sq
               val data: Array[Array[AnyRef]] = sq.zipWithIndex.map { case (input, i) =>
-                val elems = input.graph.sources.map(_.productPrefix).filterNot(_ == "RandSeed").distinct.mkString(", ")
-                Array[AnyRef](i.asInstanceOf[AnyRef], elems, input.fitness.asInstanceOf[AnyRef])
+                val sources = input.graph.sources
+                val elems = sources.map(_.productPrefix).filterNot(hideUGens.contains).distinct.mkString(", ")
+                Array[AnyRef](i.asInstanceOf[AnyRef], sources.size.asInstanceOf[AnyRef], elems, input.fitness.asInstanceOf[AnyRef])
               } (breakOut)
 
               ggTable.peer.setAutoCreateRowSorter(true)
-              ggTable.model = new DefaultTableModel(data, Array[AnyRef]("Index", "Elements", "Fit"))
+              ggTable.model = new DefaultTableModel(data, Array[AnyRef]("Index", "Num", "Elements", "Fit"))
             }
           }
         }
@@ -113,10 +118,11 @@ object IterPlayback {
         s      <- Try(Server.default).toOption
         graph0 <- selectedGraph()
       } {
-        val graph = graph0.copy(sources = graph0.sources.collect {
-          case ConfigOut(in) => Out.ar(0, in)
-          case x => x
-        })
+        val graph = graph0
+//          .copy(sources = graph0.sources.collect {
+//            case ConfigOut(in) => Out.ar(0, in)
+//            case x => x
+//          })
         val df    = SynthDef("test", graph.expand(DefaultUGenGraphBuilderFactory))
         val syn   = df.play(s, args = Seq("out" -> 0))
         synthOpt      = Some(syn)
@@ -174,6 +180,12 @@ object IterPlayback {
         }
       }
     }
+
+    import desktop.Implicits._
+    val ggPlay = bs.button(Transport.Play).get
+    val acPlay = DoClickAction(ggPlay)
+    acPlay.accelerator = Some(KeyStrokes.menu1 + Key.Enter)
+    ggPlay.addAction("click", acPlay, FocusType.Window)
 
     val tp = new FlowPanel(ggOpen, pStatus, butKill, bs, ggPrint, ggBounce)
 

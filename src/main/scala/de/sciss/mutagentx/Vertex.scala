@@ -18,7 +18,7 @@ import de.sciss.lucre.stm
 import de.sciss.lucre.stm.Mutable
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 import de.sciss.synth.{GE, UGenSpec}
-import de.sciss.synth.ugen.BinaryOpUGen
+import de.sciss.synth.ugen.{UnaryOpUGen, BinaryOpUGen}
 
 //object Vertex {
 //  // strangely, a constant is mutable, while a ugen is constant
@@ -82,7 +82,8 @@ object Vertex {
     private[Vertex] final class Impl[S <: Sys[S]](val id: S#ID, index: Int, val info: UGenSpec)
       extends UGen[S] with Mutable.Impl[S] {
 
-      private def isBinOp: Boolean = info.name.startsWith("Bin_")
+      private def isBinaryOp: Boolean = info.name.startsWith("Bin_")
+      private def isUnaryOp : Boolean = info.name.startsWith("Un_")
 
       def isUGen = true
 
@@ -95,25 +96,38 @@ object Vertex {
       }
 
       def instantiate(ins: Vec[(AnyRef, Class[_])]): GE =
-        if (isBinOp) mkBinOpUGen(ins) else mkRegularUGen(ins)
+        if      (isBinaryOp) mkBinaryOpUGen(ins)
+        else if (isUnaryOp ) mkUnaryOpUGen (ins)
+        else mkRegularUGen(ins)
 
       //      def asCompileString(ins: Vec[String]): String =
       //        if (isBinOp) mkBinOpString(ins) else mkRegularString(ins)
 
       def boxName =
-        if (isBinOp) {
-          val id = info.name.substring(4).toInt
-          val op = BinaryOpUGen.Op(id)
+        if (isBinaryOp) {
+          val id  = info.name.substring(4).toInt
+          val op  = BinaryOpUGen.Op(id)
+          val n   = op.name
+          s"${n.substring(0, 1).toLowerCase}${n.substring(1)}"
+        } else if (isUnaryOp) {
+          val id  = info.name.substring(3).toInt
+          val op  = UnaryOpUGen.Op(id)
           val n   = op.name
           s"${n.substring(0, 1).toLowerCase}${n.substring(1)}"
         } else {
           info.name
         }
 
-      private def mkBinOpUGen(ins: Vec[(AnyRef, Class[_])]): GE = {
+      private def mkBinaryOpUGen(ins: Vec[(AnyRef, Class[_])]): GE = {
         val id = info.name.substring(4).toInt
         val op = BinaryOpUGen.Op(id)
         op.make(ins(0)._1.asInstanceOf[GE], ins(1)._1.asInstanceOf[GE])
+      }
+
+      private def mkUnaryOpUGen(ins: Vec[(AnyRef, Class[_])]): GE = {
+        val id = info.name.substring(3).toInt
+        val op = UnaryOpUGen.Op(id)
+        op.make(ins(0)._1.asInstanceOf[GE])
       }
 
       private def mkRegularUGen(ins: Vec[(AnyRef, Class[_])]): GE = {

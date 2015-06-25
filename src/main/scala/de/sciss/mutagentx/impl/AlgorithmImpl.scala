@@ -171,7 +171,7 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
   def evaluateAndUpdate()(implicit tx: S#Tx): Processor[Unit] = mkEvaluator(updateGenome = true)(_ => ())
 
   private def mkEvaluator[A](updateGenome: Boolean)(map: Vec[Float] => A)(implicit tx: S#Tx): Processor[A] = {
-    val c   = genome.chromosomes().map(tx.newHandle(_))
+    val c     = genome.chromosomes().map(tx.newHandle(_))
     val proc  = new Evaluator(c, updateGenome = updateGenome, map = map)
     import Algorithm.executionContext
     tx.afterCommit(proc.start())
