@@ -10,6 +10,7 @@ object ConfigOut {
   var PAN2          = false
   var HPF           = false
   var LIMITER       = false
+  var AMP           = false
 }
 final case class ConfigOut(in: GE) extends UGenSource.ZeroOut with WritesBus {
   protected def makeUGens: Unit = unwrap(in.expand.outputs)
@@ -30,7 +31,8 @@ final case class ConfigOut(in: GE) extends UGenSource.ZeroOut with WritesBus {
       Normalizer.ar(sig4, level = -0.2.dbamp, dur = normDur) * DelayN.ar(env, normDur, normDur)
     }
     val bus = "out".kr(0f)
-    val sig = if (!ConfigOut.PAN2) sig5 else Pan2.ar(sig5)
+    val sig6 = if (!ConfigOut.PAN2) sig5 else Pan2.ar(sig5)
+    val sig  = if (!ConfigOut.AMP)  sig6 else sig6 * "amp".kr(1)
     Out.ar(bus, sig)
   }
 }

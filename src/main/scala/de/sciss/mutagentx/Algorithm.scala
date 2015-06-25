@@ -35,9 +35,9 @@ object Algorithm {
   // ---- generation ----
   val population      : Int     = 1000
   val constProb       : Double  = 0.5
-  val minNumVertices  : Int     = 30
+  val minNumVertices  : Int     = 64 // 30
   val maxNumVertices  : Int     = 256 // 100
-  val nonDefaultProb  : Double  = 0.99 // 0.5
+  val nonDefaultProb  : Double  = 0.95 // 0.99 // 0.5
 
   // ---- evaluation ----
   val numCoeffs       : Int     = 42

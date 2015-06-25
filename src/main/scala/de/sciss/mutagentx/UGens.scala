@@ -97,7 +97,19 @@ object UGens {
     }
   }
 
-  val seq: Vec[UGenSpec] = ugens0 ++ binUGens ++ unaryUGens ++ envUGens
+  private val sumUGens: Vec[UGenSpec] = Vector(3, 4).map { n =>
+    val out = UGenSpec.Output(name = None, shape = UGenSpec.SignalShape.Generic, variadic = None)
+    val args = (0 until n).map { i =>
+      UGenSpec.Argument(name = s"in$i", tpe = UGenSpec.ArgumentType.GE(UGenSpec.SignalShape.Generic),
+        defaults = Map.empty, rates = Map.empty)
+    }
+    val inputs = args.map(a => UGenSpec.Input(arg = a.name, tpe = UGenSpec.Input.Single))
+    UGenSpec(name = s"Sum$n", attr = Set.empty,
+      rates = UGenSpec.Rates.Implied(audio, UGenSpec.RateMethod.Custom("apply")),
+      args = args, inputs = inputs, outputs = Vec(out), doc = None)
+  }
+
+  val seq: Vec[UGenSpec] = ugens0 ++ binUGens ++ unaryUGens ++ envUGens ++ sumUGens
 
   val map: Map[String, UGenSpec] = seq.map(s => s.name -> s)(breakOut)
 

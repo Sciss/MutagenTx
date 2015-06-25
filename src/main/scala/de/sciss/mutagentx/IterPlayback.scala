@@ -6,7 +6,7 @@ import javax.swing.table.DefaultTableModel
 import com.alee.laf.WebLookAndFeel
 import de.sciss.audiowidgets.Transport
 import de.sciss.desktop
-import de.sciss.desktop.{KeyStrokes, DialogSource, FileDialog, FocusType, OptionPane}
+import de.sciss.desktop.{DialogSource, FileDialog, FocusType, KeyStrokes, OptionPane}
 import de.sciss.file._
 import de.sciss.lucre.swing.defer
 import de.sciss.serial.DataInput
@@ -14,7 +14,7 @@ import de.sciss.swingplus.{DoClickAction, Spinner}
 import de.sciss.synth.impl.DefaultUGenGraphBuilderFactory
 import de.sciss.synth.io.{AudioFile, AudioFileSpec}
 import de.sciss.synth.swing.ServerStatusPanel
-import de.sciss.synth.ugen.{ConfigOut, Out}
+import de.sciss.synth.ugen.ConfigOut
 import de.sciss.synth.{Server, ServerConnection, Synth, SynthDef, SynthGraph}
 
 import scala.collection.breakOut
@@ -29,6 +29,7 @@ object IterPlayback {
   def main(args: Array[String]): Unit = {
     ConfigOut.PAN2 = true
     ConfigOut.LIMITER /* CLIP */ = true
+    ConfigOut.AMP = true
 
     val parser = new scopt.OptionParser[Config]("IterPlayback") {
       opt[File]('t', "target") required() text "target audio file" action { (x, c) => c.copy(targetFile = x) }
@@ -44,7 +45,7 @@ object IterPlayback {
   }
 
   def guiInit(inputFile: File, inputSpec: AudioFileSpec): Unit = {
-    var synthOpt      = Option.empty[Synth]
+    var synthOpt      = List.empty[Synth]
     var synthGraphOpt = Option.empty[SynthGraph]
     var lastFile      = Option.empty[File]
     var graphs        = Vec.empty[SOMGenerator.Input]
@@ -105,28 +106,27 @@ object IterPlayback {
 
     import de.sciss.synth.Ops._
 
-    def selectedGraph(): Option[SynthGraph] = ggTable.selection.rows.headOption.map { row => graphs(row).graph }
+    def selectedGraphs(): List[SynthGraph] = ggTable.selection.rows.map { row => graphs(row).graph } (breakOut)
 
-    def stopSynth(): Unit = synthOpt.foreach { synth =>
-      synthOpt = None
-      if (synth.server.isRunning) synth.free() // synth.release(3.0) // free()
+    def stopSynth(): Unit = {
+      synthOpt.foreach { synth =>
+        if (synth.server.isRunning) synth.free() // synth.release(3.0) // free()
+      }
+      synthOpt = Nil
     }
 
     def playSynth(): Unit = {
       stopSynth()
-      for {
-        s      <- Try(Server.default).toOption
-        graph0 <- selectedGraph()
-      } {
-        val graph = graph0
-//          .copy(sources = graph0.sources.collect {
-//            case ConfigOut(in) => Out.ar(0, in)
-//            case x => x
-//          })
-        val df    = SynthDef("test", graph.expand(DefaultUGenGraphBuilderFactory))
-        val syn   = df.play(s, args = Seq("out" -> 0))
-        synthOpt      = Some(syn)
-        synthGraphOpt = Some(graph)
+      Try(Server.default).toOption.foreach { s =>
+        val graphs = selectedGraphs()
+        synthGraphOpt = graphs.headOption
+        val amp    = 1.0 / graphs.size
+        val synths = graphs.map { graph =>
+          val df    = SynthDef("test", graph.expand(DefaultUGenGraphBuilderFactory))
+          val syn   = df.play(s, args = Seq("amp" -> amp))
+          syn
+        }
+        synthOpt = synths
       }
     }
 
@@ -163,7 +163,7 @@ object IterPlayback {
     var fBounce     = Option.empty[File]
 
     val ggBounce = Button("Bounce…") {
-      selectedGraph().foreach { graph =>
+      selectedGraphs().headOption.foreach { graph =>
         val opt = OptionPane(message = pBounceDur, optionType = OptionPane.Options.OkCancel, focus = Some(ggBounceDur))
         if (opt.show(None) == OptionPane.Result.Ok) {
           val fDlg = FileDialog.save(fBounce, title = "Bounce Synth Graph")
