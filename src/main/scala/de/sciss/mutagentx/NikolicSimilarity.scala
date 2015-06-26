@@ -1,12 +1,24 @@
+/*
+ *  NikolicSimilarity.scala
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 
-/**
- * Implementation for algorithm described
- * in Mladen Nikolić, "Measuring Similarity of Graph Nodes by Neighbor Matching"
- *
- * Based on Java code by Dulanga Sashika.
- */
-object NikolicSim {
+/** Implementation for algorithm described
+  * in Mladen Nikolić, "Measuring Similarity of Graph Nodes by Neighbor Matching"
+  *
+  * Based on Java code by Dulanga Sashika.
+  */
+object NikolicSimilarity {
   var DEBUG = false
 
   object Graph {
@@ -52,11 +64,13 @@ object NikolicSim {
     def outVertices : Vec[Vec[Int]]
   }
 
-  def apply[A](graphA: Graph[A], graphB: Graph[A], epsilon: Double): Double = {
+  def apply[A](graphA: Graph[A], graphB: Graph[A], epsilon: Double = 0.01): Double = {
     val graphSizeA        = graphA.vertices.size
     val graphSizeB        = graphB.vertices.size
 
     if (graphSizeA == 0 || graphSizeB == 0) return if (graphSizeA == graphSizeB) 1.0 else 0.0
+
+    val _DEBUG = DEBUG
 
     val inNodeListA       = graphA.inVertices
     val outNodeListA      = graphA.outVertices
@@ -92,12 +106,12 @@ object NikolicSim {
 
       for (i <- 0 until graphSizeA) {
         for (j <- 0 until graphSizeB) {
-          if (DEBUG) print(f"${inNodeSimilarity(i)(j)}%1.3f ")
+          if (_DEBUG) print(f"${inNodeSimilarity(i)(j)}%1.3f ")
           nodeSimilarity(i)(j) = (inNodeSimilarity(i)(j) + outNodeSimilarity(i)(j)) / 2
         }
-        if (DEBUG) println()
+        if (_DEBUG) println()
       }
-      if (DEBUG) {
+      if (_DEBUG) {
         println()
         for (i <- 0 until graphSizeA) {
           for (j <- 0 until graphSizeB) {
@@ -173,7 +187,7 @@ object NikolicSim {
         }
       }
 
-      if (DEBUG) {
+      if (_DEBUG) {
         for (i <- 0 until graphSizeA) {
           for (j <- 0 until graphSizeB) {
             print(f"${nodeSimilarity(i)(j)}%1.3f ")

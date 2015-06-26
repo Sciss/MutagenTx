@@ -39,8 +39,7 @@ libraryDependencies ++= Seq(
   "de.sciss"      %% "lucredata-core"           % "2.3.2",
   "de.sciss"      %% "lucredata-views"          % "2.3.2",
   "de.sciss"      %% "scalacollider"            % "1.17.2",
-  "de.sciss"      %% "scalacolliderswing-core"  % "1.25.1",
-  "de.sciss"      %  "simpack"                  % "0.1.0-SNAPSHOT"
+  "de.sciss"      %% "scalacolliderswing-core"  % "1.25.1"
 )
 
 scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xfuture")
