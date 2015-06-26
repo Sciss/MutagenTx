@@ -4,9 +4,9 @@ version            := "0.1.0-SNAPSHOT"
 
 organization       := "de.sciss"
 
-scalaVersion       := "2.11.6"
+scalaVersion       := "2.11.7"
 
-crossScalaVersions := Seq("2.11.6", "2.10.5")
+crossScalaVersions := Seq("2.11.7", "2.10.5")
 
 description        := "An experiment with genetic algorithms"
 
@@ -39,7 +39,8 @@ libraryDependencies ++= Seq(
   "de.sciss"      %% "lucredata-core"           % "2.3.2",
   "de.sciss"      %% "lucredata-views"          % "2.3.2",
   "de.sciss"      %% "scalacollider"            % "1.17.2",
-  "de.sciss"      %% "scalacolliderswing-core"  % "1.25.1"
+  "de.sciss"      %% "scalacolliderswing-core"  % "1.25.1",
+  "de.sciss"      %  "simpack"                  % "0.1.0-SNAPSHOT"
 )
 
 scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xfuture")

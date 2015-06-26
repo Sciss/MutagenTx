@@ -15,6 +15,7 @@ package de.sciss.mutagentx
 package impl
 
 import java.util.concurrent.TimeUnit
+import java.{util => ju}
 
 import de.sciss.file._
 import de.sciss.filecache.{TxnConsumer, TxnProducer}
@@ -25,10 +26,15 @@ import de.sciss.processor.Processor
 import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
 import de.sciss.span.Span
 import de.sciss.strugatzki.{FeatureCorrelation, FeatureExtraction, Strugatzki}
-import de.sciss.synth.SynthGraph
 import de.sciss.synth.io.{AudioFile, AudioFileSpec}
 import de.sciss.synth.proc.{Bounce, ExprImplicits, Obj, Proc, Timeline, WorkspaceHandle}
+import de.sciss.synth.ugen.{UnaryOpUGen, Constant, BinaryOpUGen}
+import de.sciss.synth.{GE, SynthGraph}
 import de.sciss.{filecache, numbers}
+import simpack.api.IGraphNode
+import simpack.api.impl.AbstractGraphAccessor
+import simpack.measure.graph.{SubgraphIsomorphism, GraphIsomorphism}
+import simpack.util.graph.GraphNode
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
@@ -346,5 +352,63 @@ object EvaluationImpl {
       genFolder .delete()
     }
     res
+  }
+
+  def graphSimilarity(a: SynthGraph, b: SynthGraph): Float = {
+    val acc1  = new SynthGraphAccessor(a)
+    val acc2  = new SynthGraphAccessor(b)
+    // val m     = new GraphIsomorphism(acc1, acc2)
+    val m     = new SubgraphIsomorphism(acc1, acc2)
+    val ok    = m.calculate()
+    if (!ok) throw new IllegalStateException(s"Could not calculate similarity between $a and $b")
+    m.getSimilarity.toFloat
+  }
+
+  private final class SynthGraphAccessor(g: SynthGraph) extends AbstractGraphAccessor {
+    populate()
+
+    override def toString = g.toString
+
+    private def populate(): Unit = {
+      val map = new ju.IdentityHashMap[Product, IGraphNode]
+
+      def addSource(p: Product): IGraphNode = {
+        val n0 = map.get(p)
+        if (n0 != null) n0 else {
+          val userObject = p match {
+            case Constant(f) => f
+            case bin: BinaryOpUGen => bin.selector
+            case un : UnaryOpUGen  => un .selector
+            case other => other.productPrefix
+          }
+          val n1 = new GraphNode(userObject)
+          addNode(n1)
+          map.put(p, n1)
+          p.productIterator.foreach {
+            case arg: GE =>
+              val n2 = addSource(arg)
+              setEdge(n2, n1)
+            case _ =>
+          }
+          n1
+        }
+      }
+
+      g.sources.foreach(addSource)
+    }
+
+    def getMaximumDirectedPathLength: Double = ???
+
+    def getMostRecentCommonAncestor(nodeA: IGraphNode, nodeB: IGraphNode): IGraphNode = ???
+
+    def getSuccessors(node: IGraphNode, direct: Boolean): ju.Set[IGraphNode] =
+      if (direct) node.getSuccessorSet else ???
+
+    def getPredecessors(node: IGraphNode, direct: Boolean): ju.Set[IGraphNode] =
+      if (direct) node.getPredecessorSet else ???
+
+    def getMaxDepth: Double = ???
+
+    def getShortestPath(nodeA: IGraphNode, nodeB: IGraphNode): Double = ???
   }
 }

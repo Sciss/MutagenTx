@@ -181,13 +181,27 @@ object IterPlayback {
       }
     }
 
+    val ggSimilarity = Button("Compare") {
+      selectedGraphs() match {
+        case a :: b :: _ =>
+          import Algorithm.executionContext
+          val fut = Future(blocking(impl.EvaluationImpl.graphSimilarity(a, b)))
+          fut.onComplete {
+            case Success(v) => println(f"Similarity between the two graphs: ${v * 100}%1.1f%%.")
+            case Failure(ex) => ex.printStackTrace()
+          }
+
+        case _ => println("Must select two rows!")
+      }
+    }
+
     import desktop.Implicits._
     val ggPlay = bs.button(Transport.Play).get
     val acPlay = DoClickAction(ggPlay)
     acPlay.accelerator = Some(KeyStrokes.menu1 + Key.Enter)
     ggPlay.addAction("click", acPlay, FocusType.Window)
 
-    val tp = new FlowPanel(ggOpen, pStatus, butKill, bs, ggPrint, ggBounce)
+    val tp = new FlowPanel(ggOpen, pStatus, butKill, bs, ggPrint, ggBounce, ggSimilarity)
 
     new MainFrame {
       contents = new BorderPanel {
