@@ -28,14 +28,15 @@ import de.sciss.span.Span
 import de.sciss.strugatzki.{FeatureCorrelation, FeatureExtraction, Strugatzki}
 import de.sciss.synth.io.{AudioFile, AudioFileSpec}
 import de.sciss.synth.proc.{Bounce, ExprImplicits, Obj, Proc, Timeline, WorkspaceHandle}
-import de.sciss.synth.ugen.{UnaryOpUGen, Constant, BinaryOpUGen}
+import de.sciss.synth.ugen.{Mix, ConfigOut, RandSeed, UnaryOpUGen, Constant, BinaryOpUGen}
 import de.sciss.synth.{GE, SynthGraph}
 import de.sciss.{filecache, numbers}
 import simpack.api.IGraphNode
 import simpack.api.impl.AbstractGraphAccessor
-import simpack.measure.graph.{SubgraphIsomorphism, GraphIsomorphism}
+import simpack.measure.graph.{MaxCommonSubgraphIsoValiente, MaxGraphIsoCovering, SubgraphIsomorphism, GraphIsomorphism}
 import simpack.util.graph.GraphNode
 
+import scala.collection.JavaConversions
 import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
 import scala.concurrent.{Await, Future, Promise, TimeoutException, blocking}
@@ -357,44 +358,109 @@ object EvaluationImpl {
   def graphSimilarity(a: SynthGraph, b: SynthGraph): Float = {
     val acc1  = new SynthGraphAccessor(a)
     val acc2  = new SynthGraphAccessor(b)
-    // val m     = new GraphIsomorphism(acc1, acc2)
-    val m     = new SubgraphIsomorphism(acc1, acc2)
-    val ok    = m.calculate()
-    if (!ok) throw new IllegalStateException(s"Could not calculate similarity between $a and $b")
-    m.getSimilarity.toFloat
+//    val m0    = new GraphIsomorphism(acc1, acc2)
+//    val m3    = new SubgraphIsomorphism(acc1, acc2,
+//      "AlwaysTrue", // SubgraphIsomorphism.DEFAULT_NODE_LABEL_SIMILARITY_MEASURE,
+//      5, // SubgraphIsomorphism.DEFAULT_MIN_CLIQUE_SIZE,
+//      0.0, // SubgraphIsomorphism.DEFAULT_LABEL_WEIGHT,
+//      1.0, // SubgraphIsomorphism.DEFAULT_STRUCTURE_WEIGHT,
+//      SubgraphIsomorphism.DEFAULT_DENOMINATOR,
+//      SubgraphIsomorphism.NODE_GROUPING
+//    )
+    val m3 = new SubgraphIsomorphism(acc1, acc2,
+      SubgraphIsomorphism.DEFAULT_NODE_LABEL_SIMILARITY_MEASURE,
+      4, // SubgraphIsomorphism.DEFAULT_MIN_CLIQUE_SIZE,
+      SubgraphIsomorphism.DEFAULT_LABEL_WEIGHT,
+      SubgraphIsomorphism.DEFAULT_STRUCTURE_WEIGHT,
+      SubgraphIsomorphism.DEFAULT_DENOMINATOR,
+      SubgraphIsomorphism.NODE_GROUPING
+    )
+//    val sim0 = { m0.calculate(); m0.getGraphIsomorphism.toFloat }
+//    val sim1 = if (sim0 == 1) sim0 else { m1.calculate(); m1.getSimilarity.toFloat }
+
+//    val m2 = new MaxGraphIsoCovering(acc1, acc2,
+//      SubgraphIsomorphism.DEFAULT_NODE_LABEL_SIMILARITY_MEASURE,
+//      SubgraphIsomorphism.DEFAULT_MIN_CLIQUE_SIZE,
+//      SubgraphIsomorphism.DEFAULT_LABEL_WEIGHT,
+//      SubgraphIsomorphism.DEFAULT_STRUCTURE_WEIGHT,
+//      SubgraphIsomorphism.DEFAULT_DENOMINATOR,
+//      SubgraphIsomorphism.NODE_GROUPING,
+//      MaxGraphIsoCovering.DEFAULT_COVERING
+//    )
+//    m2.calculate()
+//    require(m2.isCalculated)
+//    m2.getSimilarity.toFloat
+
+//    val m3 = new MaxCommonSubgraphIsoValiente(acc1, acc2,
+//      1, // MaxCommonSubgraphIsoValiente.DEFAULT_MIN_CLIQUE_SIZE,
+//      MaxCommonSubgraphIsoValiente.DEFAULT_STRUCTURE_WEIGHT,
+//      MaxCommonSubgraphIsoValiente.DEFAULT_LABEL_WEIGHT,
+//      MaxCommonSubgraphIsoValiente.DEFAULT_DENOMINATOR
+//    )
+    m3.calculate()
+    require(m3.isCalculated)
+    m3.getSimilarity.toFloat
   }
 
   private final class SynthGraphAccessor(g: SynthGraph) extends AbstractGraphAccessor {
     populate()
+    validate()
 
     override def toString = g.toString
 
+    private def validate(): Unit = {
+      import JavaConversions._
+      nodeSet.foreach { n =>
+        val numPre  = n.getPredecessorSet.size()
+        val numSucc = n.getSuccessorSet  .size()
+        val numAdj  = n.getAdjacentSet   .size()
+        val inDeg   = n.getInDegree
+        val outDeg  = n.getOutDegree
+        assert(numPre + numSucc == numAdj, s"Node $n has $numPre predecessors, $numSucc successors, that do not sum up to $numAdj adjacents")
+        assert(numPre  == inDeg , s"Node $n has $numPre predecessors but in-degree reported as $inDeg")
+        assert(numSucc == outDeg, s"Node $n has $numSucc successors but out-degree reported as $outDeg")
+      }
+    }
+
     private def populate(): Unit = {
-      val map = new ju.IdentityHashMap[Product, IGraphNode]
+      val map   = new ju.IdentityHashMap[Product, IGraphNode]
+      var users = Set.empty[Any]
+
+      def uniqueString(s: String) =
+        if (!users.contains(s)) s else {
+          var cnt = 0
+          while (users.contains(s"$s$cnt")) cnt += 1
+          s"$s$cnt"
+        }
 
       def addSource(p: Product): IGraphNode = {
         val n0 = map.get(p)
         if (n0 != null) n0 else {
           val userObject = p match {
             case Constant(f) => f
-            case bin: BinaryOpUGen => bin.selector
-            case un : UnaryOpUGen  => un .selector
-            case other => other.productPrefix
+            case bin: BinaryOpUGen => uniqueString(bin.selector.name)
+            case un : UnaryOpUGen  => uniqueString(un .selector.name)
+            case x                 => uniqueString(x.productPrefix)
           }
           val n1 = new GraphNode(userObject)
           addNode(n1)
           map.put(p, n1)
+          users += userObject
           p.productIterator.foreach {
             case arg: GE =>
               val n2 = addSource(arg)
               setEdge(n2, n1)
+              // setEdge(n1, n2)
             case _ =>
           }
           n1
         }
       }
 
-      g.sources.foreach(addSource)
+      g.sources.foreach {
+        case _: RandSeed | _: ConfigOut | _: Mix | _: Mix.Mono =>
+        case x => addSource(x)
+      }
     }
 
     def getMaximumDirectedPathLength: Double = ???
