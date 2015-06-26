@@ -1,28 +1,67 @@
 package de.sciss.mutagentx
 
-trait Graph {
-  def vertices    : Vec[Int]
-  def inVertices  : Vec[Vec[Int]]
-  def outVertices : Vec[Vec[Int]]
-}
-
 /**
- * Created by Hanns Holger Rutz on 26/06/15.
- * 
- * Scala translation from Java code, originally
- * created by Dulanga Sashika on 8/26/2014.
+ * Implementation for algorithm described
+ * in Mladen Nikolić, "Measuring Similarity of Graph Nodes by Neighbor Matching"
+ *
+ * Based on Java code by Dulanga Sashika.
  */
 object NikolicSim {
   var DEBUG = false
 
-  def apply(graphA: Graph, graphB: Graph, epsilon: Double): Double = {
+  object Graph {
+    trait Modifiable[A] extends Graph[A] {
+      def addVertex(v: A): Unit
+      def addEdge(source: A, sink: A): Unit
+      def copy(): Modifiable[A]
+    }
+
+    def apply[A]: Modifiable[A] = new Impl[A](Vector.empty, Vector.empty, Vector.empty)
+
+    private final class Impl[A](private var _vertices   : Vector[A],
+                                private var _inVertices : Vector[Vector[Int]],
+                                private var _outVertices: Vector[Vector[Int]])
+      extends Modifiable[A] {
+
+      def copy(): Modifiable[A] = new Impl(_vertices, _inVertices = _inVertices, _outVertices = _outVertices)
+
+      def vertices   : Vec[A]         = _vertices
+      def inVertices : Vec[Vec[Int]]  = _inVertices
+      def outVertices: Vec[Vec[Int]]  = _outVertices
+
+      def addVertex(v: A): Unit = {
+        _vertices    :+= v
+        _inVertices  :+= Vector.empty
+        _outVertices :+= Vector.empty
+      }
+
+      def addEdge(source: A, sink: A): Unit = {
+        val sourceIdx = _vertices.indexOf(source)
+        if (sourceIdx < 0) throw new NoSuchElementException(source.toString)
+        val sinkIdx   = _vertices.indexOf(sink  )
+        if (sinkIdx   < 0) throw new NoSuchElementException(sink  .toString)
+
+        _inVertices   = _inVertices .updated(sinkIdx  , _inVertices (sinkIdx  ) :+ sourceIdx)
+        _outVertices  = _outVertices.updated(sourceIdx, _outVertices(sourceIdx) :+ sinkIdx  )
+      }
+    }
+  }
+  trait Graph[+A] {
+    def vertices    : Vec[A]
+    def inVertices  : Vec[Vec[Int]]
+    def outVertices : Vec[Vec[Int]]
+  }
+
+  def apply[A](graphA: Graph[A], graphB: Graph[A], epsilon: Double): Double = {
+    val graphSizeA        = graphA.vertices.size
+    val graphSizeB        = graphB.vertices.size
+
+    if (graphSizeA == 0 || graphSizeB == 0) return if (graphSizeA == graphSizeB) 1.0 else 0.0
+
     val inNodeListA       = graphA.inVertices
     val outNodeListA      = graphA.outVertices
     val inNodeListB       = graphB.inVertices
     val outNodeListB      = graphB.outVertices
-
-    val graphSizeA        = graphA.vertices.size
-    val graphSizeB        = graphB.vertices.size
 
     val nodeSimilarity    = Array.ofDim[Double](graphSizeA, graphSizeB)
     val inNodeSimilarity  = Array.ofDim[Double](graphSizeA, graphSizeB)
@@ -122,11 +161,14 @@ object NikolicSim {
 
         for (i <- 0 until graphSizeA) {
           for (j <- 0 until graphSizeB) {
-            val temp = (inNodeSimilarity(i)(j) + outNodeSimilarity(i)(j)) / 2
-            if (math.abs(nodeSimilarity(i)(j) - temp) > maxDifference) {
-              maxDifference = math.abs(nodeSimilarity(i)(j) - temp)
+            // XXX TODO -- here we could insert a more refined comparison
+            nodeSimilarity(i)(j) = if (graphA.vertices(i) != graphB.vertices(j)) 0.0 else {
+              val temp = (inNodeSimilarity(i)(j) + outNodeSimilarity(i)(j)) / 2
+              if (math.abs(nodeSimilarity(i)(j) - temp) > maxDifference) {
+                maxDifference = math.abs(nodeSimilarity(i)(j) - temp)
+              }
+              temp
             }
-            nodeSimilarity(i)(j) = temp
           }
         }
       }
@@ -145,10 +187,10 @@ object NikolicSim {
       val getSim    = if (useGraphA) getSimA else getSimB
       var valueMap  = Map.empty[Int, Double]
 
-      neighborListMin.foreach { node =>
+      neighborListMin.iterator.foreach { node =>
         var max = 0.0
         var maxIndex = -1
-        neighborListMax.foreach { key =>
+        neighborListMax.iterator.foreach { key =>
           if (!valueMap.contains(key)) {
             val sim = getSim(node, key)
             if (sim > max) {
@@ -169,9 +211,9 @@ object NikolicSim {
     measureSimilarity()
 
     if (graphSizeA < graphSizeB) {
-      enumerationFunction(graphA.vertices, graphB.vertices, useGraphA = true ) / graphSizeA
+      enumerationFunction(graphA.vertices.indices, graphB.vertices.indices, useGraphA = true ) / graphSizeA
     } else {
-      enumerationFunction(graphB.vertices, graphA.vertices, useGraphA = false) / graphSizeB
+      enumerationFunction(graphB.vertices.indices, graphA.vertices.indices, useGraphA = false) / graphSizeB
     }
   }
 }
