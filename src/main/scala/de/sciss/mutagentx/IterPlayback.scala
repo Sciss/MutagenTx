@@ -13,8 +13,9 @@
 
 package de.sciss.mutagentx
 
-import javax.swing.SpinnerNumberModel
-import javax.swing.table.DefaultTableModel
+import javax.swing.{JTable, DefaultRowSorter, UIManager, SpinnerNumberModel}
+import javax.swing.event.TableModelListener
+import javax.swing.table.{TableModel, TableRowSorter, DefaultTableModel}
 
 import com.alee.laf.WebLookAndFeel
 import de.sciss.audiowidgets.Transport
@@ -32,6 +33,7 @@ import de.sciss.synth.ugen.ConfigOut
 import de.sciss.synth.{Server, ServerConnection, Synth, SynthDef, SynthGraph}
 import org.jfree.chart.ChartPanel
 
+import scala.annotation.switch
 import scala.collection.breakOut
 import scala.concurrent.{Future, blocking}
 import scala.swing.event.Key
@@ -52,8 +54,15 @@ object IterPlayback {
     parser.parse(args, Config()).fold(sys.exit(1)) { cfg =>
       import cfg._
       val inputSpec = AudioFile.readSpec(targetFile)
+      val sync = new AnyRef
+      new Thread {
+        override def run() = sync.synchronized(sync.wait())
+        start()
+      }
       Swing.onEDT {
+        sync.synchronized(sync.notifyAll())
         WebLookAndFeel.install()
+        // UIManager.setLookAndFeel("javax.swing.plaf.nimbus.NimbusLookAndFeel")
         guiInit(inputFile = targetFile, inputSpec = inputSpec)
       }
     }
@@ -81,7 +90,9 @@ object IterPlayback {
       }
     }
 
-    val ggTable   = new Table()
+    val ggTable   = new Table() {
+      override lazy val peer: JTable = new JTable /* with Table.JTableMixin */ with SuperMixin
+    }
     val ggScroll  = new ScrollPane(ggTable)
 
     val hideUGens = Set[String]("RandSeed", "Mix", "Mix$Mono", "ConfigOut")
@@ -105,14 +116,39 @@ object IterPlayback {
           fut.onSuccess {
             case sq => defer {
               graphs = sq
-              val data: Array[Array[AnyRef]] = sq.zipWithIndex.map { case (input, i) =>
+              val data: Array[(Int, Int, String, Float)] = sq.zipWithIndex.map { case (input, i) =>
                 val sources = input.graph.sources
                 val elems = sources.map(_.productPrefix).filterNot(hideUGens.contains).distinct.mkString(", ")
-                Array[AnyRef](i.asInstanceOf[AnyRef], sources.size.asInstanceOf[AnyRef], elems, input.fitness.asInstanceOf[AnyRef])
+                // Array[AnyRef](i.asInstanceOf[AnyRef], sources.size.asInstanceOf[AnyRef], elems, input.fitness.asInstanceOf[AnyRef])
+                (i, sources.size, elems, input.fitness)
               } (breakOut)
 
+              val columnNames = Array("Index", "Num", "Elements", "Fit")
+
+              val m1 = new TableModel {
+                def getRowCount: Int = data.length
+
+                def getColumnClass(columnIndex: Int): Class[_] = data(0).productElement(columnIndex).getClass
+
+                def isCellEditable(rowIndex: Int, columnIndex: Int): Boolean = false
+
+                def getColumnCount: Int = columnNames.length
+
+                def getColumnName(columnIndex: Int): String = columnNames(columnIndex)
+
+                def addTableModelListener   (l: TableModelListener): Unit = ()
+                def removeTableModelListener(l: TableModelListener): Unit = ()
+
+                def getValueAt(rowIndex: Int, columnIndex: Int): AnyRef = {
+                  val row = data(rowIndex)
+                  row.productElement(columnIndex).asInstanceOf[AnyRef]
+                }
+
+                def setValueAt(aValue: scala.Any, rowIndex: Int, columnIndex: Int): Unit = ()
+              }
+
+              ggTable.model = m1
               ggTable.peer.setAutoCreateRowSorter(true)
-              ggTable.model = new DefaultTableModel(data, Array[AnyRef]("Index", "Num", "Elements", "Fit"))
             }
           }
         }

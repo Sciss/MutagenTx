@@ -16,6 +16,8 @@ licenses           := Seq("GPL v3+" -> url("http://www.gnu.org/licenses/gpl-3.0.
 
 resolvers          += "Oracle Repository" at "http://download.oracle.com/maven"
 
+fork in run := true
+
 // ---- main dependencies ----
 
 lazy val lucreSTMVersion            = "2.1.2"

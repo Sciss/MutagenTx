@@ -60,7 +60,7 @@ class TopologySpec extends FlatSpec with Matchers {
     override def productPrefix = "E"
   }
 
-  "A transactional topology" should "behave like the immutable counter-part" in {
+  ignore /* "A transactional topology" */ should "behave like the immutable counter-part" in {
     val ti0 = TopologyI.empty[VI, EI]
     val ti1 = ti0.addVertex(VI("a"))
     val ti2 = ti1.addVertex(VI("b"))
@@ -129,7 +129,7 @@ class TopologySpec extends FlatSpec with Matchers {
 
   ///////////////////////////////////////////////////////////////////////////////
 
-  it should "really do that" in {
+  ignore /* it */ should "really do that" in {
     val ti0 = TopologyI.empty[VI, EI]
     val ti1 = ti0.addVertex(VI("LinXFade2"))
     val ti2 = ti1.addVertex(VI("Constant22"))

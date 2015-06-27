@@ -57,7 +57,7 @@ object Algorithm {
   val mutMin          : Int     = 2
   val mutMax          : Int     = 4
   val mutationProb    : Double  = 0.75
-  val numGolem        : Int     = 5
+  val numGolem        : Int     = 15
 
   implicit val executionContext: ExecutionContext = {
     ExecutionContext.Implicits.global
