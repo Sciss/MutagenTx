@@ -16,9 +16,10 @@ package impl
 
 import de.sciss.lucre.event.Sys
 import de.sciss.lucre.stm
+import de.sciss.numbers
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
-import de.sciss.synth.{UGenSpec, UndefinedRate}
+import de.sciss.synth.{SynthGraph, UGenSpec, UndefinedRate}
 
 import scala.annotation.tailrec
 import scala.collection.breakOut
@@ -183,29 +184,62 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
     extends ProcessorImpl[A, Processor[A]] with Processor[A] {
 
     def body(): A = {
-      val clumps    = c.grouped(4).toIndexedSeq
-      val numClumps = clumps.size
-      val fit = clumps.zipWithIndex.flatMap { case (clump, ci) =>
-        val futClump: Vec[Future[Float]] = global.cursor.step { implicit tx =>
+      val clumps      = c.grouped(4).toIndexedSeq
+      val numClumps   = clumps.size
+
+      val nextIter    = global.cursor.step { implicit tx => global.numIterations() + 1 }
+      val graphPen    = Algorithm.graphPenaltyIter > 0 && (nextIter % Algorithm.graphPenaltyIter == 0)
+      val progWeight  = 1.0 / (if (graphPen) numClumps << 1 else numClumps)
+
+      val (graphs, fit0) = clumps.zipWithIndex.flatMap { case (clump, ci) =>
+        val (graphs0: Vec[SynthGraph], futClump: Vec[Future[Float]]) = global.cursor.step { implicit tx =>
           clump.map { cH =>
             impl.EvaluationImpl.evaluate(cH(), algo, inputSpec, inputExtr)
           }
-        }
+        } .unzip
         val clumpRes = Await.result(Future.sequence(futClump), Duration.Inf)
-        progress = (ci + 1).toDouble / numClumps
+        progress = (ci + 1) * progWeight
         checkAborted()
-        clumpRes
+        graphs0 zip clumpRes
+      } .unzip
+
+      val fit = if (!graphPen) fit0 else {
+        println("---- begin graph sim ----")
+        val N = graphs.size
+        val sims = graphs.zipWithIndex.map { case (a, ai) =>
+          val (simSum, simNum) = ((0.0, 0) /: graphs) { case (old @ (sum, num), b) =>
+            if ((a ne b) && coin1(Algorithm.graphPenaltyCoin))
+              (sum + EvaluationImpl.graphSimilarity(a, b), num + 1)
+            else old
+          }
+          progress = (ai + 1).toDouble / N
+          checkAborted()
+          simSum / simNum
+        }
+        val minSim = sims.min
+        val maxSim = sims.max
+        val fit1 = (fit0 zip sims).map { case (f, sim) =>
+          import numbers.Implicits._
+          val pen = sim.linlin(minSim, maxSim, 0.0, Algorithm.graphPenaltyAmt)
+          f * (1.0 - pen).toFloat
+        }
+
+        println("---- end   graph sim ----")
+        fit1
       }
 
       if (updateGenome)
         global.cursor.step { implicit tx =>
           genome.fitness() = fit
-          global.numIterations() = global.numIterations() + 1
+          global.numIterations() = nextIter
         }
 
       map(fit)
     }
   }
+
+  // XXX TODO --- should also use transactional coin here
+  private[this] def coin1(p: Double): Boolean = math.random < p
 
   /** Runs the selection stage of the algorithm, using `all` inputs which
     * are chromosomes paired with their fitness values.

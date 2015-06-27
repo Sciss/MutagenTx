@@ -181,7 +181,7 @@ object EvaluationImpl {
   }
 
   def evaluate[S <: Sys[S]](c: Chromosome[S], algorithm: Algorithm[S], inputSpec: AudioFileSpec, inputExtr: File)
-              (implicit tx: S#Tx): Future[Float] = {
+              (implicit tx: S#Tx): (SynthGraph, Future[Float]) = {
     val graph = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true /* false */) // c.graph
     // val cH          = tx.newHandle(c)
     val numVertices = c.vertices.size
@@ -189,7 +189,7 @@ object EvaluationImpl {
     tx.afterCommit {
       p.completeWith(evaluateFut(/* cH, */ graph, inputSpec, inputExtr = inputExtr, numVertices = numVertices))
     }
-    p.future
+    (graph, p.future)
   }
 
   def evaluateBounce(bounce: File, input: File): Future[Float] = {

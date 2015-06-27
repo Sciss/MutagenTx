@@ -18,10 +18,11 @@ import de.sciss.file._
 import de.sciss.lucre.event.Sys
 import de.sciss.lucre.{data, stm}
 import de.sciss.processor.Processor
+import de.sciss.processor.impl.ProcessorImpl
 import de.sciss.synth.UGenSpec
 import de.sciss.synth.io.AudioFileSpec
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, blocking}
 import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
 
@@ -172,31 +173,52 @@ object CopyingAlgorithm {
     }
 
     def iterate(): Processor[Unit] = {
-      val (el, sel, pop) = global.cursor.step { implicit tx =>
-        // if (DEBUG) println(s"iterate - inputAccess ${tx.inputAccess}")
-        val cs    = genome.chromosomes()
-        val fit   = genome.fitness()
-        val all   = cs zip fit
-        val _el   = elitism(all) // .toSet
-        val _sel  = select (all) .map(tx.newHandle(_))
-        (_el, Util.scramble(_sel.toIndexedSeq), all.size)
-      }
+      import Algorithm.executionContext
+      val res = new IterImpl
+      res.start()
+      res
+    }
 
-      val nGen    = pop - el.size
-      val nMut    = (Algorithm.mutationProb * nGen + 0.5).toInt
-      val nCross  = nGen - nMut
-
-      // if (DEBUG) println(s"pop $pop, el ${el.size}, sel ${sel.size}, nMut $nMut, nCross $nCross")
-
-      val mut     = mutate    (sel, nMut  )
-      val cross   = crossover (sel, nCross)
-
-      global.cursor.step { implicit tx =>
-        cleaner.foreach { c =>
-          c.apply(tx, el)
+    private final class IterImpl extends ProcessorImpl[Unit, Processor[Unit]] with Processor[Unit] {
+      def body(): Unit = {
+        val (el, sel, pop) = blocking {
+          global.cursor.step { implicit tx =>
+            // if (DEBUG) println(s"iterate - inputAccess ${tx.inputAccess}")
+            val cs    = genome.chromosomes()
+            val fit   = genome.fitness()
+            val all   = cs zip fit
+            val _el   = elitism(all) // .toSet
+            val _sel  = select (all) .map(tx.newHandle(_))
+            (_el, Util.scramble(_sel.toIndexedSeq), all.size)
+          }
         }
-        genome.chromosomes() = el ++ (mut ++ cross).map(_.apply())
-        evaluateAndUpdate()
+        val nGen    = pop - el.size - Algorithm.numGolem
+        val nMut    = (Algorithm.mutationProb * nGen + 0.5).toInt
+        val nCross  = nGen - nMut
+
+        progress = 0.05
+        checkAborted()
+
+        // if (DEBUG) println(s"pop $pop, el ${el.size}, sel ${sel.size}, nMut $nMut, nCross $nCross")
+
+        val mut     = blocking(mutate    (sel, nMut  ))
+        progress = Algorithm.mutationProb * 0.55 + 0.05
+        checkAborted()
+        val cross   = blocking(crossover (sel, nCross))
+        progress = 0.6
+        checkAborted()
+
+        val procEval = blocking {
+          global.cursor.step { implicit tx =>
+            cleaner.foreach { c =>
+              c.apply(tx, el)
+            }
+            val golem = Vector.fill(Algorithm.numGolem)(mkIndividual())
+            genome.chromosomes() = el ++ (mut ++ cross).map(_.apply()) ++ golem
+            evaluateAndUpdate()
+          }
+        }
+        await(procEval, offset = 0.6, weight = 0.4)
       }
     }
   }

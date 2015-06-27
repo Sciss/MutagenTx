@@ -1,11 +1,19 @@
 package de.sciss.mutagentx
 
+import java.awt.{Font, Color}
+
+import de.sciss.desktop.Desktop
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.stm.Sys
-import de.sciss.synth.SynthGraph
+import de.sciss.numbers
+import org.jfree.chart.plot.{CategoryPlot, XYPlot}
+import org.jfree.chart.renderer.xy.{XYStepAreaRenderer, StandardXYBarPainter, XYBarRenderer}
 
+import scala.collection._
 import scala.collection.generic.CanBuildFrom
 import scala.language.higherKinds
+import scalax.chart.module.Charting
+import scalax.chart.{XYChart, Chart}
 
 object Util {
   // ---- random functions ----
@@ -99,5 +107,61 @@ object Util {
       n += 1
     }
     c
+  }
+
+  // ---- plotting ----
+
+  private val defaultFontFace = if (Desktop.isLinux) "Liberation Sans" else if (Desktop.isWindows) "Arial" else "Helvetica"
+
+  def mkNiceChart(chart: Chart): Unit = {
+    val plot = chart.plot
+
+    val (xAxis, yAxis) = plot match {  // shitty Plot / Renderer interfaces do not have common super types
+      case p: XYPlot       =>
+        p.setBackgroundPaint           (Color.white    )
+        p.setDomainGridlinePaint       (Color.lightGray)
+        p.setRangeGridlinePaint        (Color.lightGray)
+        p.getRenderer.setSeriesPaint(0, Color.darkGray )
+        // undo the crappy "3D" look
+        p.getRenderer match {
+          case r: XYBarRenderer => r.setBarPainter(new StandardXYBarPainter())
+          case _ =>
+        }
+        (p.getDomainAxis, p.getRangeAxis)
+      case p: CategoryPlot =>
+        p.setBackgroundPaint           (Color.white    )
+        p.setDomainGridlinePaint       (Color.lightGray)
+        p.setRangeGridlinePaint        (Color.lightGray)
+        p.getRenderer.setSeriesPaint(0, Color.darkGray )
+        // undo the crappy "3D" look
+        p.getRenderer match {
+          case r: XYBarRenderer => r.setBarPainter(new StandardXYBarPainter())
+          case _ =>
+        }
+        (p.getDomainAxis, p.getRangeAxis)
+    }
+
+    val fnt1          = new Font(defaultFontFace, Font.BOLD , 14)
+    val fnt2          = new Font(defaultFontFace, Font.PLAIN, 12)
+    xAxis.setLabelFont(fnt1)
+    xAxis.setTickLabelFont(fnt2)
+    yAxis.setLabelFont(fnt1)
+    yAxis.setTickLabelFont(fnt2)
+  }
+
+  def mkHistogramChart(histo: Vec[Double], xMin: Double, xMax: Double, title: String): XYChart = {
+    import numbers.Implicits._
+    import Charting._
+    val data: Vec[(Double, Double)] = histo.zipWithIndex.map { case (num, i) =>
+      (i + 0.5).linlin(0, histo.length, xMin, xMax) -> num
+    } (breakOut)
+    val dataCol = data.toXYSeriesCollection(title)
+    val chart   = XYLineChart(dataCol, title = title, legend = false)
+    mkNiceChart(chart)
+    val plot    = chart.plot
+    val renderer = new XYStepAreaRenderer()
+    plot.setRenderer(renderer)
+    renderer.setSeriesPaint(0, Color.darkGray)
+    chart
   }
 }

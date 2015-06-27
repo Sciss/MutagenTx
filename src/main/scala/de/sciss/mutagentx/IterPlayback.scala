@@ -1,3 +1,16 @@
+/*
+ *  IterPlayback.scala
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 
 import javax.swing.SpinnerNumberModel
@@ -5,7 +18,8 @@ import javax.swing.table.DefaultTableModel
 
 import com.alee.laf.WebLookAndFeel
 import de.sciss.audiowidgets.Transport
-import de.sciss.desktop
+import de.sciss.mutagentx.impl.EvaluationImpl
+import de.sciss.{processor, numbers, kollflitz, desktop, pdflitz}
 import de.sciss.desktop.{DialogSource, FileDialog, FocusType, KeyStrokes, OptionPane}
 import de.sciss.file._
 import de.sciss.lucre.swing.defer
@@ -16,11 +30,12 @@ import de.sciss.synth.io.{AudioFile, AudioFileSpec}
 import de.sciss.synth.swing.ServerStatusPanel
 import de.sciss.synth.ugen.ConfigOut
 import de.sciss.synth.{Server, ServerConnection, Synth, SynthDef, SynthGraph}
+import org.jfree.chart.ChartPanel
 
 import scala.collection.breakOut
 import scala.concurrent.{Future, blocking}
 import scala.swing.event.Key
-import scala.swing.{BorderPanel, Button, FlowPanel, Label, MainFrame, ScrollPane, Swing, Table}
+import scala.swing.{Component, Frame, BorderPanel, Button, FlowPanel, Label, MainFrame, ScrollPane, Swing, Table}
 import scala.util.{Failure, Success, Try}
 
 object IterPlayback {
@@ -169,7 +184,7 @@ object IterPlayback {
           val fDlg = FileDialog.save(fBounce, title = "Bounce Synth Graph")
           fDlg.show(None).foreach { f =>
             fBounce = Some(f)
-            val fut = impl.EvaluationImpl.bounce(graph = graph, audioF = f, inputSpec = inputSpec,
+            val fut = EvaluationImpl.bounce(graph = graph, audioF = f, inputSpec = inputSpec,
               duration0 = mBounceDur.getNumber.doubleValue())
             import Algorithm.executionContext
             fut.onComplete {
@@ -185,7 +200,7 @@ object IterPlayback {
       selectedGraphs() match {
         case a :: b :: _ =>
           import Algorithm.executionContext
-          val fut = Future(blocking(impl.EvaluationImpl.graphSimilarity(a, b)))
+          val fut = Future(blocking(EvaluationImpl.graphSimilarity(a, b)))
           fut.onComplete {
             case Success(v) => println(f"Similarity between the two graphs: ${v * 100}%1.1f%%.")
             case Failure(ex) => ex.printStackTrace()
@@ -195,13 +210,65 @@ object IterPlayback {
       }
     }
 
+    val ggSimHisto = Button("Sim Histo") {
+      import Algorithm.executionContext
+      import processor._
+      val dataFut = Processor[Vec[Double]]("calc-histo") { self =>
+        blocking {
+          val N = graphs.size
+          graphs.zipWithIndex.map { case (a, ai) =>
+            val simSum = (0.0 /: graphs) { case (res, b) =>
+              if (a eq b) res else res + EvaluationImpl.graphSimilarity(a.graph, b.graph)
+            }
+            self.progress = (ai + 1).toDouble / N
+            self.checkAborted()
+            simSum / (N - 1)
+          }
+        }
+      }
+
+      dataFut.monitor(printResult = false)
+
+      val accumFut = dataFut.map { data =>
+        val min     = data.min
+        val max     = data.max
+        val numBins = 400
+        val histo   = new Array[Int](numBins)
+        import numbers.Implicits._
+        data.foreach { d =>
+          val bin = d.linlin(min, max, 0, numBins).toInt.min(numBins - 1)
+          histo(bin) += 1
+        }
+        val size      = (0L /: histo)((sum, count) => sum + count)
+        val relative: Vec[Double] = histo.map(count => (count * 100.0)/ size)(breakOut)
+        import kollflitz.Ops._
+        val accum     = relative.integrate
+        (accum, min, max)
+      }
+
+      accumFut.onSuccess { case (accum, min, max) =>
+        defer {
+          val chart = Util.mkHistogramChart(accum, xMin = min, xMax = max,
+            title = "Graph Similarity Accumulative Histogram")
+          val pj = new ChartPanel(chart.peer, false)
+          val p  = Component.wrap(pj)
+          val f  = new Frame {
+            contents = p
+            new pdflitz.SaveAction(List(p)).setupMenu(this)
+            pack().centerOnScreen()
+            open()
+          }
+        }
+      }
+    }
+
     import desktop.Implicits._
     val ggPlay = bs.button(Transport.Play).get
     val acPlay = DoClickAction(ggPlay)
     acPlay.accelerator = Some(KeyStrokes.menu1 + Key.Enter)
     ggPlay.addAction("click", acPlay, FocusType.Window)
 
-    val tp = new FlowPanel(ggOpen, pStatus, butKill, bs, ggPrint, ggBounce, ggSimilarity)
+    val tp = new FlowPanel(ggOpen, pStatus, butKill, bs, ggPrint, ggBounce, ggSimilarity, ggSimHisto)
 
     new MainFrame {
       contents = new BorderPanel {

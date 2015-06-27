@@ -14,12 +14,11 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.data.SkipList
-import de.sciss.lucre.event.{InMemory, Sys}
+import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.Mutable
 import de.sciss.lucre.{data, expr}
-import de.sciss.lucre.stm.{Identifiable, Mutable}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
-import scala.annotation.tailrec
 import scala.collection.mutable.{Set => MSet, Stack => MStack}
 
 object Topology {

@@ -319,8 +319,10 @@ object MutationImpl {
     }
   }
 
+  private[this] final val CHECK = false
+
   private def checkComplete[S <: Sys[S]](succ: Chromosome[S], message: => String)(implicit tx: S#Tx): Unit =
-    succ.vertices.iterator.foreach {
+    if (CHECK) succ.vertices.iterator.foreach {
       case v: Vertex.UGen[S] =>
         val inc = ChromosomeImpl.findIncompleteUGenInputs(succ, v)
         if (inc.nonEmpty) {

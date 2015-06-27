@@ -46,12 +46,17 @@ object Algorithm {
   val temporalWeight  : Double  = 0.3
   val vertexPenalty   : Double  = 0.01
 
+  val graphPenaltyIter: Int     = 10
+  val graphPenaltyAmt : Double  = 0.2
+  val graphPenaltyCoin: Double  = 0.25  // subsampling probability to increase speed (1 = all neighbors, 0.5 = every second)
+
   // ---- breeding ----
   val selectionFrac   : Double  = 0.33
   val numElitism      : Int     = 5
   val mutMin          : Int     = 2
   val mutMax          : Int     = 4
   val mutationProb    : Double  = 0.75
+  val numGolem        : Int     = 5
 
   implicit val executionContext: ExecutionContext = {
     ExecutionContext.Implicits.global
