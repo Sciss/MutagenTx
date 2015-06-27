@@ -216,12 +216,12 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
           checkAborted()
           simSum / simNum
         }
-        val minSim = sims.min
-        val maxSim = sims.max
+        val minSim = 0.0 // sims.min
+        val maxSim = Algorithm.graphPenaltyCeil // sims.max
         val fit1 = (fit0 zip sims).map { case (f, sim) =>
           import numbers.Implicits._
           val pen = sim.linlin(minSim, maxSim, 0.0, Algorithm.graphPenaltyAmt)
-          f * (1.0 - pen).toFloat
+          f * math.max(0.0f, (1.0 - pen).toFloat)
         }
 
         println("---- end   graph sim ----")

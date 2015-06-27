@@ -16,7 +16,6 @@ package impl
 
 import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.event.Sys
-import de.sciss.lucre.{confluent, stm}
 
 import scala.annotation.switch
 import scala.collection.immutable.{IndexedSeq => Vec}
@@ -37,6 +36,14 @@ object MutationImpl {
     val numVertices = vertices.size
     val idx         = random.nextInt(numVertices)
     val v           = vertices(idx)
+
+//    val GBMAN = v.isUGen && v.asInstanceOf[Vertex.UGen[S]].info.name == "GbmanL"
+//    val COUNT = vertices.iterator.toList.count(v => v.isUGen && v.asInstanceOf[Vertex.UGen[S]].info.name == "GbmanL")
+//    if (COUNT > 0) {
+//      val IDX = vertices.iterator.toList.indexWhere(v => v.isUGen && v.asInstanceOf[Vertex.UGen[S]].info.name == "GbmanL")
+//      println(s"REMOVE GbmanL? $GBMAN ($idx / $IDX). COUNT BEFORE = $COUNT")
+//    }
+
     val targets     = getTargets(top, v)
     top.removeVertex(v)
     targets.foreach { e =>
@@ -47,6 +54,12 @@ object MutationImpl {
     targets.foreach { case Edge(t: Vertex.UGen[S], _, _) =>
       ChromosomeImpl.completeUGenInputs[S](top, t)
     }
+
+//    if (GBMAN) {
+//      val COUNT = vertices.iterator.toList.count(v => v.isUGen && v.asInstanceOf[Vertex.UGen[S]].info.name == "GbmanL")
+//      println(s"COUNT AFTER = $COUNT")
+//    }
+
     v
   }
 
@@ -67,7 +80,9 @@ object MutationImpl {
         val mutationIter  = Util.rrand(Algorithm.mutMin, Algorithm.mutMax)
         require(mutationIter > 0)
         val success       = (false /: (1 to mutationIter)) { case (success0, iter) =>
-          val success1 = (random.nextInt(7): @switch) match {
+          val tpe = random.nextInt(7)
+          // val OLDNUM = chosen.vertices.size
+          val success1 = (tpe: @switch) match {
             case 0 => addVertex   (chosen)
             case 1 => removeVertex(chosen)
             case 2 => changeVertex(chosen)
@@ -76,6 +91,8 @@ object MutationImpl {
             case 5 => splitVertex (chosen)
             case 6 => mergeVertex (chosen)
           }
+          // println(s"BEFORE $tpe ($success1): $OLDNUM AFTER ${chosen.vertices.size}")
+
           success0 | success1 // i.e. at least one mutation was applied
         }
         success // if (success) Some(tx.newHandleM(chosen)) else None
@@ -103,7 +120,8 @@ object MutationImpl {
 
   private def addVertex[S <: Sys[S]](c: Chromosome[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     import Algorithm.maxNumVertices
-    if (c.vertices.size >= maxNumVertices) false else {
+    val numVertices = c.vertices.size
+    if (numVertices >= maxNumVertices) false else {
       ChromosomeImpl.addVertex[S](c)
       checkComplete(c, s"addVertex()")
       stats(0) += 1

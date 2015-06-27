@@ -47,6 +47,7 @@ object Algorithm {
   val vertexPenalty   : Double  = 0.01
 
   val graphPenaltyIter: Int     = 10
+  val graphPenaltyCeil: Double  = 0.275
   val graphPenaltyAmt : Double  = 0.2
   val graphPenaltyCoin: Double  = 0.25  // subsampling probability to increase speed (1 = all neighbors, 0.5 = every second)
 

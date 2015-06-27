@@ -3,7 +3,6 @@ package impl
 
 import de.sciss.lucre.data
 import de.sciss.lucre.event.Sys
-import de.sciss.lucre.{confluent, stm}
 import de.sciss.mutagentx.Util.coin
 
 import scala.annotation.tailrec
@@ -27,6 +26,9 @@ object CrossoverImpl {
 //        val chosen2 = chosen1H()
         val v1      = chosen1.vertices
         val v2      = chosen2.vertices
+
+        // val OLDNUM1 = v1.size
+        // val OLDNUM2 = v2.size
 
         val (pos1, pos2) = if (coin(0.8)) {   // XXX TODO -- make that a parameter
           val posRel  = random.nextFloat()
@@ -83,6 +85,8 @@ object CrossoverImpl {
 
         complete(c1, severedHeads1)
         complete(c2, severedHeads2)
+
+        // println(s"BEFORE CROSS: $OLDNUM1/$OLDNUM2 AFTER ${c1.vertices.size}/${c2.vertices.size}")
 
         if (DEBUG) {
           val s1 = s"p1 = (${v1.size}, ${chosen1.edges.size}), p2 = (${v2.size}, ${chosen2.edges.size})"
