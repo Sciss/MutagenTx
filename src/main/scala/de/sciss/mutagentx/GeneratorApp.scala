@@ -5,6 +5,7 @@ import java.awt.Color
 import com.alee.laf.WebLookAndFeel
 import com.alee.laf.checkbox.WebCheckBoxStyle
 import com.alee.laf.progressbar.WebProgressBarStyle
+import de.sciss.desktop.OptionPane
 import de.sciss.file._
 import de.sciss.kollflitz
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
@@ -202,17 +203,54 @@ trait GenApp[S <: Sys[S]] {
   val ggMedian  = mkNumView()
   val ggIter    = mkNumView()
 
+  type A <: Algorithm[S]
+
+  var algorithm = Option.empty[A]
+  var busy = Option.empty[Processor[Any]]
+
+  import Algorithm.executionContext
+
+  val ggRemoveUGen = Button("Remove UGen…") {
+    if (busy.isEmpty) algorithm.foreach { algo =>
+      OptionPane.textInput(message = "UGen Name:", initial = "GbmanL").show(None).foreach { ugenName =>
+        val proc = Processor[Int](s"Remove $ugenName") { self =>
+          val cursor = algo.global.cursor
+          val cs = cursor.step { implicit tx =>
+            algo.genome.chromosomes()
+          }
+          val numChromo = cs.size
+          val count = (0 /: cs.zipWithIndex) { case (countIn, (c, ci)) =>
+            val countOut = cursor.step { implicit tx =>
+              val these = c.vertices.iterator.collect {
+                case uv: Vertex.UGen[S] if uv.boxName == ugenName => uv
+              } .toIndexedSeq
+              import algo.global.rng
+              these.foreach(impl.MutationImpl.removeVertex2(c, _))
+              countIn + these.size
+            }
+            self.progress = (ci + 1).toDouble / numChromo
+            self.checkAborted()
+            countOut
+          }
+
+          count
+        }
+
+        setBusy(proc)
+        proc.onSuccess {
+          case count => println(s"Removed $count $ugenName UGens.")
+        }
+      }
+    }
+  }
+
   val pTop = new FlowPanel(
     new Label("Best:"  ), ggBest,
     new Label("Avg:"   ), ggAvg,
     new Label("Median:"), ggMedian,
-    new Label("Iter:"  ), ggIter
+    new Label("Iter:"  ), ggIter,
+    ggRemoveUGen
   )
-
-  type A <: Algorithm[S]
-
-  var algorithm = Option.empty[A]
-  import Algorithm.executionContext
 
   def updateStats(a: A): Unit = {
     val csr = a.global.cursor
@@ -234,7 +272,6 @@ trait GenApp[S <: Sys[S]] {
 //      }
 
   val ggProgress = new ProgressBar
-  var busy = Option.empty[Processor[Any]]
 
   val ggAbort = Button("X") {
     busy.foreach(_.abort())

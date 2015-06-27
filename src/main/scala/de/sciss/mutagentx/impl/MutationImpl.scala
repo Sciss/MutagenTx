@@ -36,31 +36,19 @@ object MutationImpl {
     val numVertices = vertices.size
     val idx         = random.nextInt(numVertices)
     val v           = vertices(idx)
+    removeVertex2(top, v)
+    v
+  }
 
-//    val GBMAN = v.isUGen && v.asInstanceOf[Vertex.UGen[S]].info.name == "GbmanL"
-//    val COUNT = vertices.iterator.toList.count(v => v.isUGen && v.asInstanceOf[Vertex.UGen[S]].info.name == "GbmanL")
-//    if (COUNT > 0) {
-//      val IDX = vertices.iterator.toList.indexWhere(v => v.isUGen && v.asInstanceOf[Vertex.UGen[S]].info.name == "GbmanL")
-//      println(s"REMOVE GbmanL? $GBMAN ($idx / $IDX). COUNT BEFORE = $COUNT")
-//    }
-
+  def removeVertex2[S <: Sys[S]](top: Chromosome[S], v: Vertex[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Unit = {
     val targets     = getTargets(top, v)
     top.removeVertex(v)
     targets.foreach { e =>
-      // val x = top2.removeEdge(e)
-      // assert(x ne top2)
       top.removeEdge(e)
     }
     targets.foreach { case Edge(t: Vertex.UGen[S], _, _) =>
       ChromosomeImpl.completeUGenInputs[S](top, t)
     }
-
-//    if (GBMAN) {
-//      val COUNT = vertices.iterator.toList.count(v => v.isUGen && v.asInstanceOf[Vertex.UGen[S]].info.name == "GbmanL")
-//      println(s"COUNT AFTER = $COUNT")
-//    }
-
-    v
   }
 
   /** Produces a sequence of `n` items by mutating the input `sq` selection.
