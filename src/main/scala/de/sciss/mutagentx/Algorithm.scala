@@ -53,7 +53,7 @@ object Algorithm {
 
   // ---- breeding ----
   val selectionFrac   : Double  = 0.33
-  val numElitism      : Int     = 5
+  val numElitism      : Int     = 0 // 5
   val mutMin          : Int     = 2
   val mutMax          : Int     = 4
   val mutationProb    : Double  = 0.75
