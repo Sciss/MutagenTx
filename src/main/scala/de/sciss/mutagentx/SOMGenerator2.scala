@@ -49,8 +49,8 @@ object SOMGenerator2 {
       opt[Int]("start")            text "start iteration"              action { (x, c) => c.copy(iterStart = x) }
       opt[Int]("end"  ) required() text "end iteration (inclusive)"    action { (x, c) => c.copy(iterEnd   = x) }
       opt[Int]("step" )            text "iteration step"               action { (x, c) => c.copy(iterStep  = x) }
-      opt[Unit]('s', "skip-missing") required() text "skip missing files" action { (_, c) => c.copy(skipMissing = true) }
-      opt[Unit]('a', "append") required() text "append to existing database" action { (_, c) => c.copy(append = true) }
+      opt[Unit]('s', "skip-missing") text "skip missing files"         action { (_, c) => c.copy(skipMissing = true) }
+      opt[Unit]('a', "append")     text "append to existing database"  action { (_, c) => c.copy(append = true) }
     }
     parser.parse(args, Config()).fold(sys.exit(1)) { cfg =>
       import cfg._
