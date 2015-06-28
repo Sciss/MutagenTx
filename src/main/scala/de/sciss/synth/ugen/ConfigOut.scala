@@ -32,7 +32,7 @@ final case class ConfigOut(in: GE) extends UGenSource.ZeroOut with WritesBus {
     }
     val bus = "out".kr(0f)
     val sig6 = if (!ConfigOut.PAN2) sig5 else Pan2.ar(sig5)
-    val sig  = if (!ConfigOut.AMP)  sig6 else sig6 * "amp".kr(1)
+    val sig  = if (!ConfigOut.AMP)  sig6 else sig6 * "amp".kr(1f)
     Out.ar(bus, sig)
   }
 }

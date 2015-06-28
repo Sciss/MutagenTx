@@ -1,5 +1,5 @@
 /*
- *  SOMGenerator.scala
+ *  SOMGenerator2.scala
  *  (MutagenTx)
  *
  *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
@@ -15,56 +15,50 @@ package de.sciss.mutagentx
 
 import java.util.concurrent.TimeUnit
 
-import de.sciss.dsp
 import de.sciss.file._
 import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.stm.Source
 import de.sciss.lucre.stm.store.BerkeleyDB
+import de.sciss.lucre.stm.{Source, TxnLike}
 import de.sciss.lucre.{expr, stm}
-import de.sciss.processor.{Processor, ProcessorOps}
+import de.sciss.mutagentx.SOMGenerator.Input
+import de.sciss.processor.Processor
 import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
-import de.sciss.synth.SynthGraph
-import de.sciss.synth.io.AudioFile
-import de.sciss.synth.proc.{Durable, SynthGraphs}
+import de.sciss.synth.impl.DefaultUGenGraphBuilderFactory
+import de.sciss.synth.io.{AudioFile, AudioFileSpec}
+import de.sciss.synth.proc.Durable
 import de.sciss.synth.ugen.ConfigOut
+import de.sciss.{dsp, numbers}
 
 import scala.concurrent.duration.Duration
+import scala.concurrent.stm.TxnExecutor
 import scala.concurrent.{Await, Future, blocking}
 import scala.util.Try
 
-/** SOMGenerator in Configuration Project. */
-object SOMGenerator extends App {
+/** SOMGenerator in Grenzwerte Project. */
+object SOMGenerator2 {
   type S = ConfluentReactive
   type D = Durable
 
-  run(name      = if (args.length > 0) args(0) else "betanovuss0",
-      audioName = if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
+  case class Config(dbName: String = "", audioName: String = "", iterStart: Int = 1, iterEnd: Int = 0,
+                    iterStep: Int = 1, skipMissing: Boolean = false, append: Boolean = false)
 
-  object Input {
-    implicit object serializer extends ImmutableSerializer[Input] {
-      private final val COOKIE = 0x496E7000 // "Inp\0"
-
-      def read(in: DataInput): Input = {
-        val cookie  = in.readInt()
-        if (cookie != COOKIE) throw new IllegalStateException(s"Expected cookie ${COOKIE.toHexString} but found ${cookie.toHexString}")
-        val graph   = SynthGraphs.ValueSerializer.read(in)
-        val iter    = in.readShort()
-        val fitness = in.readFloat()
-        Input(graph, iter = iter, fitness = fitness)
-      }
-
-      def write(input: Input, out: DataOutput): Unit = {
-        out.writeInt(COOKIE)
-        SynthGraphs.ValueSerializer.write(input.graph, out)
-        out.writeShort(input.iter)
-        out.writeFloat(input.fitness)
-      }
+  def main(args: Array[String]): Unit = {
+    val parser = new scopt.OptionParser[Config]("SOMGenerator2") {
+      opt[String]('d', "database") required() text "database name"     action { (x, c) => c.copy(dbName    = x) }
+      opt[String]('t', "target"  ) required() text "target audio name" action { (x, c) => c.copy(audioName = x) }
+      opt[Int]("start")            text "start iteration"              action { (x, c) => c.copy(iterStart = x) }
+      opt[Int]("end"  ) required() text "end iteration (inclusive)"    action { (x, c) => c.copy(iterEnd   = x) }
+      opt[Int]("step" )            text "iteration step"               action { (x, c) => c.copy(iterStep  = x) }
+      opt[Unit]('s', "skip-missing") required() text "skip missing files" action { (_, c) => c.copy(skipMissing = true) }
+      opt[Unit]('a', "append") required() text "append to existing database" action { (_, c) => c.copy(append = true) }
     }
-  }
-  case class Input(graph: SynthGraph, iter: Int, fitness: Float) {
-    override def toString = {
-      val fitS  = f"$fitness%1.3f"
-      s"Input(graph size = ${graph.sources.size}, iter = $iter, fitness = $fitS)"
+    parser.parse(args, Config()).fold(sys.exit(1)) { cfg =>
+      import cfg._
+      require(iterStart <= iterEnd, s"Iteration start $iterStart must not be greater than end $iterEnd")
+      require(iterStep > 0, s"Iteration step $iterStep must be greater than zero")
+
+      run(dbName = dbName, audioName = audioName, iterStart = iterStart, iterEnd = iterEnd, iterStep = iterStep,
+        skipMissing = skipMissing, append = append)
     }
   }
 
@@ -73,8 +67,10 @@ object SOMGenerator extends App {
   object SynthGraphDB {
     type Tpe = expr.List.Modifiable[D, expr.List.Modifiable[D, Node, Unit], Unit]
 
+    def mkDir(name: String): File = file("database") / s"${name}_def"
+
     def open(name: String): SynthGraphDB = {
-      val dir = file("database") / s"${name}_def"
+      val dir = mkDir(name)
       val dur = Durable(BerkeleyDB.factory(dir))
       implicit val listSer = expr.List.Modifiable.serializer[D, Node](Node.serializer)
       implicit val iterSer = expr.List.Modifiable.serializer[D, expr.List.Modifiable[D, Node, Unit]]
@@ -157,26 +153,21 @@ object SOMGenerator extends App {
   }
 
   // hashes: from previous iterations, prevents that multiple identical synth graphs appear
-  def analyzeIter(a: Algorithm.Confluent, path: S#Acc, hashes: Set[Int]): Future[(Vec[Node], Set[Int])] = {
-    val csr = a.global.forkCursor
+  def analyzeIter(dbName: String, inputFile: File, inputSpec: AudioFileSpec, iter: Int,
+                  hashes: Set[Int], skipMissing: Boolean): Future[(Vec[Node], Set[Int])] = {
     val futGraphs: Future[(Set[Int], Vec[Input])] = Future {
-      val res: (Set[Int], Vec[Input]) = csr.stepFrom(path) { implicit tx =>
-        val g     = a.genome
-        val cs    = g.chromosomes()
-        val fit   = g.fitness    ()
-        val iter  = tx.inputAccess.size / 2
-        val sel0  = (cs zip fit).filter(_._2 > 0.2)
-        println(s"No. of chromosomes fit enough: ${sel0.size}")
-        val sel   = sel0 // .take(50) // for now
-        val res0 = ((hashes, Vec.empty[Input]) /: sel) { case ((hashesIn, inputsIn), (c, f)) =>
-          val gr    = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true)
-          val hash  = gr.hashCode()
-          if (hashesIn.contains(hash)) (hashesIn, inputsIn) else {
-            val input = new Input(gr, iter = iter, fitness = f)
-            (hashesIn + hash, inputsIn :+ input)
-          }
+      val dir     = file("database") / dbName
+      val f       = dir.parent / s"${dir.name}_iter$iter.bin"
+      val inputs = if (skipMissing && !f.isFile) Vec.empty[Input] else IterPlayback.open(f)
+
+      val res = ((hashes, Vec.empty[Input]) /: inputs) { case ((hashesIn, inputsIn), in) =>
+        val graph = in.graph
+        val ug    = graph.expand(DefaultUGenGraphBuilderFactory)
+        val hash  = ug.hashCode()
+        if (hashesIn.contains(hash)) (hashesIn, inputsIn) else {
+          val input = new Input(graph, iter = in.iter, fitness = in.fitness)
+          (hashesIn + hash, inputsIn :+ input)
         }
-        res0
       }
       res
     }
@@ -196,8 +187,8 @@ object SOMGenerator extends App {
       val (hashesOut, graphs) = Await.result(futGraphs, Duration.Inf)
       val numGraphs = graphs.size
       val nodes = graphs.zipWithIndex.flatMap { case (input, gIdx) =>
-        val f         = File.createTemp(suffix = ".aif")
-        val futBounce = impl.EvaluationImpl.bounce(input.graph, audioF = f, inputSpec = a.inputSpec)
+        val bounceF   = File.createTemp(suffix = ".aif")
+        val futBounce = impl.EvaluationImpl.bounce(input.graph, audioF = bounceF, inputSpec = inputSpec)
         val resBounce = Try(Await.result(futBounce, Duration(20, TimeUnit.SECONDS)))
 
         if (resBounce.isFailure) {
@@ -208,7 +199,7 @@ object SOMGenerator extends App {
           import Util._
 
           blocking {
-            val af = AudioFile.openRead(f)
+            val af = AudioFile.openRead(bounceF)
             // if (gIdx == 29) {
             //   println("AQUI")
             // }
@@ -263,7 +254,7 @@ object SOMGenerator extends App {
               }
             } finally {
               af.cleanUp()
-              f.delete()
+              bounceF.delete()
             }
           }
         }
@@ -272,42 +263,50 @@ object SOMGenerator extends App {
     }
     val futWeights = Processor[(Vec[Node], Set[Int])]("Weights")(futWeightsFun)
 
-      futWeights
+    futWeights
   }
 
-  def run(name: String, audioName: String): Unit = {
-    ConfigOut.NORMALIZE = true // yukk
+  def run(dbName: String, audioName: String, iterStart: Int, iterEnd: Int, iterStep: Int, skipMissing: Boolean,
+          append: Boolean): Unit = {
+    // ConfigOut.NORMALIZE = true
+    ConfigOut.LIMITER   = true
+    ConfigOut.AMP       = true
 
-    val dir   = file("database"  ) / name
-    val in    = file("audio_work") / audioName // (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
-    val store = dir.parent / s"${dir.name}_def"
-    if (store.isDirectory) {
+    val store = SynthGraphDB.mkDir(dbName)
+    if (!append && store.isDirectory) {
       println(s"Directory $store already exists. Not regenerating.")
       return
     }
 
-    val a       = Algorithm.confluent(dir = dir, input = in)
-    val csr     = a.global.cursor
-    val path    = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
-    val numIter = path.size / 2
-
-    val graphDB = SynthGraphDB.open(name)
+    val graphDB = SynthGraphDB.open(dbName)
     import graphDB.{handle => iterListH, system => dur}
 
+    val audioInput  = file("audio_work") / audioName
+
     val proc = Processor[Unit]("gen-def") { self =>
+      val specFut     = TxnExecutor.defaultAtomic { implicit itx =>
+        implicit val tx = TxnLike.wrap(itx)
+        impl.EvaluationImpl.getInputSpec(audioInput)
+      }
+      val (inputFile, inputSpec) = Await.result(specFut, Duration.Inf)
+
       var hashes = Set.empty[Int]
-      for (i <- 1 to numIter) {
-        println(s"-------- GENERATING SYNTH DEFS FOR ITERATION $i of $numIter --------")
-        val fut = analyzeIter(a, path.take(i * 2), hashes)
+      for (iter <- iterStart to iterEnd by iterStep) {
+        import numbers.Implicits._
+        val targetProg = iter.linlin(iterStart, iterEnd, 0, 1)
+        println(f"-------- GENERATING SYNTH DEFS FOR ITERATION $iter (-> ${targetProg * 100}%1.1f%%) --------")
+        val fut = analyzeIter(dbName = dbName, inputFile = inputFile, inputSpec = inputSpec,
+          iter = iter, hashes = hashes, skipMissing = skipMissing)
         val (inputs: Vec[Node], hashesOut: Set[Int]) = Await.result(fut, Duration.Inf)
         hashes = hashesOut
+        println(s"...produced ${inputs.size} graphs (hash set now has size ${hashes.size}")
         dur.step { implicit tx =>
           val iterList = iterListH()
           val defList  = expr.List.Modifiable[D, Node]
           inputs.foreach(defList.addLast)
           iterList.addLast(defList)
         }
-        self.progress = i.toDouble / numIter
+        self.progress = targetProg
         self.checkAborted()
       }
     }
@@ -317,7 +316,7 @@ object SOMGenerator extends App {
       start()
     }
 
-    proc.monitor()
+    // proc.monitor()
     proc.onFailure {
       case ex =>
         println("synth def database generation failed:")

@@ -13,17 +13,16 @@
 
 package de.sciss.mutagentx
 
-import javax.swing.{JTable, DefaultRowSorter, UIManager, SpinnerNumberModel}
 import javax.swing.event.TableModelListener
-import javax.swing.table.{TableModel, TableRowSorter, DefaultTableModel}
+import javax.swing.table.TableModel
+import javax.swing.{JTable, SpinnerNumberModel}
 
 import com.alee.laf.WebLookAndFeel
 import de.sciss.audiowidgets.Transport
-import de.sciss.mutagentx.impl.EvaluationImpl
-import de.sciss.{processor, numbers, kollflitz, desktop, pdflitz}
 import de.sciss.desktop.{DialogSource, FileDialog, FocusType, KeyStrokes, OptionPane}
 import de.sciss.file._
 import de.sciss.lucre.swing.defer
+import de.sciss.mutagentx.impl.EvaluationImpl
 import de.sciss.serial.DataInput
 import de.sciss.swingplus.{DoClickAction, Spinner}
 import de.sciss.synth.impl.DefaultUGenGraphBuilderFactory
@@ -31,13 +30,13 @@ import de.sciss.synth.io.{AudioFile, AudioFileSpec}
 import de.sciss.synth.swing.ServerStatusPanel
 import de.sciss.synth.ugen.ConfigOut
 import de.sciss.synth.{Server, ServerConnection, Synth, SynthDef, SynthGraph}
+import de.sciss.{desktop, kollflitz, numbers, pdflitz, processor}
 import org.jfree.chart.ChartPanel
 
-import scala.annotation.switch
 import scala.collection.breakOut
 import scala.concurrent.{Future, blocking}
 import scala.swing.event.Key
-import scala.swing.{Component, Frame, BorderPanel, Button, FlowPanel, Label, MainFrame, ScrollPane, Swing, Table}
+import scala.swing.{BorderPanel, Button, Component, FlowPanel, Frame, Label, MainFrame, ScrollPane, Swing, Table}
 import scala.util.{Failure, Success, Try}
 
 object IterPlayback {
@@ -68,27 +67,27 @@ object IterPlayback {
     }
   }
 
+  def open(f: File): Vec[SOMGenerator.Input] = {
+    val in = DataInput.open(f)
+    try {
+      val b   = Vec.newBuilder[SOMGenerator.Input]
+      val ser = SOMGenerator.Input.serializer
+      while (in.position < in.size) {
+        val input = ser.read(in)
+        b += input
+      }
+      b.result()
+    } finally {
+      in.close()
+    }
+  }
+
   def guiInit(inputFile: File, inputSpec: AudioFileSpec): Unit = {
     var synthOpt      = List.empty[Synth]
     var synthGraphOpt = Option.empty[SynthGraph]
     var lastFile      = Option.empty[File]
     var graphs        = Vec.empty[SOMGenerator.Input]
     var busy          = Option.empty[Future[Any]]
-
-    def open(f: File): Vec[SOMGenerator.Input] = {
-      val in = DataInput.open(f)
-      try {
-        val b   = Vec.newBuilder[SOMGenerator.Input]
-        val ser = SOMGenerator.Input.serializer
-        while (in.position < in.size) {
-          val input = ser.read(in)
-          b += input
-        }
-        b.result()
-      } finally {
-        in.close()
-      }
-    }
 
     val ggTable   = new Table() {
       override lazy val peer: JTable = new JTable /* with Table.JTableMixin */ with SuperMixin
