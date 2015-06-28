@@ -1,3 +1,16 @@
+/*
+ *  SOMQuadTree.scala
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 
 import java.util.concurrent.TimeUnit
@@ -21,21 +34,39 @@ import de.sciss.synth.swing.ServerStatusPanel
 import de.sciss.{kollflitz, numbers}
 
 import scala.annotation.tailrec
+import scala.collection.breakOut
 import scala.concurrent.duration.Duration
 import scala.concurrent.{TimeoutException, Await, Future, blocking}
 import scala.swing.event.MousePressed
 import scala.swing.{Button, BorderPanel, FlowPanel, Component, MainFrame, Swing}
 import scala.util.Try
 
-object SOMQuadTree extends App {
-  def numCoeff  : Int   = 13
+object SOMQuadTree {
+  case class Config(dbName: String = "", numCoeff: Int = 13, extent: Int = 256, gridStep: Int = 1,
+                    maxNodes: Int = 16384)
 
-  def extent    : Int   = 256 // 16384
-  def gridStep  : Int   = 1 // 64 // 32 // 16
-
-  def MAX_NODES : Int   = 16384
-
-  run(args.headOption.getOrElse("betanovuss0"))
+  def main(args: Array[String]): Unit = {
+    val parser = new scopt.OptionParser[Config]("SOMQuadTree") {
+      opt[String]('d', "database") required() text "database name"     action { (x, c) => c.copy(dbName    = x) }
+      opt[Int]('c', "coeffs")      text "number of coefficients"       action {
+        (x, c) => c.copy(numCoeff  = x) } validate { x =>
+          if (x >= 13 && x <= 42) success else failure("13 <= coeffs <= 42")
+        }
+      opt[Int]('e', "extent")      text "quadtree extent (half-side)"  action {
+        (x, c) => c.copy(extent    = x) } validate { x =>
+          if (x >= 16 && x <= 32768) success else failure("16 <= extent <= 32768")
+        }
+      opt[Int]('g', "grid" )       text "grid step"                    action {
+        (x, c) => c.copy(gridStep  = x) } validate { x =>
+          if (x >= 1 && x <= 32768) success else failure("1 <= grid <= 32768")
+        }
+      opt[Int]('m', "max-nodes")   text "maximum nodes (0 for no limit)" action {
+        (x, c) => c.copy(maxNodes = x) } validate { x =>
+          if (x >= 0) success else failure("max-nodes >= 0")
+        }
+    }
+    parser.parse(args, Config()).fold(sys.exit(1))(run)
+  }
 
   import Algorithm.executionContext
 
@@ -75,8 +106,9 @@ object SOMQuadTree extends App {
   object QuadGraphDB {
     type Tpe = DeterministicSkipOctree[D, Dim, PlacedNode]
 
-    def open(name: String): QuadGraphDB = {
-      val somDir = file("database") / s"${name}_som"
+    def open(config: Config): QuadGraphDB = {
+      import config._
+      val somDir = file("database") / s"${dbName}_som"
       implicit val dur  = Durable(BerkeleyDB.factory(somDir))
       implicit val pointView = (n: PlacedNode, tx: D#Tx) => n.coord
       implicit val octreeSer = DeterministicSkipOctree.serializer[D, Dim, PlacedNode]
@@ -95,20 +127,22 @@ object SOMQuadTree extends App {
     val handle: stm.Source[D#Tx, QuadGraphDB.Tpe]
   }
 
-  def run(name: String): Unit = {
-    val somDir = file("database") / s"${name}_som"
+  def run(config: Config): Unit = {
+    import config._
+
+    val somDir = file("database") / s"${dbName}_som"
     if (somDir.isDirectory) {
       println(s"Directory $somDir already exists. Not regenerating.")
-      val db = QuadGraphDB.open(name)
+      val db = QuadGraphDB.open(config)
       import db.system
-      Swing.onEDT(guiInit[D](db.handle))
+      Swing.onEDT(guiInit[D](db.handle, config))
       return
     }
 
-    val stat = SOMMinMax.read(name)
+    val stat = SOMMinMax.read(dbName)
 
     val placedNodesFut = Processor[Vec[PlacedNode]]("lattice") { self =>
-      val graphDB = SynthGraphDB.open(name)
+      val graphDB = SynthGraphDB.open(dbName)
       val nodes: Vec[Node] = blocking {
         import graphDB._
         system.step { implicit tx =>
@@ -156,11 +190,12 @@ object SOMQuadTree extends App {
         new Weight(spectral, temporal)
       }
 
+      // _not_ sqrt any longer -- since we don't need it to find the NN
       def weightDist(w1: Weight, w2: Weight): Double = {
         // def norm(v: Array[Double], min: Array[Double], max: Array[Double]): Vec[Double] =
         //  (0 until v.length).map { i => v(i).linlin(min(i), max(i), 0, 1) }
 
-        def sqrDifSumSqrt(a: Array[Double], b: Array[Double]): Double = {
+        def sqrDifSum /* Sqrt */(a: Array[Double], b: Array[Double]): Double = {
           var i = 0
           var sum = 0.0
           while (i < a.length) {
@@ -168,30 +203,48 @@ object SOMQuadTree extends App {
             sum += d * d
             i += 1
           }
-          math.sqrt(sum)
+          sum // math.sqrt(sum)
         }
 
         val w1sn = w1.spectral // norm(w1.spectral, featSpecMin, featSpecMax)
         val w2sn = w2.spectral // norm(w2.spectral, featSpecMin, featSpecMax)
-        val spectDist = sqrDifSumSqrt(w1sn, w2sn) // (w1sn zip w2sn).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
+        val spectDist = sqrDifSum /* Sqrt */(w1sn, w2sn) // (w1sn zip w2sn).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
 
         val w1tn = w1.temporal // norm(w1.temporal, featTempMin, featTempMax)
         val w2tn = w2.temporal // norm(w2.temporal, featTempMin, featTempMax)
-        val tempDist = sqrDifSumSqrt(w1tn, w2tn) // (w1tn zip w2tn).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
+        val tempDist = sqrDifSum /* Sqrt */(w1tn, w2tn) // (w1tn zip w2tn).map { tup => (tup._1 - tup._2).squared } .sum.sqrt
 
-        (spectDist + tempDist) / 2
+        spectDist + tempDist // / 2
       }
 
       def coordDist(n1: Coord, n2: Coord): Double =
         math.sqrt((n1.x - n2.x).squared + (n1.y - n2.y).squared) // Euclidean distance
 
-      val trainingSet   : Array[Node]     = nodes.scramble().take(MAX_NODES).toArray
+      def coordDistSqr(n1: Coord, n2: Coord): Double = {
+        val dx = n1.x - n2.x
+        val dy = n1.y - n2.y
+        dx * dx + dy * dy
+      }
+
+      val trainingSet: Array[Node] = {
+        if (maxNodes == 0 || maxNodes >= nodes.size) nodes.scramble()(rnd, breakOut) else {
+          val sc = nodes.scramble()
+          val arr = new Array[Node](maxNodes)
+          sc.copyToArray(arr, 0, maxNodes)
+          arr
+        }
+      }
+
       println(s"Input ${nodes.length} nodes. Training with ${trainingSet.length} items.")
       val numIterations : Int             = trainingSet.length // * 4
       val mapRadius     : Double          = extent
+      val mapRadiusSqr  : Double          = mapRadius * mapRadius
       val timeConstant  : Double          = numIterations / math.log(mapRadius)
+      val timeConstant2 : Double          = timeConstant / 2
 
       def neighbourhoodRadius(iter: Double) = mapRadius * math.exp(-iter / timeConstant)
+
+      def neighbourhoodRadiusSqr(iter: Double) = mapRadiusSqr * math.exp(-iter / timeConstant2)
 
       def mkLattice(): Lattice = {
         val nodes = for {
@@ -222,28 +275,40 @@ object SOMQuadTree extends App {
           }
           i += 1
         }
-        require(bestNode != null)
+        if (bestNode == null) throw new IllegalStateException
         bestNode
       }
 
       def bmuNeighbours(radius: Double, bmu: PlacedWeight, lattice: Lattice): Iterator[Dist] =
         lattice.nodes.iterator.map(n => Dist(n, coordDist(n.coord, bmu.coord))).filter(_.radius <= radius)
 
+      def bmuNeighboursSqr(radiusSqr: Double, bmu: PlacedWeight, lattice: Lattice): Iterator[Dist] =
+        lattice.nodes.iterator.map(n => Dist(n, coordDistSqr(n.coord, bmu.coord))).filter(_.radius <= radiusSqr)
+
       def learningRate(iter: Double): Double =
         0.072 * math.exp(-iter / numIterations) // decays over time
 
-      def theta(d2bmu: Double, radius: Double): Double =
-        math.exp(-d2bmu.squared / (2 * radius.squared)) // learning proportional to distance
+      def theta(d2bmu: Double, radius: Double): Double = {
+        val s1 = d2bmu*d2bmu
+        val s2 = radius*radius
+        math.exp(-s1 / (2 * s2)) // learning proportional to distance
+      }
+
+      def thetaSqr(d2bmuSqr: Double, radiusSqr: Double): Double = {
+        math.exp(-d2bmuSqr / (2 * radiusSqr)) // learning proportional to distance
+      }
 
       def adjust(input: Weight, weight: Weight, learningRate: Double, theta: Double): Unit = {
+        val lt = learningRate * theta
+
         @inline def perform(iW: Double, nW: Double): Double =
-          nW + learningRate * theta * (iW - nW)
+          nW + lt * (iW - nW)
 
         // val spectralNew = (input.weight.spectral, weight.spectral).zipped.map(perform)
         // val temporalNew = (input.weight.temporal, weight.temporal).zipped.map(perform)
         // input.replaceWeight(Weight(spectralNew, temporalNew))
 
-        @inline def performA(ia: Array[Double], wa: Array[Double]): Unit = {
+        def performA(ia: Array[Double], wa: Array[Double]): Unit = {
           var i = 0
           while (i < ia.length) {
             wa(i) = perform(ia(i), wa(i))
@@ -259,13 +324,12 @@ object SOMQuadTree extends App {
         // if (iter % 100 == 0) println(s"---- iter $iter")
         val randomInput   = trainingSet(iter % trainingSet.length) // .choose()
         val bmuNode       = bmu(randomInput.weight)
-        val radius        = neighbourhoodRadius(iter)
-        val inNodeIter    = bmuNeighbours(radius, bmuNode, lattice)
+        val radiusSqr     = neighbourhoodRadiusSqr(iter)
+        val inNodeIter    = bmuNeighboursSqr(radiusSqr, bmuNode, lattice)
         val lRate         = learningRate(iter)
-        val inNodeB = Vector.newBuilder[Dist]
-        inNodeIter.foreach(inNodeB += _)
-        inNodeB.result().par.foreach { dist =>
-          val tTheta  = theta(dist.radius, radius)
+        val inNodeB       = inNodeIter.toVector
+        inNodeB.par.foreach { dist =>
+          val tTheta = thetaSqr(dist.radius, radiusSqr)
           adjust(randomInput.weight, dist.node.weight, lRate, tTheta)
         }
 
@@ -315,7 +379,26 @@ object SOMQuadTree extends App {
 
     // futWeights.monitor(printResult = false)
 
-    placedNodesFut.monitor(printResult = false)
+    // println("_" * 33)
+    // placedNodesFut.monitor(printResult = false)
+    // var lastProgS   = 0
+    val firstProgT  = System.currentTimeMillis()
+    // var lastProgT   = 0L
+    placedNodesFut.addListener {
+      case p @ Processor.Progress(_, _) =>
+        val t = System.currentTimeMillis()
+        val ps = p.toInt
+        // if (lastProgS != ps || t - lastProgT > 60000) {
+        //  lastProgS = ps
+        //  lastProgT = t
+          val est = (((t - firstProgT) * 0.1) / ps).toInt
+          val hour  = est / 3600
+          val min   = (est / 60) % 60
+          val sec   = est % 60
+          println(f"progress: $ps -- remaining $hour%02d:$min%02d:$sec%02d")
+        // }
+    }
+
     placedNodesFut.onFailure {
       case ex =>
         println("lattice generation failed:")
@@ -325,13 +408,13 @@ object SOMQuadTree extends App {
     placedNodesFut.onSuccess { case nodes =>
       println(s"Number of nodes: ${nodes.length}")
 
-      val db = QuadGraphDB.open(name)
+      val db = QuadGraphDB.open(config)
       import db.system
       system.step { implicit tx =>
         val quad = db.handle()
         nodes.foreach(quad.add)
       }
-      Swing.onEDT(guiInit[D](db.handle))
+      Swing.onEDT(guiInit[D](db.handle, config))
     }
 
     new Thread {
@@ -340,7 +423,7 @@ object SOMQuadTree extends App {
     }
   }
 
-  def guiInit[R <: Sys[R]](quadH: stm.Source[R#Tx, DeterministicSkipOctree[R, Dim, PlacedNode]])
+  def guiInit[R <: Sys[R]](quadH: stm.Source[R#Tx, DeterministicSkipOctree[R, Dim, PlacedNode]], config: Config)
                           (implicit cursor: stm.Cursor[R]): Unit = {
 
     var synthOpt      = Option.empty[Synth]
@@ -349,7 +432,7 @@ object SOMQuadTree extends App {
     import de.sciss.synth.Ops._
 
     val quadView = new SkipQuadtreeView[R, PlacedNode](quadH, cursor, _.coord)
-    quadView.scale = 1.4
+    quadView.scale = 1.4 * 256 / config.extent
 
     def stopSynth(): Unit = synthOpt.foreach { synth =>
       synthOpt = None
@@ -412,8 +495,8 @@ object SOMQuadTree extends App {
     quadComp.reactions += {
       case MousePressed(_, pt, mod, clicks, _) =>
         import numbers.Implicits._
-        val x = ((pt.x - insets.left) / quadView.scale + 0.5).toInt.clip(0, extent << 1)
-        val y = ((pt.y - insets.top ) / quadView.scale + 0.5).toInt.clip(0, extent << 1)
+        val x = ((pt.x - insets.left) / quadView.scale + 0.5).toInt.clip(0, config.extent << 1)
+        val y = ((pt.y - insets.top ) / quadView.scale + 0.5).toInt.clip(0, config.extent << 1)
 
         val nodeOpt = cursor.step { implicit tx =>
           val q = quadH()
@@ -421,7 +504,7 @@ object SOMQuadTree extends App {
         }
         nodeOpt.foreach { node =>
           // println(node.node.input.graph)
-          // --- the hightlight doesn't seem to be working,
+          // --- the highlight doesn't seem to be working,
           // probably because SynthGraph is not equal to itself after de-serialization?
           quadView.highlight = Set(node)
           quadView.repaint()
