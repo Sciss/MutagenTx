@@ -102,7 +102,7 @@ object SOMGenerator2 {
 
       def write(node: Node, out: DataOutput): Unit = {
         out.writeInt(COOKIE)
-        Input.serializer.write(node.input, out)
+        Input .serializer.write(node.input , out)
         Weight.serializer.write(node.weight, out)
       }
     }
