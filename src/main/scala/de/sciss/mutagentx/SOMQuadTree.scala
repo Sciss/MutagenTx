@@ -28,6 +28,7 @@ import de.sciss.mutagentx.SOMGenerator._
 import de.sciss.processor.Processor
 import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
 import de.sciss.synth.impl.DefaultUGenGraphBuilderFactory
+import de.sciss.synth.ugen.ConfigOut
 import de.sciss.synth.{SynthGraph, Synth, SynthDef, Server, ServerConnection}
 import de.sciss.synth.proc.Durable
 import de.sciss.synth.swing.ServerStatusPanel
@@ -425,6 +426,8 @@ object SOMQuadTree {
 
   def guiInit[R <: Sys[R]](quadH: stm.Source[R#Tx, DeterministicSkipOctree[R, Dim, PlacedNode]], config: Config)
                           (implicit cursor: stm.Cursor[R]): Unit = {
+    ConfigOut.LIMITER   = true
+    ConfigOut.PAN2      = true
 
     var synthOpt      = Option.empty[Synth]
     var synthGraphOpt = Option.empty[SynthGraph]
@@ -436,7 +439,7 @@ object SOMQuadTree {
 
     def stopSynth(): Unit = synthOpt.foreach { synth =>
       synthOpt = None
-      if (synth.server.isRunning) synth.release(3.0) // free()
+      if (synth.server.isRunning) synth.free() // release(3.0) // free()
     }
     def playSynth(): Unit = {
       stopSynth()
@@ -446,7 +449,7 @@ object SOMQuadTree {
       } {
         val graph = node.node.input.graph // node.chromosome.graph
         val df    = SynthDef("test", graph.expand(DefaultUGenGraphBuilderFactory))
-        val x     = df.play(s, args = Seq("out" -> 1))
+        val x     = df.play(s, args = Seq("out" -> 0))
         synthOpt      = Some(x)
         synthGraphOpt = Some(graph)
       }
