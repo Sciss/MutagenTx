@@ -107,13 +107,15 @@ object SOMQuadTree {
   object QuadGraphDB {
     type Tpe = DeterministicSkipOctree[D, Dim, PlacedNode]
 
-    def open(config: Config): QuadGraphDB = {
+    def open(config: Config): QuadGraphDB = open(config, somDir = mkDir(config.dbName))
+
+    def open(config: Config, somDir: File): QuadGraphDB = {
       import config._
-      val somDir = file("database") / s"${dbName}_som"
       implicit val dur  = Durable(BerkeleyDB.factory(somDir))
       implicit val pointView = (n: PlacedNode, tx: D#Tx) => n.coord
       implicit val octreeSer = DeterministicSkipOctree.serializer[D, Dim, PlacedNode]
       val quadH = dur.root { implicit tx =>
+        println("Creating empty quad-tree.")
         DeterministicSkipOctree.empty[D, Dim, PlacedNode](IntSquare(extent, extent, extent))
       }
 
@@ -122,6 +124,9 @@ object SOMQuadTree {
         val handle: stm.Source[D#Tx, Tpe] = quadH
       }
     }
+
+    /** Creates the correct database directory name for a given logical name. */
+    def mkDir(name: String): File = file("database") / s"${name}_som"
   }
   trait QuadGraphDB {
     implicit val system: D
