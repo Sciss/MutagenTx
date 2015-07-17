@@ -1,6 +1,6 @@
 name               := "MutagenTx"
 
-version            := "0.1.1-SNAPSHOT"
+version            := "0.2.0"
 
 organization       := "de.sciss"
 
@@ -21,13 +21,13 @@ fork in run := true
 // ---- main dependencies ----
 
 lazy val lucreSTMVersion            = "2.1.2"
-lazy val lucreDataVersion           = "2.3.2"
-lazy val lucreEventVersion          = "2.7.4"
-lazy val lucreConfluentVersion      = "2.11.1"
-lazy val scalaColliderUGensVersion  = "1.13.1"
-lazy val scalaColliderVersion       = "1.17.2"
-lazy val scalaColliderSwingVersion  = "1.25.1"
-lazy val soundProcessesVersion      = "2.20.0-SNAPSHOT"
+lazy val lucreDataVersion           = "2.3.3"
+lazy val lucreEventVersion          = "2.7.5"
+lazy val lucreConfluentVersion      = "2.11.3"
+lazy val scalaColliderUGensVersion  = "1.13.3"
+lazy val scalaColliderVersion       = "1.17.3"
+lazy val scalaColliderSwingVersion  = "1.25.2"
+lazy val soundProcessesVersion      = "2.21.1"
 lazy val strugatzkiVersion          = "2.9.0"
 lazy val fileUtilVersion            = "1.1.1"
 lazy val prefuseVersion             = "1.0.0"
