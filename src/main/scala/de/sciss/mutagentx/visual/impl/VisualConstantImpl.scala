@@ -15,7 +15,7 @@ object VisualConstantImpl {
 
   def apply[S <: Sys[S]](_main: Visual[S], v: Vertex.Constant[S])(implicit tx: S#Tx): VisualConstant[S] =
     new VisualConstant[S] with VisualVertexImpl[S] {
-      private var _value = v.f()
+      private var _value: Float = v.f()
       private var _targetValue = _value
 
       val main  = _main
@@ -29,14 +29,23 @@ object VisualConstantImpl {
 
       private def mkName(): Unit = _name = {
         val mathContext = new MathContext(6, RoundingMode.DOWN)
-        val bigDecimal = BigDecimal(_value.toDouble, mathContext)
-        bigDecimal.bigDecimal.toPlainString
+        if (_value == java.lang.Float.POSITIVE_INFINITY) "inf"
+        else if (_value == java.lang.Float.NEGATIVE_INFINITY) "-inf"
+        else if (_value.isNaN) "NaN" else {
+          val bigDecimal = BigDecimal(_value.toDouble, mathContext)
+          bigDecimal.bigDecimal.toPlainString
+        }
       }
 
       mkName()
 
-      val ctx = tx.asInstanceOf[ConfluentReactive.Txn]  // XXX TODO
-      val active = Ref(ctx.inputAccess.term.toInt)
+      val active = Ref[Int]({
+          tx match {
+            case ctx: ConfluentReactive.Txn =>
+              ctx.inputAccess.term.toInt
+            case _ => 0
+          }
+        })
 
       override def toString = s"VisualConstant($value)@${hashCode.toHexString}"
 

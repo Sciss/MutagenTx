@@ -19,8 +19,13 @@ object VisualUGenImpl {
 
       val main  = _main
 
-      val ctx = tx.asInstanceOf[ConfluentReactive.Txn]  // XXX TODO
-      val active = Ref(ctx.inputAccess.term.toInt)
+      val active = Ref[Int]({
+        tx match {
+          case ctx: ConfluentReactive.Txn =>
+            ctx.inputAccess.term.toInt
+          case _ => 0
+        }
+      })
 
       override def toString = s"VisualUGen($name)@${hashCode.toHexString}"
 
