@@ -2,10 +2,10 @@ package de.sciss.mutagentx
 package visual
 package impl
 
-import java.awt.geom.{AffineTransform, GeneralPath, Ellipse2D, Rectangle2D, Line2D, Arc2D}
-import java.awt.{Font, Shape, BasicStroke, Color}
+import java.awt.geom.{AffineTransform, Arc2D, Ellipse2D, GeneralPath, Line2D, Rectangle2D}
+import java.awt.{BasicStroke, Color, Font, Shape}
 
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.Sys
 import prefuse.data.{Node => PNode}
 import prefuse.render.Renderer
 import prefuse.util.ColorLib

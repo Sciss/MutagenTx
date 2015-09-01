@@ -4,7 +4,7 @@ package visual
 import java.awt.Shape
 import java.awt.geom.Ellipse2D
 
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.Sys
 import prefuse.render.AbstractShapeRenderer
 import prefuse.visual.VisualItem
 

@@ -2,13 +2,12 @@ package de.sciss.mutagentx
 package visual
 
 import de.sciss.file._
-import de.sciss.lucre.event.Sys
-import de.sciss.lucre.stm.TxnLike
+import de.sciss.lucre.stm.{Sys, TxnLike}
 import de.sciss.lucre.swing.View
 import de.sciss.processor.Processor
 import prefuse.data.{Graph => PGraph}
 import prefuse.visual.VisualGraph
-import prefuse.{Visualization, Display}
+import prefuse.{Display, Visualization}
 
 trait VisualLike[S <: Sys[S]] extends View[S] {
   def display: Display

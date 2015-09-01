@@ -15,7 +15,7 @@ package de.sciss.mutagentx
 package visual
 package impl
 
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.Sys
 import prefuse.data.{Edge => PEdge}
 
 import scala.concurrent.stm.Ref

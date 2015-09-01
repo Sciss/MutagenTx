@@ -2,11 +2,11 @@ package de.sciss.mutagentx
 package visual
 package impl
 
-import java.awt.geom.{Line2D, Rectangle2D}
-import java.awt.{BasicStroke, FontMetrics, Color, Graphics2D, Shape}
+import java.awt.geom.Rectangle2D
+import java.awt.{BasicStroke, Color, FontMetrics, Graphics2D, Shape}
 
-import de.sciss.lucre.event.Sys
-import prefuse.render.{Renderer, AbstractShapeRenderer}
+import de.sciss.lucre.stm.Sys
+import prefuse.render.{AbstractShapeRenderer, Renderer}
 import prefuse.util.ColorLib
 import prefuse.visual.VisualItem
 

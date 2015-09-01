@@ -5,13 +5,13 @@ import java.text.SimpleDateFormat
 import java.util.{Date, Locale}
 
 import de.sciss.file._
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.Sys
 import de.sciss.processor.Processor
 import prefuse.util.ui.JForcePanel
 
 import scala.swing.Swing._
 import scala.swing.event.ButtonClicked
-import scala.swing.{Component, Orientation, SplitPane, BorderPanel, Button, FlowPanel, Frame, ProgressBar, Swing, ToggleButton}
+import scala.swing.{BorderPanel, Button, Component, FlowPanel, Frame, Orientation, ProgressBar, SplitPane, Swing, ToggleButton}
 import scala.util.{Failure, Success}
 
 object VertexApp extends App {

@@ -1,7 +1,7 @@
 package de.sciss.mutagentx
 
 import de.sciss.file._
-import de.sciss.lucre.{event => evt}
+import de.sciss.lucre.{event => evt, stm}
 
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
@@ -43,7 +43,7 @@ object CleanDB extends App {
     var lastProg = 0
     println("_" * 50)
     val genomeOut = genomeIn.zipWithIndex.map { case (c, idx) =>
-      val res = impl.CopyingAlgorithm.mkCopyT[evt.Durable, evt.Durable](c, cs, ct)
+      val res = impl.CopyingAlgorithm.mkCopyT[stm.Durable, stm.Durable](c, cs, ct)
       val prog = ((idx + 1) * 50) / genomeIn.size
       while (lastProg < prog) {
         print('#')

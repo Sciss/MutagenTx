@@ -14,12 +14,12 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.data
-import de.sciss.lucre.event.{InMemory, Sys}
-import de.sciss.lucre.stm.{Mutable, MutableSerializer}
+import de.sciss.lucre.stm.{Sys, Mutable, MutableSerializer}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
 object Genome {
   def empty[S <: Sys[S]](implicit tx: S#Tx, ord: data.Ordering[S#Tx, Vertex[S]]): Genome[S] = {
+    implicit val chrSer = Chromosome.serializer[S, Vertex, Edge]
     val id          = tx.newID()
     val chromosomes = tx.newVar(id, Vec.empty[Chromosome[S]])
     val fitness     = tx.newVar(id, Vec.empty[Float])(Serializer.indexedSeq)

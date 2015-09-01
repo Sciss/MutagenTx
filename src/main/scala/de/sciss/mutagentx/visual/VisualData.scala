@@ -3,8 +3,7 @@ package visual
 
 import java.awt.Shape
 
-import de.sciss.lucre.event.Sys
-import de.sciss.lucre.stm.Disposable
+import de.sciss.lucre.stm.{Sys, Disposable}
 import prefuse.data.{Node => PNode}
 import prefuse.visual.VisualItem
 

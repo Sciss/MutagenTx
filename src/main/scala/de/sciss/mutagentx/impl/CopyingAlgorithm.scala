@@ -15,16 +15,16 @@ package de.sciss.mutagentx
 package impl
 
 import de.sciss.file._
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.Sys
 import de.sciss.lucre.{data, stm}
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
 import de.sciss.synth.UGenSpec
 import de.sciss.synth.io.AudioFileSpec
 
-import scala.concurrent.{Await, blocking}
 import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
+import scala.concurrent.{Await, blocking}
 
 object CopyingAlgorithm {
   def apply[S <: Sys[S], G <: GlobalState[S]](system: S, input: File, global: G, genomeH: stm.Source[S#Tx, Genome[S]],
@@ -41,9 +41,9 @@ object CopyingAlgorithm {
 
   def mkCopy[S <: Sys[S]](in: Chromosome[S])(implicit tx: S#Tx, ord: data.Ordering[S#Tx, Vertex[S]]): Chromosome[S] = {
     var map = Map.empty[Vertex[S], Vertex[S]]
-    val top = Topology.empty[S, Vertex[S], Edge[S]]
+    val top = Topology.empty[S, Vertex, Edge]
     in.vertices.iterator.foreach { vIn =>
-      val vOut = vIn.copy()
+      val vOut = vIn.copy1()
       map += vIn -> vOut
       top.addVertex(vOut)
     }
@@ -69,7 +69,7 @@ object CopyingAlgorithm {
     var map  = Map.empty[Vertex[S], VertexC]
     var sq   = Vec.empty[VertexC]
     var mapT = Map.empty[VertexC, Vertex[T]]
-    val top = ct.step { implicit tx => Topology.empty[T, Vertex[T], Edge[T]] }
+    val top = ct.step { implicit tx => Topology.empty[T, Vertex, Edge] }
 
     cs.step { implicit tx =>
       in.vertices.iterator.foreach { vIn =>

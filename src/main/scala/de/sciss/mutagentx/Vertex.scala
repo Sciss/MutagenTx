@@ -13,12 +13,11 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.event.{InMemory, Sys}
 import de.sciss.lucre.stm
-import de.sciss.lucre.stm.Mutable
+import de.sciss.lucre.stm.{Elem, InMemory, Sys, Mutable}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
+import de.sciss.synth.ugen.{BinaryOpUGen, UnaryOpUGen}
 import de.sciss.synth.{GE, UGenSpec}
-import de.sciss.synth.ugen.{UnaryOpUGen, BinaryOpUGen}
 
 //object Vertex {
 //  // strangely, a constant is mutable, while a ugen is constant
@@ -194,12 +193,12 @@ object Vertex {
     }
   }
 }
-sealed trait Vertex[S <: Sys[S]] extends stm.Mutable[S#ID, S#Tx] {
+sealed trait Vertex[S <: Sys[S]] extends Elem[S] with stm.Mutable[S#ID, S#Tx] {
   /** Creates an structurally identical copy, but wrapped in a new vertex (object identity).
     * Theoretically, a better approach would be fork and merge, but it doesn't fit well
     * into the current implementation of mutation.
     */
-  def copy()(implicit tx: S#Tx): Vertex[S]
+  def copy1()(implicit tx: S#Tx): Vertex[S]
 
   def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Vertex[T]
 

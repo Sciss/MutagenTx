@@ -19,15 +19,14 @@ import java.{util => ju}
 
 import de.sciss.file._
 import de.sciss.filecache.{TxnConsumer, TxnProducer}
-import de.sciss.lucre.event.Sys
-import de.sciss.lucre.stm.TxnLike
+import de.sciss.lucre.stm.{Sys, TxnLike}
 import de.sciss.lucre.synth.InMemory
 import de.sciss.processor.Processor
 import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
 import de.sciss.span.Span
 import de.sciss.strugatzki.{FeatureCorrelation, FeatureExtraction, Strugatzki}
 import de.sciss.synth.io.{AudioFile, AudioFileSpec}
-import de.sciss.synth.proc.{Bounce, ExprImplicits, Obj, Proc, Timeline, WorkspaceHandle}
+import de.sciss.synth.proc.{Bounce, Proc, Timeline, WorkspaceHandle}
 import de.sciss.synth.ugen.{BinaryOpUGen, ConfigOut, Constant, Mix, RandSeed, UnaryOpUGen}
 import de.sciss.synth.{GE, SynthGraph}
 import de.sciss.{filecache, numbers}
@@ -149,14 +148,13 @@ object EvaluationImpl {
     type I  = InMemory
     implicit val iCursor = inMemory
 
-    val exp = ExprImplicits[I]
-    import exp._
+    // val exp = ExprImplicits[I]
 
     val objH = inMemory.step { implicit tx =>
       val proc      = Proc[I]
       proc.graph()  = graph
-      val procObj   = Obj(Proc.Elem(proc))
-      tx.newHandle(procObj) // (Obj.typedSerializer[I, Proc.Elem[I]])
+      // val procObj   = Obj(Proc.Elem(proc))
+      tx.newHandle(proc) // (Obj.typedSerializer[I, Proc.Elem[I]])
     }
 
     import WorkspaceHandle.Implicits._

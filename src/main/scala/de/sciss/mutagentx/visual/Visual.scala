@@ -23,9 +23,8 @@ import javax.swing.JPanel
 
 import de.sciss.file._
 import de.sciss.kollflitz
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.event.Sys
-import de.sciss.lucre.stm.TxnLike
+import de.sciss.lucre.confluent
+import de.sciss.lucre.stm.{Sys, TxnLike}
 import de.sciss.lucre.swing.impl.ComponentHolder
 import de.sciss.lucre.swing.{defer, deferTx, requireEDT}
 import de.sciss.mutagentx.visual.impl.{BoxRenderer, MyEdgeRenderer, MySpringForce}
@@ -59,7 +58,7 @@ object Visual {
   val VIDEO_HEIGHT    = 1920 / 2 // 576
   val VIDEO_WIDTH_SQR = 1080 / 2 // 1024 // 1024 : 576 = 16 : 9
 
-  type S = ConfluentReactive
+  type S = confluent.Confluent
 
   def apply(a: Algorithm.Confluent)(implicit tx: S#Tx): Visual[S] = {
     val map = TMap.empty[S#ID, VisualVertex[S]]

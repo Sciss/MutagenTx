@@ -4,8 +4,8 @@ package impl
 
 import java.math.{MathContext, RoundingMode}
 
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.confluent
+import de.sciss.lucre.stm.Sys
 import prefuse.visual.VisualItem
 
 import scala.concurrent.stm.Ref
@@ -41,7 +41,7 @@ object VisualConstantImpl {
 
       val active = Ref[Int]({
           tx match {
-            case ctx: ConfluentReactive.Txn =>
+            case ctx: confluent.Txn[_] =>
               ctx.inputAccess.term.toInt
             case _ => 0
           }

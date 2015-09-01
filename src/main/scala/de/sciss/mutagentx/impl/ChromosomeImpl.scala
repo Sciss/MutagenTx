@@ -17,9 +17,9 @@ package impl
 import java.util
 
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.event.Sys
-import de.sciss.synth.ugen.{UnaryOpUGen, RandSeed, Mix, ConfigOut, BinaryOpUGen, Constant, SampleRate}
-import de.sciss.synth.{doNothing, GE, Lazy, Rate, SynthGraph, UGenSpec, UndefinedRate, ugen}
+import de.sciss.lucre.stm.Sys
+import de.sciss.synth.ugen.{BinaryOpUGen, Constant, SampleRate, UnaryOpUGen}
+import de.sciss.synth.{GE, Lazy, Rate, SynthGraph, UGenSpec, UndefinedRate, doNothing, ugen}
 
 import scala.annotation.tailrec
 

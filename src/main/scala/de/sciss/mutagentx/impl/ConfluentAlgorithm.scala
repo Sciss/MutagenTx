@@ -15,9 +15,8 @@ package de.sciss.mutagentx
 package impl
 
 import de.sciss.file._
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
+import de.sciss.lucre.stm.DataStore
 import de.sciss.lucre.stm.store.BerkeleyDB
-import de.sciss.lucre.stm.{DataStore, DataStoreFactory}
 import de.sciss.lucre.{confluent, data, stm}
 import de.sciss.processor.Processor
 import de.sciss.synth.io.AudioFileSpec
@@ -27,7 +26,7 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.stm.TxnExecutor
 
 object ConfluentAlgorithm {
-  type S = ConfluentReactive
+  type S = confluent.Confluent
 
   def tmp(input: File): Algorithm.Confluent = {
     val cfg = BerkeleyDB.Config()
@@ -41,13 +40,13 @@ object ConfluentAlgorithm {
     create(dbf, input)
   }
 
-  private def create(dbf: DataStoreFactory[DataStore], _input: File): Algorithm.Confluent = {
+  private def create(dbf: DataStore.Factory, _input: File): Algorithm.Confluent = {
     val futInput = TxnExecutor.defaultAtomic { implicit tx =>
       impl.EvaluationImpl.getInputSpec(_input)
     }
     val (_inputExtr, _inputSpec) = Await.result(futInput, Duration.Inf)
 
-    implicit val system = ConfluentReactive(dbf)
+    implicit val system = confluent.Confluent(dbf)
     implicit val ord: data.Ordering[S#Tx, Vertex[S]] = ConfluentOrdering[Vertex[S]]
     implicit val genomeSer = Genome.Ser[S]
     // implicit val globalSer = GlobalState.Confluent.serializer

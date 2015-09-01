@@ -1,7 +1,7 @@
 package de.sciss.mutagentx
 package visual
 
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.Sys
 import prefuse.data.{Edge => PEdge}
 
 object VisualEdge {

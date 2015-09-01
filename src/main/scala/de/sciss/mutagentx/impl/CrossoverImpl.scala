@@ -2,7 +2,7 @@ package de.sciss.mutagentx
 package impl
 
 import de.sciss.lucre.data
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.Sys
 import de.sciss.mutagentx.Util.coin
 
 import scala.annotation.tailrec
@@ -67,7 +67,7 @@ object CrossoverImpl {
 
         def mkTop(vertices1: Vec[Vertex[S]], edges1: Set[Edge[S]], vertices2: Vec[Vertex[S]],
                   edges2: Set[Edge[S]]): Chromosome[S] = {
-          val c = Topology.empty[S, Vertex[S], Edge[S]]
+          val c = Topology.empty[S, Vertex, Edge]
           vertices1.foreach(c.addVertex)
           edges1   .foreach(c.addEdge /* .get */)  // this is now the first half of the original top
           vertices2.foreach(c.addVertex)

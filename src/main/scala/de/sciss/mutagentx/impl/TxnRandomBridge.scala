@@ -1,7 +1,7 @@
 package de.sciss.mutagentx.impl
 
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.Sys
 
 object TxnRandomBridge {
   def apply[S <: Sys[S], D <: Sys[D]](peer: TxnRandom[D#Tx])(implicit bridge: S#Tx => D#Tx): TxnRandom[S#Tx] =

@@ -15,7 +15,7 @@ package de.sciss.mutagentx
 package impl
 
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre.stm.Sys
 
 import scala.annotation.switch
 import scala.collection.immutable.{IndexedSeq => Vec}
@@ -170,7 +170,7 @@ object MutationImpl {
     }
 
     top.addVertex(vNew)
-    outlet.map(_.copy(targetVertex = vNew)).foreach(top.addEdge /* .get */)
+    outlet.map(_.copy1(targetVertex = vNew)).foreach(top.addEdge /* .get */)
 
     // just as many as possible, leaving tail inlets empty
     val newInlets = vNew match {
@@ -178,7 +178,7 @@ object MutationImpl {
         val newInletNames = vNewU.info.inputs.map(_.arg)
         inlets.collect {
           case e if oldInletNames.indexOf(e.inlet) < newInletNames.size =>
-            e.copy(sourceVertex = vNewU, inletIndex = oldInletNames.indexOf(e.inlet))
+            e.copy1(sourceVertex = vNewU, inletIndex = oldInletNames.indexOf(e.inlet))
         }
       case _ => Vec.empty
     }
@@ -223,8 +223,8 @@ object MutationImpl {
       val e2    = Util.choose(edges - e1)
       top.removeEdge(e1)
       top.removeEdge(e2)
-      val e1New = e1.copy(targetVertex = e2.targetVertex)
-      val e2New = e2.copy(targetVertex = e1.targetVertex)
+      val e1New = e1.copy1(targetVertex = e2.targetVertex)
+      val e2New = e2.copy1(targetVertex = e1.targetVertex)
       top.addEdge(e1New) // .get
       top.addEdge(e2New) // .get
       stats(4) += 1
@@ -251,18 +251,18 @@ object MutationImpl {
       val edgesS: Vec[Edge[S]] = Util.scramble(edges.toVector)
       val (_, edgesMove) = edgesS.splitAt(edgesS.size/2)
       val vertexOld = edges.head.targetVertex
-      val vertexNew = vertexOld.copy()
+      val vertexNew = vertexOld.copy1()
       edgesMove.foreach(top.removeEdge)
       top.addVertex(vertexNew)
       edgesMove.foreach { eOld =>
-        val eNew = eOld.copy(targetVertex = vertexNew)
+        val eNew = eOld.copy1(targetVertex = vertexNew)
         top.addEdge(eNew) // .get
       }
       top.edgeMap.get(vertexOld).foreach { set =>
         vertexNew match {
           case vNewU: Vertex.UGen[S] =>
             set.foreach { eOld =>
-              val eNew = eOld.copy(sourceVertex = vNewU)
+              val eNew = eOld.copy1(sourceVertex = vNewU)
               top.addEdge(eNew) // .get
             }
           case _ =>
@@ -305,7 +305,7 @@ object MutationImpl {
       if (Util.coin(0.5)) top.removeVertex(v2)
 
       val check = edgesOld.flatMap { eOld =>
-        val eNew = eOld.copy(targetVertex = v1)
+        val eNew = eOld.copy1(targetVertex = v1)
         val _ok = top.canAddEdge(eNew)
         if (_ok) {
           top.addEdge(eNew)

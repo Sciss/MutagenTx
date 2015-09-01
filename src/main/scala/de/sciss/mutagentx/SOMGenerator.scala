@@ -17,15 +17,16 @@ import java.util.concurrent.TimeUnit
 
 import de.sciss.dsp
 import de.sciss.file._
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.stm.Source
+import de.sciss.lucre.event.EventLike
+import de.sciss.lucre.stm.Elem.Type
+import de.sciss.lucre.stm.{NoSys, Elem, Sys, Source}
 import de.sciss.lucre.stm.store.BerkeleyDB
-import de.sciss.lucre.{expr, stm}
+import de.sciss.lucre.{confluent, expr, stm}
 import de.sciss.processor.{Processor, ProcessorOps}
-import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
+import de.sciss.serial.{Serializer, DataInput, DataOutput, ImmutableSerializer}
 import de.sciss.synth.SynthGraph
 import de.sciss.synth.io.AudioFile
-import de.sciss.synth.proc.{Durable, SynthGraphs}
+import de.sciss.synth.proc.{SynthGraphObj, Durable}
 import de.sciss.synth.ugen.ConfigOut
 
 import scala.concurrent.duration.Duration
@@ -34,7 +35,7 @@ import scala.util.Try
 
 /** SOMGenerator in Configuration Project. */
 object SOMGenerator extends App {
-  type S = ConfluentReactive
+  type S = confluent.Confluent
   type D = Durable
 
   run(name      = if (args.length > 0) args(0) else "betanovuss0",
@@ -47,7 +48,7 @@ object SOMGenerator extends App {
       def read(in: DataInput): Input = {
         val cookie  = in.readInt()
         if (cookie != COOKIE) throw new IllegalStateException(s"Expected cookie ${COOKIE.toHexString} but found ${cookie.toHexString}")
-        val graph   = SynthGraphs.ValueSerializer.read(in)
+        val graph   = SynthGraphObj.valueSerializer.read(in)
         val iter    = in.readShort()
         val fitness = in.readFloat()
         Input(graph, iter = iter, fitness = fitness)
@@ -55,7 +56,7 @@ object SOMGenerator extends App {
 
       def write(input: Input, out: DataOutput): Unit = {
         out.writeInt(COOKIE)
-        SynthGraphs.ValueSerializer.write(input.graph, out)
+        SynthGraphObj.valueSerializer.write(input.graph, out)
         out.writeShort(input.iter)
         out.writeFloat(input.fitness)
       }
@@ -71,15 +72,16 @@ object SOMGenerator extends App {
   import Algorithm.executionContext
 
   object SynthGraphDB {
-    type Tpe = expr.List.Modifiable[D, expr.List.Modifiable[D, Node, Unit], Unit]
+    type Tpe = expr.List.Modifiable[D, expr.List.Modifiable[D, Node[D]]]
 
     def open(name: String): SynthGraphDB = {
       val dir = file("database") / s"${name}_def"
       val dur = Durable(BerkeleyDB.factory(dir))
-      implicit val listSer = expr.List.Modifiable.serializer[D, Node](Node.serializer)
-      implicit val iterSer = expr.List.Modifiable.serializer[D, expr.List.Modifiable[D, Node, Unit]]
+      implicit val listSer = expr.List.Modifiable.serializer[D, Node[D]] // (Node.serializer)
+      implicit val iterSer = expr.List.Modifiable.serializer[D, expr.List.Modifiable[D, Node[D]]]
       val iterListH = dur.root { implicit tx =>
-        expr.List.Modifiable[D, expr.List.Modifiable[D, Node, Unit]]
+        type ListAux[~ <: Sys[~]] = expr.List.Modifiable[~, Node[~]]
+        expr.List.Modifiable[D, ListAux]
       }
       new SynthGraphDB {
         val system: D = dur
@@ -92,26 +94,44 @@ object SOMGenerator extends App {
     val handle: stm.Source[D#Tx, SynthGraphDB.Tpe]
   }
 
-  object Node {
-    implicit object serializer extends ImmutableSerializer[Node] {
-      private final val COOKIE = 0x4E6F6400 // "Nod\0"
+  object Node extends Elem.Type {
+    def typeID: Int = 0x4E6F6400
 
-      def read(in: DataInput): Node = {
+    def readIdentifiedObj[T <: Sys[T]](in: DataInput, access: T#Acc)(implicit tx: T#Tx): Node[T] = {
+      val input   = Input .serializer.read(in)
+      val weight  = Weight.serializer.read(in)
+      Node(input = input, weight = weight)
+    }
+
+    implicit def serializer[T <: Sys[T]]: Serializer[T#Tx, T#Acc, Node[T]] = anySer.asInstanceOf[Ser[T]]
+
+    private val anySer = new Ser[NoSys]
+
+    private final class Ser[T <: Sys[T]] extends Serializer[T#Tx, T#Acc, Node[T]] {
+      // private final val COOKIE = 0x4E6F6400 // "Nod\0"
+
+      def read(in: DataInput, access: T#Acc)(implicit tx: T#Tx): Node[T] = {
         val cookie  = in.readInt()
-        if (cookie != COOKIE) throw new IllegalStateException(s"Expected cookie ${COOKIE.toHexString} but found ${cookie.toHexString}")
-        val input   = Input.serializer.read(in)
-        val weight  = Weight.serializer.read(in)
-        Node(input = input, weight = weight)
+        if (cookie != Node.typeID) throw new IllegalStateException(s"Expected type ${typeID.toHexString} but found ${cookie.toHexString}")
+        readIdentifiedObj(in, access)
       }
 
-      def write(node: Node, out: DataOutput): Unit = {
-        out.writeInt(COOKIE)
-        Input.serializer.write(node.input, out)
-        Weight.serializer.write(node.weight, out)
-      }
+      def write(node: Node[T], out: DataOutput): Unit = node.write(out)
     }
   }
-  case class Node(input: Input, weight: Weight)
+  case class Node[T <: Sys[T]](input: Input, weight: Weight) extends Elem[T] {
+    def tpe: Elem.Type = Node
+
+    def write(out: DataOutput): Unit = {
+      out.writeInt(Node.typeID)
+      Input .serializer.write(input , out)
+      Weight.serializer.write(weight, out)
+    }
+
+    def dispose()(implicit tx: T#Tx): Unit = ???
+
+    def changed: EventLike[T, Any] = ???
+  }
 
   object Weight {
     implicit object serializer extends ImmutableSerializer[Weight] {
@@ -157,7 +177,7 @@ object SOMGenerator extends App {
   }
 
   // hashes: from previous iterations, prevents that multiple identical synth graphs appear
-  def analyzeIter(a: Algorithm.Confluent, path: S#Acc, hashes: Set[Int]): Future[(Vec[Node], Set[Int])] = {
+  def analyzeIter(a: Algorithm.Confluent, path: S#Acc, hashes: Set[Int]): Future[(Vec[Node[D]], Set[Int])] = {
     val csr = a.global.forkCursor
     val futGraphs: Future[(Set[Int], Vec[Input])] = Future {
       val res: (Set[Int], Vec[Input]) = csr.stepFrom(path) { implicit tx =>
@@ -192,7 +212,7 @@ object SOMGenerator extends App {
     val mfcc        = dsp.MFCC(mCfg)
     val fftSizeH    = fftSize/2
 
-    def futWeightsFun(proc: Processor[Any] with Processor.Body): (Vec[Node], Set[Int]) = {
+    def futWeightsFun(proc: Processor[Any] with Processor.Body): (Vec[Node[D]], Set[Int]) = {
       val (hashesOut, graphs) = Await.result(futGraphs, Duration.Inf)
       val numGraphs = graphs.size
       val nodes = graphs.zipWithIndex.flatMap { case (input, gIdx) =>
@@ -258,7 +278,7 @@ object SOMGenerator extends App {
                 }
 
                 val weight  = new Weight(spectral = mean, temporal = temporal)
-                val node    = Node(input, weight)
+                val node    = Node[D](input, weight)
                 Some(node)
               }
             } finally {
@@ -270,9 +290,8 @@ object SOMGenerator extends App {
       }
       (nodes, hashesOut)
     }
-    val futWeights = Processor[(Vec[Node], Set[Int])]("Weights")(futWeightsFun)
-
-      futWeights
+    val futWeights = Processor[(Vec[Node[D]], Set[Int])]("Weights")(futWeightsFun)
+    futWeights
   }
 
   def run(name: String, audioName: String): Unit = {
@@ -299,7 +318,7 @@ object SOMGenerator extends App {
       for (i <- 1 to numIter) {
         println(s"-------- GENERATING SYNTH DEFS FOR ITERATION $i of $numIter --------")
         val fut = analyzeIter(a, path.take(i * 2), hashes)
-        val (inputs: Vec[Node], hashesOut: Set[Int]) = Await.result(fut, Duration.Inf)
+        val (inputs: Vec[Node[D]], hashesOut: Set[Int]) = Await.result(fut, Duration.Inf)
         hashes = hashesOut
         dur.step { implicit tx =>
           val iterList = iterListH()

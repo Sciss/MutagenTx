@@ -20,18 +20,15 @@ fork in run := true
 
 // ---- main dependencies ----
 
-lazy val lucreSTMVersion            = "2.1.2"
-lazy val lucreDataVersion           = "2.3.3"
-lazy val lucreEventVersion          = "2.7.5"
-lazy val lucreConfluentVersion      = "2.11.3"
+lazy val lucreVersion               = "3.0.0-SNAPSHOT"
 lazy val scalaColliderUGensVersion  = "1.13.3"
 lazy val scalaColliderVersion       = "1.17.3"
 lazy val scalaColliderSwingVersion  = "1.25.2"
-lazy val soundProcessesVersion      = "2.21.1"
+lazy val soundProcessesVersion      = "3.0.0-SNAPSHOT"
 lazy val strugatzkiVersion          = "2.9.0"
 lazy val fileUtilVersion            = "1.1.1"
 lazy val prefuseVersion             = "1.0.0"
-lazy val lucreSwingVersion          = "0.9.1"
+lazy val lucreSwingVersion          = "1.0.0-SNAPSHOT"
 lazy val processorVersion           = "0.4.0"
 lazy val fileCacheVersion           = "0.3.3"
 lazy val kollFlitzVersion           = "0.2.0"
@@ -44,9 +41,8 @@ lazy val scalaTestVersion           = "2.2.5"
 lazy val topologyVersion            = "1.0.0"
 
 libraryDependencies ++= Seq(
-  "de.sciss"      %% "lucreconfluent"           % lucreConfluentVersion,
-  "de.sciss"      %% "lucreevent-expr"          % lucreEventVersion,
-  "de.sciss"      %% "lucrestm-bdb"             % lucreSTMVersion,
+  "de.sciss"      %% "lucre-confluent"          % lucreVersion,
+  "de.sciss"      %% "lucre-bdb"                % lucreVersion,
   "de.sciss"      %% "fileutil"                 % fileUtilVersion,
   "de.sciss"      %  "prefuse-core"             % prefuseVersion,
   "de.sciss"      %% "lucreswing"               % lucreSwingVersion,
@@ -60,8 +56,7 @@ libraryDependencies ++= Seq(
   "de.sciss"      %  "weblaf"                   % webLaFVersion,
   // MFCC and SOM
   "de.sciss"      %% "scissdsp"                 % scissDSPVersion,
-  "de.sciss"      %% "lucredata-core"           % lucreDataVersion,
-  "de.sciss"      %% "lucredata-views"          % lucreDataVersion,
+  // "de.sciss"      %% "lucredata-views"          % lucreDataVersion,
   "de.sciss"      %% "scalacollider"            % scalaColliderVersion,
   "de.sciss"      %% "scalacolliderswing-core"  % scalaColliderSwingVersion,
   "de.sciss"      %% "scalacolliderswing-plotting" % scalaColliderSwingVersion,

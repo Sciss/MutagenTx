@@ -14,17 +14,15 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.event.DurableLike.Txn
-import de.sciss.lucre.stm.DurableLike.ID
-import de.sciss.lucre.stm.{Source, Sink, MutableSerializer, Sys}
+import de.sciss.lucre.stm.DurableLike.{Txn, ID}
+import de.sciss.lucre.stm.{MutableSerializer, Sink, Source, Sys}
 import de.sciss.lucre.{confluent, event => evt, stm}
 import de.sciss.mutagentx.impl.TxnRandomBridge
 import de.sciss.serial.{DataInput, DataOutput, Serializer, Writable}
 
 object GlobalState {
   object InMemory {
-    type S = evt.InMemory
+    type S = stm.InMemory
 
     def apply()(implicit tx: S#Tx): GlobalState[S] = new GlobalState[S] {
       val id                    = tx.newID()
@@ -35,7 +33,7 @@ object GlobalState {
   }
 
   object Durable {
-    type S = evt.Durable
+    type S = stm.Durable
 
     def apply()(implicit tx: S#Tx): Durable = new Impl {
       val id            = tx.newID()
@@ -50,7 +48,7 @@ object GlobalState {
     private trait Impl extends Durable with stm.Mutable.Impl[S] {
       override def rng: TxnRandom.Persistent[S]
 
-      protected def disposeData()(implicit tx: Txn[S]): Unit = {
+      protected def disposeData()(implicit tx: S#Tx /* Txn[S] */): Unit = {
         rng           .dispose()
         numIterations .dispose()
       }
@@ -62,7 +60,7 @@ object GlobalState {
     }
 
     private final class Ser(implicit system: S) extends MutableSerializer[S, Durable] {
-      protected def readData(in: DataInput, _id: ID[S])(implicit tx: Txn[S]): Durable = new Impl {
+      protected def readData(in: DataInput, _id: ID[S])(implicit tx: S#Tx /* Txn[S] */): Durable = new Impl {
         val id            = _id
         val rng           = TxnRandom.Persistent.read[S](in, ())
         val numIterations = tx.readIntVar(id, in)
@@ -71,15 +69,15 @@ object GlobalState {
       }
     }
   }
-  trait Durable extends GlobalState[evt.Durable] with stm.Mutable[evt.Durable#ID, evt.Durable#Tx] {
-    type S = evt.Durable
+  trait Durable extends GlobalState[stm.Durable] with stm.Mutable[stm.Durable#ID, stm.Durable#Tx] {
+    type S = stm.Durable
 
     override def numIterations: S#Var[Int]
   }
 
   object Confluent {
-    type S = ConfluentReactive
-    type D = ConfluentReactive#D
+    type S = confluent.Confluent
+    type D = confluent.Confluent#D
 
     private trait Impl extends Confluent {
       protected def id: D#ID
@@ -132,9 +130,9 @@ object GlobalState {
       def write(g: Confluent, out: DataOutput): Unit = g.write(out)
     }
   }
-  trait Confluent extends GlobalState[ConfluentReactive] with Writable {
-    type S = ConfluentReactive
-    type D = ConfluentReactive#D
+  trait Confluent extends GlobalState[confluent.Confluent] with Writable {
+    type S = confluent.Confluent
+    type D = confluent.Confluent#D
 
     override def cursor : confluent.Cursor[S, D]
     def forkCursor      : confluent.Cursor[S, D]

@@ -16,10 +16,10 @@ package de.sciss.mutagentx
 import java.util.concurrent.TimeUnit
 
 import de.sciss.file._
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.event.Sys
+import de.sciss.lucre
+import de.sciss.lucre.stm.Sys
 import de.sciss.lucre.stm.store.BerkeleyDB
-import de.sciss.lucre.{data, event => evt, stm}
+import de.sciss.lucre.{event => evt, confluent, data, stm}
 import de.sciss.processor.Processor
 import de.sciss.serial.DataOutput
 import de.sciss.synth.UGenSpec
@@ -72,8 +72,8 @@ object Algorithm {
   def confluent(dir: File, input: File): Confluent =
     impl.ConfluentAlgorithm.apply(dir = dir, input = input)
 
-  implicit object DurableVertexOrdering extends data.Ordering[evt.Durable#Tx, Vertex[evt.Durable]] {
-    type S = evt.Durable
+  implicit object DurableVertexOrdering extends data.Ordering[stm.Durable#Tx, Vertex[stm.Durable]] {
+    type S = stm.Durable
 
     def compare(a: Vertex[S], b: Vertex[S])(implicit tx: S#Tx): Int = {
       val aid = stm.Escape.durableID(a.id)
@@ -83,11 +83,11 @@ object Algorithm {
   }
 
   def durable(dir: File, input: File): Durable = {
-    type S = evt.Durable
+    type S = stm.Durable
     val dbc = BerkeleyDB.Config()
     dbc.lockTimeout = Duration(0, TimeUnit.SECONDS)
     val dbf = BerkeleyDB.factory(dir, dbc)
-    implicit val system = evt.Durable(dbf)
+    implicit val system = stm.Durable(dbf)
 
     val rootH = system.root[(GlobalState.Durable, Genome[S])] { implicit tx =>
       (GlobalState.Durable(), Genome.empty[S])
@@ -137,9 +137,9 @@ object Algorithm {
     a
   }
 
-  def inMemory(input: File): Algorithm[evt.InMemory] = {
-    type S = evt.InMemory
-    implicit val system = evt.InMemory()
+  def inMemory(input: File): Algorithm[stm.InMemory] = {
+    type S = stm.InMemory
+    implicit val system = stm.InMemory()
 
     implicit object VertexOrd extends data.Ordering[S#Tx, Vertex[S]] {
       def compare(a: Vertex[S], b: Vertex[S])(implicit tx: S#Tx): Int = {
@@ -157,15 +157,15 @@ object Algorithm {
       genomeH = genomeH, ephemeral = true)
   }
 
-  type InMemory = Algorithm[evt.InMemory] {
-    type Global = GlobalState[evt.InMemory]
+  type InMemory = Algorithm[stm.InMemory] {
+    type Global = GlobalState[stm.InMemory]
   }
 
-  type Durable = Algorithm[evt.Durable] {
+  type Durable = Algorithm[stm.Durable] {
     type Global = GlobalState.Durable
   }
 
-  type Confluent = Algorithm[ConfluentReactive] {
+  type Confluent = Algorithm[lucre.confluent.Confluent] {
     type Global = GlobalState.Confluent
   }
 }

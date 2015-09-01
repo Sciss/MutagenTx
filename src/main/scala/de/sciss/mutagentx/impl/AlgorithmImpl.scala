@@ -14,8 +14,8 @@
 package de.sciss.mutagentx
 package impl
 
-import de.sciss.lucre.event.Sys
 import de.sciss.lucre.stm
+import de.sciss.lucre.stm.Sys
 import de.sciss.numbers
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
@@ -70,7 +70,7 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
   /** Creates an individual chromosome. */
   def mkIndividual()(implicit tx: S#Tx): C = {
     val num = rrand(minNumVertices, maxNumVertices)
-    val res = Topology.empty[S, Vertex[S], Edge[S]]
+    val res = Topology.empty[S, Vertex, Edge]
     for (i <- 0 until num) addVertex(res)
     res // new Chromosome(t0, seed = random.nextLong())
   }

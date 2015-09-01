@@ -1,13 +1,12 @@
 package de.sciss.mutagentx
 
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.data
+import de.sciss.lucre.{confluent, data}
 import de.sciss.lucre.stm.Identifiable
 
 import scala.annotation.tailrec
 
 object ConfluentOrdering {
-  type S = ConfluentReactive
+  type S = confluent.Confluent
 
   implicit def apply[V <: Identifiable[S#ID]]: data.Ordering[S#Tx, V] = anyOrd.asInstanceOf[Ord[V]]
 

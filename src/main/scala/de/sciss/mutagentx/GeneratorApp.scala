@@ -8,8 +8,8 @@ import com.alee.laf.progressbar.WebProgressBarStyle
 import de.sciss.desktop.OptionPane
 import de.sciss.file._
 import de.sciss.kollflitz
-import de.sciss.lucre.confluent.reactive.ConfluentReactive
-import de.sciss.lucre.event.{Durable, InMemory, Sys}
+import de.sciss.lucre.confluent
+import de.sciss.lucre.stm.{Sys, Durable, InMemory}
 import de.sciss.lucre.swing.defer
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
@@ -144,8 +144,8 @@ object GeneratorApp extends SwingApplication {
     }
   }
 
-  final class ConfluentApp(args: Vec[String]) extends GenApp[ConfluentReactive] {
-    type S = ConfluentReactive
+  final class ConfluentApp(args: Vec[String]) extends GenApp[confluent.Confluent] {
+    type S = confluent.Confluent
     type A = Algorithm.Confluent
 
     //    def getIteration(a: A, iterInc: Int): Int = {
@@ -225,7 +225,7 @@ trait GenApp[S <: Sys[S]] {
                 case uv: Vertex.UGen[S] if uv.boxName == ugenName => uv
               } .toIndexedSeq
               import algo.global.rng
-              these.foreach(impl.MutationImpl.removeVertex2(c, _))
+              these.foreach(impl.MutationImpl.removeVertex2[S](c, _))
               countIn + these.size
             }
             self.progress = (ci + 1).toDouble / numChromo
