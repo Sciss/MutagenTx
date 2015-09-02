@@ -13,47 +13,37 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.stm
-import de.sciss.lucre.stm.{Elem, InMemory, Sys, Mutable}
+import de.sciss.lucre.stm.impl.ObjSerializer
+import de.sciss.lucre.stm.{Copy, Elem, InMemory, Obj, Sys}
+import de.sciss.lucre.{event => evt, stm}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 import de.sciss.synth.ugen.{BinaryOpUGen, UnaryOpUGen}
 import de.sciss.synth.{GE, UGenSpec}
 
-//object Vertex {
-//  // strangely, a constant is mutable, while a ugen is constant
-//
-//  trait Constant extends Vertex with Identifiable[S#Tx] {
-//    def value: S#Var[Double]
-//  }
-//
-//  trait UGen extends Vertex {
-//    def name: String
-//  }
-//}
-//sealed trait Vertex {
-//
-//}
+object Vertex extends Obj.Type {
+  final val typeID = 0x10000003
 
-object Vertex {
+  def readIdentifiedObj[S <: Sys[S]](in: DataInput, access: S#Acc)(implicit tx: S#Tx): Vertex[S] = {
+    val cookie = in.readByte()
+    require (cookie == 3)
+    val id  = tx.readID(in, access)
+    val tpe = in.readByte()
+    tpe match {
+      case 0 =>
+        val f = tx.readVar[Float](id, in)
+        new Constant[S](id, f)
+      case 1 =>
+        // val name  = in.readUTF()
+        UGen.readIdentified(id, in, access)
+    }
+  }
+
   implicit def Ser[S <: Sys[S]]: Serializer[S#Tx, S#Acc, Vertex[S]] = anySer.asInstanceOf[Ser[S]]
 
   private val anySer = new Ser[InMemory]
 
-  private final class Ser[S <: Sys[S]] extends Serializer[S#Tx, S#Acc, Vertex[S]] {
-    def write(v: Vertex[S], out: DataOutput): Unit = v.write(out)
-
-    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Vertex[S] = {
-      val id  = tx.readID(in, access)
-      val tpe = in.readByte()
-      tpe match {
-        case 0 =>
-          val f = tx.readVar[Float](id, in)
-          new Constant[S](id, f)
-        case 1 =>
-          // val name  = in.readUTF()
-          UGen.readIdentified(id, in, access)
-      }
-    }
+  private final class Ser[S <: Sys[S]] extends ObjSerializer[S, Vertex[S]] {
+    def tpe = Vertex
   }
 
   object UGen {
@@ -79,14 +69,17 @@ object Vertex {
     }
 
     private[Vertex] final class Impl[S <: Sys[S]](val id: S#ID, index: Int, val info: UGenSpec)
-      extends UGen[S] with Mutable.Impl[S] {
+      extends UGen[S] with evt.impl.ConstObjImpl[S, Any] {
 
       private def isBinaryOp: Boolean = info.name.startsWith("Bin_")
       private def isUnaryOp : Boolean = info.name.startsWith("Un_")
 
       def isUGen = true
 
-      protected def disposeData()(implicit tx: S#Tx) = ()
+      def tpe = Vertex
+
+      def copy[Out <: Sys[Out]]()(implicit tx: S#Tx, txOut: Out#Tx, context: Copy[S, Out]): Elem[Out] =
+        new Impl[Out](txOut.newID(), index = index, info = info)
 
       protected def writeData(out: DataOutput): Unit = {
         out.writeByte(1)
@@ -161,9 +154,9 @@ object Vertex {
 
     // def asCompileString(ins: Vec[String]): String
 
-    def copy()(implicit tx: S#Tx): UGen[S] = UGen(info)
-
-    def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Vertex[T] = UGen[T](info)
+    //    def copy1()(implicit tx: S#Tx): UGen[S] = UGen(info)
+    //
+    //    def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Vertex[T] = UGen[T](info)
   }
   //  class UGen(val info: UGenSpec) extends Vertex {
   //    override def toString = s"${info.name}@${hashCode().toHexString}"
@@ -175,14 +168,25 @@ object Vertex {
     }
     def unapply[S <: Sys[S]](v: Constant[S])(implicit tx: S#Tx): Option[Float] = Some(v.f())
   }
-  class Constant[S <: Sys[S]](val id: S#ID, val f: S#Var[Float]) extends Vertex[S] with Mutable.Impl[S] {
+  class Constant[S <: Sys[S]](val id: S#ID, val f: S#Var[Float])
+    extends Vertex[S]
+    with evt.impl.ConstObjImpl[S, Any] {
+
+    def tpe = Vertex
+
     override def toString() = s"Constant$id"
 
     def isUGen = false
 
-    def copy()(implicit tx: S#Tx): Constant[S] = Constant(f())
+    def copy[Out <: Sys[Out]]()(implicit tx: S#Tx, txOut: Out#Tx, context: Copy[S, Out]): Elem[Out] = {
+      val newID   = txOut.newID()
+      val newVar  = txOut.newVar(newID, f())
+      new Constant[Out](newID, newVar)
+    }
 
-    def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Constant[T] = Constant[T](f())
+    //    def copy1()(implicit tx: S#Tx): Constant[S] = Constant(f())
+    //
+    //    def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Constant[T] = Constant[T](f())
 
     // def boxName = f.toString
     protected def disposeData()(implicit tx: S#Tx): Unit = f.dispose()
@@ -193,14 +197,14 @@ object Vertex {
     }
   }
 }
-sealed trait Vertex[S <: Sys[S]] extends Elem[S] with stm.Mutable[S#ID, S#Tx] {
-  /** Creates an structurally identical copy, but wrapped in a new vertex (object identity).
-    * Theoretically, a better approach would be fork and merge, but it doesn't fit well
-    * into the current implementation of mutation.
-    */
-  def copy1()(implicit tx: S#Tx): Vertex[S]
-
-  def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Vertex[T]
+sealed trait Vertex[S <: Sys[S]] extends Obj[S] {
+  //  /** Creates an structurally identical copy, but wrapped in a new vertex (object identity).
+  //    * Theoretically, a better approach would be fork and merge, but it doesn't fit well
+  //    * into the current implementation of mutation.
+  //    */
+  //  def copy1()(implicit tx: S#Tx): Vertex[S]
+  //
+  //  def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Vertex[T]
 
   def isUGen: Boolean
   def isConstant: Boolean = !isUGen

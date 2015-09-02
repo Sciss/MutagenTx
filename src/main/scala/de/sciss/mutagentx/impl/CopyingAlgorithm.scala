@@ -15,7 +15,7 @@ package de.sciss.mutagentx
 package impl
 
 import de.sciss.file._
-import de.sciss.lucre.stm.Sys
+import de.sciss.lucre.stm.{Obj, Sys}
 import de.sciss.lucre.{data, stm}
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
@@ -43,7 +43,7 @@ object CopyingAlgorithm {
     var map = Map.empty[Vertex[S], Vertex[S]]
     val top = Topology.empty[S, Vertex, Edge]
     in.vertices.iterator.foreach { vIn =>
-      val vOut = vIn.copy1()
+      val vOut = Obj.copy(vIn)
       map += vIn -> vOut
       top.addVertex(vOut)
     }

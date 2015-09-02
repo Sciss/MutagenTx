@@ -17,9 +17,9 @@ import java.util.concurrent.TimeUnit
 
 import de.sciss.dsp
 import de.sciss.file._
-import de.sciss.lucre.event.EventLike
-import de.sciss.lucre.stm.Elem.Type
-import de.sciss.lucre.stm.{NoSys, Elem, Sys, Source}
+import de.sciss.lucre.event.{Event, EventLike}
+import de.sciss.lucre.{event => evt}
+import de.sciss.lucre.stm.{Copy, NoSys, Elem, Sys, Source}
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.{confluent, expr, stm}
 import de.sciss.processor.{Processor, ProcessorOps}
@@ -95,7 +95,7 @@ object SOMGenerator extends App {
   }
 
   object Node extends Elem.Type {
-    def typeID: Int = 0x4E6F6400
+    def typeID: Int = 0x10000002
 
     def readIdentifiedObj[T <: Sys[T]](in: DataInput, access: T#Acc)(implicit tx: T#Tx): Node[T] = {
       val input   = Input .serializer.read(in)
@@ -111,8 +111,8 @@ object SOMGenerator extends App {
       // private final val COOKIE = 0x4E6F6400 // "Nod\0"
 
       def read(in: DataInput, access: T#Acc)(implicit tx: T#Tx): Node[T] = {
-        val cookie  = in.readInt()
-        if (cookie != Node.typeID) throw new IllegalStateException(s"Expected type ${typeID.toHexString} but found ${cookie.toHexString}")
+        val tpe  = in.readInt()
+        if (tpe != Node.typeID) throw new IllegalStateException(s"Expected type ${typeID.toHexString} but found ${tpe.toHexString}")
         readIdentifiedObj(in, access)
       }
 
@@ -128,9 +128,14 @@ object SOMGenerator extends App {
       Weight.serializer.write(weight, out)
     }
 
-    def dispose()(implicit tx: T#Tx): Unit = ???
+    def event(slot: Int): Event[T, Any] = throw new UnsupportedOperationException
 
-    def changed: EventLike[T, Any] = ???
+    def copy[Out <: Sys[Out]]()(implicit tx: T#Tx, txOut: Out#Tx, context: Copy[T, Out]): Elem[Out] =
+      new Node[Out](input = input, weight = weight)
+
+    def dispose()(implicit tx: T#Tx) = ()
+
+    def changed: EventLike[T, Any] = evt.Dummy[T, Any]
   }
 
   object Weight {

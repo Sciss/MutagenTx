@@ -505,18 +505,18 @@ object EvaluationImpl {
 //      }
 //    }
 //
-//    def getMaximumDirectedPathLength: Double = ???
+//    def getMaximumDirectedPathLength: Double = ...
 //
-//    def getMostRecentCommonAncestor(nodeA: IGraphNode, nodeB: IGraphNode): IGraphNode = ???
+//    def getMostRecentCommonAncestor(nodeA: IGraphNode, nodeB: IGraphNode): IGraphNode = ...
 //
 //    def getSuccessors(node: IGraphNode, direct: Boolean): ju.Set[IGraphNode] =
-//      if (direct) node.getSuccessorSet else ???
+//      if (direct) node.getSuccessorSet else ...
 //
 //    def getPredecessors(node: IGraphNode, direct: Boolean): ju.Set[IGraphNode] =
-//      if (direct) node.getPredecessorSet else ???
+//      if (direct) node.getPredecessorSet else ...
 //
-//    def getMaxDepth: Double = ???
+//    def getMaxDepth: Double = ...
 //
-//    def getShortestPath(nodeA: IGraphNode, nodeB: IGraphNode): Double = ???
+//    def getShortestPath(nodeA: IGraphNode, nodeB: IGraphNode): Double = ...
 //  }
 }

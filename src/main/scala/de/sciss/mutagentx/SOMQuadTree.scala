@@ -22,11 +22,11 @@ import de.sciss.lucre.data.DeterministicSkipOctree
 import de.sciss.lucre.data.gui.SkipQuadtreeView
 import de.sciss.lucre.geom.{IntDistanceMeasure2D, IntPoint2D, IntSpace, IntSquare}
 import de.sciss.lucre.stm
-import de.sciss.lucre.stm.Sys
+import de.sciss.lucre.stm.{NoSys, Sys}
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.mutagentx.SOMGenerator._
 import de.sciss.processor.Processor
-import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
+import de.sciss.serial.{Serializer, DataInput, DataOutput, ImmutableSerializer}
 import de.sciss.synth.impl.DefaultUGenGraphBuilderFactory
 import de.sciss.synth.ugen.ConfigOut
 import de.sciss.synth.{SynthGraph, Synth, SynthDef, Server, ServerConnection}
@@ -78,25 +78,29 @@ object SOMQuadTree {
   class PlacedWeight(val coord: Coord, val weight: Weight)
 
   object PlacedNode {
-    implicit object serializer extends ImmutableSerializer[PlacedNode] {
-      private final val COOKIE = 0x506C6100 // "Pla\0"
+    implicit def serializer[T <: Sys[T]]: Serializer[T#Tx, T#Acc, PlacedNode[T]] = anySer.asInstanceOf[Ser[T]]
 
-      def write(pn: PlacedNode, out: DataOutput): Unit = {
+    private val anySer = new Ser[NoSys]
+
+    private final val COOKIE = 0x506C6100 // "Pla\0"
+
+    private final class Ser[T <: Sys[T]] extends Serializer[T#Tx, T#Acc, PlacedNode[T]] {
+      def write(pn: PlacedNode[T], out: DataOutput): Unit = {
         out.writeInt(COOKIE)
         IntPoint2D.serializer.write(pn.coord, out)
         Node      .serializer.write(pn.node , out)
       }
 
-      def read(in: DataInput): PlacedNode = {
+      def read(in: DataInput, access: T#Acc)(implicit tx: T#Tx): PlacedNode[T] = {
         val cookie = in.readInt()
         if (cookie != COOKIE) sys.error(s"Unexpected cookie, found ${cookie.toHexString} expected ${COOKIE.toHexString}")
-        val coord = IntPoint2D.serializer.read(in)
-        val node  = Node      .serializer.read(in)
+        val coord = IntPoint2D.serializer   .read(in)
+        val node  = Node      .serializer[T].read(in, access)
         new PlacedNode(coord, node)
       }
     }
   }
-  case class PlacedNode(coord: Coord, node: Node)
+  case class PlacedNode[T <: Sys[T]](coord: Coord, node: Node[T])
 
   class Lattice(val nodes: Array[PlacedWeight])
 
@@ -105,18 +109,18 @@ object SOMQuadTree {
   type Dim  = IntSpace.TwoDim
 
   object QuadGraphDB {
-    type Tpe = DeterministicSkipOctree[D, Dim, PlacedNode]
+    type Tpe = DeterministicSkipOctree[D, Dim, PlacedNode[D]]
 
     def open(config: Config): QuadGraphDB = open(config, somDir = mkDir(config.dbName))
 
     def open(config: Config, somDir: File): QuadGraphDB = {
       import config._
       implicit val dur  = Durable(BerkeleyDB.factory(somDir))
-      implicit val pointView = (n: PlacedNode, tx: D#Tx) => n.coord
-      implicit val octreeSer = DeterministicSkipOctree.serializer[D, Dim, PlacedNode]
+      implicit val pointView = (n: PlacedNode[D], tx: D#Tx) => n.coord
+      implicit val octreeSer = DeterministicSkipOctree.serializer[D, Dim, PlacedNode[D]]
       val quadH = dur.root { implicit tx =>
         println("Creating empty quad-tree.")
-        DeterministicSkipOctree.empty[D, Dim, PlacedNode](IntSquare(extent, extent, extent))
+        DeterministicSkipOctree.empty[D, Dim, PlacedNode[D]](IntSquare(extent, extent, extent))
       }
 
       new QuadGraphDB {
@@ -147,12 +151,12 @@ object SOMQuadTree {
 
     val stat = SOMMinMax.read(dbName)
 
-    val placedNodesFut = Processor[Vec[PlacedNode]]("lattice") { self =>
+    val placedNodesFut = Processor[Vec[PlacedNode[D]]]("lattice") { self =>
       val graphDB = SynthGraphDB.open(dbName)
-      val nodes: Vec[Node] = blocking {
+      val nodes: Vec[Node[D]] = blocking {
         import graphDB._
         system.step { implicit tx =>
-          var res = Vector.newBuilder[Node]
+          var res = Vector.newBuilder[Node[D]]
           handle().iterator.foreach(_.iterator.foreach(n => res += n))
           res.result()
         }
@@ -232,10 +236,10 @@ object SOMQuadTree {
         dx * dx + dy * dy
       }
 
-      val trainingSet: Array[Node] = {
+      val trainingSet: Array[Node[D]] = {
         if (maxNodes == 0 || maxNodes >= nodes.size) nodes.scramble()(rnd, breakOut) else {
           val sc = nodes.scramble()
-          val arr = new Array[Node](maxNodes)
+          val arr = new Array[Node[D]](maxNodes)
           sc.copyToArray(arr, 0, maxNodes)
           arr
         }
@@ -356,21 +360,21 @@ object SOMQuadTree {
 
       val placeNum = new AtomicInteger(0)
 
-      val futRes = Future[Vec[PlacedNode]] {
+      val futRes = Future[Vec[PlacedNode[D]]] {
         // val nodes = latticeN.nodes.collect { case PlacedNode(c, n: Node) => PlacedNode(c, n) }
         val nodes = trainingSet.zipWithIndex.par.map { case (in, idx) =>
           val nearest = bmu(in.weight)
           // self.progress = ((idx + 1).toDouble / 1000) * 0.5 + 0.5
           // self.checkAborted()
           placeNum.incrementAndGet()
-          new PlacedNode(nearest.coord, in)
+          new PlacedNode[D](nearest.coord, in)
         } .toIndexedSeq
         // new Lattice(/* size = latticeSize, */ nodes = nodes)
         nodes
       }
 
       var done = false
-      var res: Vec[PlacedNode] = null
+      var res: Vec[PlacedNode[D]] = null
       while (!done) try {
         res = Await.result(futRes, Duration(10, TimeUnit.SECONDS))
         done = true
@@ -429,7 +433,7 @@ object SOMQuadTree {
     }
   }
 
-  def guiInit[R <: Sys[R]](quadH: stm.Source[R#Tx, DeterministicSkipOctree[R, Dim, PlacedNode]], config: Config)
+  def guiInit[R <: Sys[R]](quadH: stm.Source[R#Tx, DeterministicSkipOctree[R, Dim, PlacedNode[R]]], config: Config)
                           (implicit cursor: stm.Cursor[R]): Unit = {
     ConfigOut.LIMITER   = true
     ConfigOut.PAN2      = true
@@ -439,7 +443,7 @@ object SOMQuadTree {
 
     import de.sciss.synth.Ops._
 
-    val quadView = new SkipQuadtreeView[R, PlacedNode](quadH, cursor, _.coord)
+    val quadView = new SkipQuadtreeView[R, PlacedNode[R]](quadH, cursor, _.coord)
     quadView.scale = 1.4 * 256 / config.extent
 
     def stopSynth(): Unit = synthOpt.foreach { synth =>

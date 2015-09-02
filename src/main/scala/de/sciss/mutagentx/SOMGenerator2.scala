@@ -16,12 +16,13 @@ package de.sciss.mutagentx
 import java.util.concurrent.TimeUnit
 
 import de.sciss.file._
+import de.sciss.lucre.event.EventLike
 import de.sciss.lucre.stm.store.BerkeleyDB
-import de.sciss.lucre.stm.{NoSys, Sys, Elem, Source, TxnLike}
-import de.sciss.lucre.{confluent, expr, stm}
+import de.sciss.lucre.stm.{Copy, Elem, NoSys, Source, Sys, TxnLike}
+import de.sciss.lucre.{confluent, event => evt, expr, stm}
 import de.sciss.mutagentx.SOMGenerator.Input
 import de.sciss.processor.Processor
-import de.sciss.serial.{Serializer, DataInput, DataOutput, ImmutableSerializer}
+import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer, Serializer}
 import de.sciss.synth.impl.DefaultUGenGraphBuilderFactory
 import de.sciss.synth.io.{AudioFile, AudioFileSpec}
 import de.sciss.synth.proc.Durable
@@ -92,6 +93,8 @@ object SOMGenerator2 {
     def typeID: Int = 0x4E6F6400
 
     def readIdentifiedObj[T <: Sys[T]](in: DataInput, access: T#Acc)(implicit tx: T#Tx): Node[T] = {
+      val cookie  = in.readByte()
+      require(cookie == 3)  // 'constant'
       val input   = Input .serializer.read(in)
       val weight  = Weight.serializer.read(in)
       Node(input = input, weight = weight)
@@ -101,21 +104,19 @@ object SOMGenerator2 {
 
     private val anySer = new Ser[NoSys]
 
-    private final class Ser[T <: Sys[T]] extends Serializer[T#Tx, T#Acc, Node[T]] {
-      // private final val COOKIE = 0x4E6F6400 // "Nod\0"
-
-      def read(in: DataInput, access: T#Acc)(implicit tx: T#Tx): Node[T] = {
-        val cookie  = in.readInt()
-        if (cookie != typeID) throw new IllegalStateException(s"Expected typeID ${typeID.toHexString} but found ${cookie.toHexString}")
-        readIdentifiedObj(in, access)
-      }
-
-      def write(node: Node[T], out: DataOutput): Unit = node.write(out)
+    private final class Ser[T <: Sys[T]] extends stm.impl.ElemSerializer[T, Node[T]] {
+      def tpe = Node
     }
   }
-  case class Node[T <: Sys[T]](input: Input, weight: Weight) extends Elem[T] {
-    def write(out: DataOutput): Unit = {
-      out.writeInt(Node.typeID)
+  case class Node[T <: Sys[T]](input: Input, weight: Weight) extends stm.impl.ConstElemImpl[T] {
+    def tpe: Elem.Type = Node
+
+    def changed: EventLike[T, Any] = evt.Dummy[T, Any]
+
+    def copy[Out <: Sys[Out]]()(implicit tx: T#Tx, txOut: Out#Tx, context: Copy[T, Out]): Elem[Out] =
+      new Node[Out](input, weight)
+
+    protected def writeData(out: DataOutput): Unit = {
       Input .serializer.write(input , out)
       Weight.serializer.write(weight, out)
     }

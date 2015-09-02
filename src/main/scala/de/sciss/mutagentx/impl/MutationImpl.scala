@@ -15,7 +15,7 @@ package de.sciss.mutagentx
 package impl
 
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.stm.Sys
+import de.sciss.lucre.stm.{Obj, Sys}
 
 import scala.annotation.switch
 import scala.collection.immutable.{IndexedSeq => Vec}
@@ -251,7 +251,7 @@ object MutationImpl {
       val edgesS: Vec[Edge[S]] = Util.scramble(edges.toVector)
       val (_, edgesMove) = edgesS.splitAt(edgesS.size/2)
       val vertexOld = edges.head.targetVertex
-      val vertexNew = vertexOld.copy1()
+      val vertexNew = Obj.copy(vertexOld) // .copy1()
       edgesMove.foreach(top.removeEdge)
       top.addVertex(vertexNew)
       edgesMove.foreach { eOld =>

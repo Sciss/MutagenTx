@@ -32,7 +32,7 @@ object ChromosomeImpl {
 //      case _: ConfigOut | _: Mix | _: Mix.Mono | _: RandSeed =>
 //
 //      case ge: BinaryOpUGen =>
-//        val info = ??? : UGenSpec
+//        val info = ... : UGenSpec
 //        val v    = Vertex.UGen(info)
 //        m.put(ge, v)
 //
@@ -42,7 +42,7 @@ object ChromosomeImpl {
 //        c.addVertex(v)
 //        m.put(ge, v)
 //    }
-//    ???
+//    ...
 //  }
 
   def mkSynthGraph[S <: Sys[S]](c: Chromosome[S], mono: Boolean, removeNaNs: Boolean, config: Boolean)
