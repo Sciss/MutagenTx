@@ -13,9 +13,9 @@
 
 package de.sciss.mutagentx
 
+import de.sciss.lucre.stm
 import de.sciss.lucre.stm.InMemoryLike.{ID, Txn}
-import de.sciss.lucre.stm.{NoSys, Copy, Mutable, MutableSerializer, Sys}
-import de.sciss.lucre.{data, stm}
+import de.sciss.lucre.stm.{Copy, Mutable, MutableSerializer, NoSys, Sys}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
 import scala.concurrent.stm.Ref

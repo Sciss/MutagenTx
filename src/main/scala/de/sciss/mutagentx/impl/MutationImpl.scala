@@ -41,12 +41,13 @@ object MutationImpl {
   }
 
   def removeVertex2[S <: Sys[S]](top: Chromosome[S], v: Vertex[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Unit = {
-    val targets     = getTargets(top, v)
+    val targets = getTargets(top, v)
     top.removeVertex(v)
     targets.foreach { e =>
       top.removeEdge(e)
     }
     targets.foreach { case Edge(t: Vertex.UGen[S], _, _) =>
+      assert(t != v)
       ChromosomeImpl.completeUGenInputs[S](top, t)
     }
   }

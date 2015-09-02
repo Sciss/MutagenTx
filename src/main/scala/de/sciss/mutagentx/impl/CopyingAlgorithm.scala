@@ -17,7 +17,7 @@ package impl
 import java.io.Closeable
 
 import de.sciss.file._
-import de.sciss.lucre.stm.{Obj, Sys}
+import de.sciss.lucre.stm.{Txn, Obj, Sys}
 import de.sciss.lucre.{data, stm}
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
@@ -41,75 +41,81 @@ object CopyingAlgorithm {
       ephemeral = ephemeral, cleaner = cleaner)
   }
 
-  def mkCopy[S <: Sys[S]](in: Chromosome[S])(implicit tx: S#Tx, ord: data.Ordering[S#Tx, Vertex[S]]): Chromosome[S] = {
-    var map = Map.empty[Vertex[S], Vertex[S]]
-    val top = Chromosome.empty[S] // , Vertex, Edge]
-    in.vertices.iterator.foreach { vIn =>
-      val vOut = Obj.copy(vIn)
-      map += vIn -> vOut
-      top.addVertex(vOut)
-    }
-    in.edges.iterator.foreach {
-      case Edge(srcIn, tgtIn, inlet) =>
-        val srcOut = map.get(srcIn) match {
-          case Some(vu: Vertex.UGen[S]) => vu
-          case _ => throw new NoSuchElementException
-        }
-        val tgtOut = map.getOrElse(tgtIn, throw new NoSuchElementException)
-        val eOut = Edge(sourceVertex = srcOut, targetVertex = tgtOut, inletIndex = inlet)
-        top.addEdge(eOut)
-    }
-    top
-  }
+  def mkCopy[S <: Sys[S]](in: Chromosome[S])(implicit tx: S#Tx, ord: data.Ordering[S#Tx, Vertex[S]]): Chromosome[S] =
+    Obj.copy(in)
+
+//  {
+//    var map = Map.empty[Vertex[S], Vertex[S]]
+//    val top = Chromosome.empty[S] // , Vertex, Edge]
+//    in.vertices.iterator.foreach { vIn =>
+//      val vOut = Obj.copy(vIn)
+//      map += vIn -> vOut
+//      top.addVertex(vOut)
+//    }
+//    in.edges.iterator.foreach {
+//      case Edge(srcIn, tgtIn, inlet) =>
+//        val srcOut = map.get(srcIn) match {
+//          case Some(vu: Vertex.UGen[S]) => vu
+//          case _ => throw new NoSuchElementException
+//        }
+//        val tgtOut = map.getOrElse(tgtIn, throw new NoSuchElementException)
+//        val eOut = Edge(sourceVertex = srcOut, targetVertex = tgtOut, inletIndex = inlet)
+//        top.addEdge(eOut)
+//    }
+//    top
+//  }
 
   private sealed trait VertexC
   private final class VertexCU(val info: UGenSpec) extends VertexC
   private final class VertexCC(val f: Float) extends VertexC
 
-  def mkCopyT[S <: Sys[S], T <: Sys[T]](in: Chromosome[S], cs: stm.Cursor[S], ct: stm.Cursor[T])
-                                       (implicit ord: data.Ordering[T#Tx, Vertex[T]]): Chromosome[T] = {
-    var map  = Map.empty[Vertex[S], VertexC]
-    var sq   = Vec.empty[VertexC]
-    var mapT = Map.empty[VertexC, Vertex[T]]
-    val top = ct.step { implicit tx => Chromosome.empty[T] /* , Vertex, Edge] */ }
+  def mkCopyT[S <: Sys[S], T <: Sys[T]](in: Chromosome[S], cs: stm.Cursor[S], ct: stm.Cursor[T]): Chromosome[T] =
+    Txn.copy[S, T, Chromosome[T]]((txIn, txOut) => Obj.copy[S, T, Chromosome](in)(txIn, txOut))(cs, ct)
 
-    cs.step { implicit tx =>
-      in.vertices.iterator.foreach { vIn =>
-        val vOut = vIn match {
-          case vu: Vertex.UGen[S]     => new VertexCU(vu.info)
-          case vc: Vertex.Constant[S] => new VertexCC(vc.f())
-        }
-        map += vIn -> vOut
-        sq :+= vOut
-      }
-    }
-    ct.step { implicit tx =>
-      sq.foreach { vIn =>
-        val vOut = vIn match {
-          case vu: VertexCU => Vertex.UGen[T](vu.info)
-          case vc: VertexCC => Vertex.Constant[T](vc.f)
-        }
-        mapT += vIn -> vOut
-        top.addVertex(vOut)
-      }
-    }
-
-    val edges = cs.step { implicit tx => in.edges.iterator.toIndexedSeq }
-
-    ct.step { implicit tx =>
-      edges.foreach {
-        case Edge(srcIn, tgtIn, inlet) =>
-          val srcOut = map.get(srcIn).flatMap(mapT.get) match {
-            case Some(vu: Vertex.UGen[T]) => vu
-            case _ => throw new NoSuchElementException
-          }
-          val tgtOut: Vertex[T] = map.get(tgtIn).flatMap(mapT.get).getOrElse(throw new NoSuchElementException)
-          val eOut = Edge(sourceVertex = srcOut, targetVertex = tgtOut, inletIndex = inlet)
-          top.addEdge(eOut)
-      }
-    }
-    top
-  }
+  //  def mkCopyT[S <: Sys[S], T <: Sys[T]](in: Chromosome[S], cs: stm.Cursor[S], ct: stm.Cursor[T])
+//                                       (implicit ord: data.Ordering[T#Tx, Vertex[T]]): Chromosome[T] = {
+//    var map  = Map.empty[Vertex[S], VertexC]
+//    var sq   = Vec.empty[VertexC]
+//    var mapT = Map.empty[VertexC, Vertex[T]]
+//    val top = ct.step { implicit tx => Chromosome.empty[T] /* , Vertex, Edge] */ }
+//
+//    cs.step { implicit tx =>
+//      in.vertices.iterator.foreach { vIn =>
+//        val vOut = vIn match {
+//          case vu: Vertex.UGen[S]     => new VertexCU(vu.info)
+//          case vc: Vertex.Constant[S] => new VertexCC(vc.f())
+//        }
+//        map += vIn -> vOut
+//        sq :+= vOut
+//      }
+//    }
+//    ct.step { implicit tx =>
+//      sq.foreach { vIn =>
+//        val vOut = vIn match {
+//          case vu: VertexCU => Vertex.UGen[T](vu.info)
+//          case vc: VertexCC => Vertex.Constant[T](vc.f)
+//        }
+//        mapT += vIn -> vOut
+//        top.addVertex(vOut)
+//      }
+//    }
+//
+//    val edges = cs.step { implicit tx => in.edges.iterator.toIndexedSeq }
+//
+//    ct.step { implicit tx =>
+//      edges.foreach {
+//        case Edge(srcIn, tgtIn, inlet) =>
+//          val srcOut = map.get(srcIn).flatMap(mapT.get) match {
+//            case Some(vu: Vertex.UGen[T]) => vu
+//            case _ => throw new NoSuchElementException
+//          }
+//          val tgtOut: Vertex[T] = map.get(tgtIn).flatMap(mapT.get).getOrElse(throw new NoSuchElementException)
+//          val eOut = Edge(sourceVertex = srcOut, targetVertex = tgtOut, inletIndex = inlet)
+//          top.addEdge(eOut)
+//      }
+//    }
+//    top
+//  }
 
   private final class Impl[S <: Sys[S], G <: GlobalState[S]](system: Closeable, handle: stm.Source[S#Tx, Genome[S]],
                                         val global: G,

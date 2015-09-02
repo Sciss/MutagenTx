@@ -163,7 +163,7 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
   }
 
   /** Removes the edge from the topology. If the edge is not contained in the
-    * structure, returns the topology unmodified.
+    * structure, throws an exception
     */
   def removeEdge(e: E)(implicit tx: S#Tx): Unit = {
     if (edges.remove(e)) {

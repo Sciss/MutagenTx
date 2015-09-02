@@ -24,6 +24,7 @@ import de.sciss.synth.ugen.{BinaryOpUGen, Constant, SampleRate, UnaryOpUGen}
 import de.sciss.synth.{GE, Lazy, Rate, SynthGraph, UGenSpec, UndefinedRate, doNothing, ugen}
 
 import scala.annotation.tailrec
+import scala.util.control.NonFatal
 
 object ChromosomeImpl {
 //  def mkChromosome[S <: Sys[S]](g: SynthGraph)(implicit tx: S#Tx): Chromosome[S] = {
@@ -178,7 +179,7 @@ object ChromosomeImpl {
   }
 
   def completeUGenInputs[S <: Sys[S]](c: Chromosome[S], v: Vertex.UGen[S])
-                                                  (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
+                                    (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     import Algorithm.nonDefaultProb
     import Util.{choose, coin}
 
@@ -207,7 +208,13 @@ object ChromosomeImpl {
           val vi  = mkConstant()
           c.addVertex(vi)
           val e   = Edge.make(v, vi, head.name)
-          c.addEdge(e) // .get
+          try {
+            c.addEdge(e) // .get
+          } catch {
+            case NonFatal(ex) =>
+              println(c.debugString)
+              throw ex
+          }
         }
 
         loopVertex(tail)

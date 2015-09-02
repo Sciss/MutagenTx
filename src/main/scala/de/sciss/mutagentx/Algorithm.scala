@@ -34,7 +34,7 @@ object Algorithm {
   val DEBUG = false
 
   // ---- generation ----
-  val population      : Int     = 1000
+  val population      : Int     = 100 // 1000
   val constProb       : Double  = 0.5
   val minNumVertices  : Int     = 64 // 30
   val maxNumVertices  : Int     = 256 // 100
@@ -102,13 +102,15 @@ object Algorithm {
     val eliteSet: Set[Chromosome[S]] = elite.toSet
     // val ser   = SynthGraphs.ValueSerializer //implicitly[ImmutableSerializer[SynthGraph]]
     val iter  = a.global.numIterations()
-    val store = iter % 10 == 0
+    val store = iter % 5 /* 10 */ == 0
     val f     = dir.parent / s"${dir.name}_iter$iter.bin"
     lazy val out = DataOutput.open(f)
 
+    val thresh = if (fit.isEmpty) 0.4f else math.min(0.4f, fit.sorted.apply(fit.size/2))
+
     (old zip fit).foreach { case (c, fit0) =>
       if (!eliteSet.contains(c)) {
-        if (store && fit0 > 0.4f) {
+        if (store && fit0 > thresh /* 0.4f */) {
           val graph = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true)
           val input = SOMGenerator.Input(graph, iter = iter, fitness = fit0)
           SOMGenerator.Input.serializer.write(input, out)
