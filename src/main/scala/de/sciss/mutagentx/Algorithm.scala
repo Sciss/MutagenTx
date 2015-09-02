@@ -34,7 +34,7 @@ object Algorithm {
   val DEBUG = false
 
   // ---- generation ----
-  val population      : Int     = 100 // 1000
+  val population      : Int     = 20 // 100 // 1000
   val constProb       : Double  = 0.5
   val minNumVertices  : Int     = 64 // 30
   val maxNumVertices  : Int     = 256 // 100

@@ -274,12 +274,29 @@ trait GenApp[S <: Sys[S]] {
     }
   }
 
+  val ggValidate = Button("Validate") {
+    algorithm.foreach { algo: Algorithm[S] =>
+      algo.global.cursor.step { implicit tx =>
+        val res = algo.genome.chromosomes().flatMap { c =>
+          c.validate()
+        }
+        if (res.isEmpty) {
+          println(s"No errors have been found.")
+        } else {
+          println(s"===== WARNING: found ${res.size} errors =====")
+          res.foreach(println)
+        }
+      }
+    }
+  }
+
   val pTop = new FlowPanel(
     new Label("Best:"  ), ggBest,
     new Label("Avg:"   ), ggAvg,
     new Label("Median:"), ggMedian,
     new Label("Iter:"  ), ggIter,
-    ggRemoveUGen
+    ggRemoveUGen,
+    ggValidate
   )
 
   def updateStats(a: A): Unit = {

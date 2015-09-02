@@ -119,8 +119,8 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
 
     // dealing with unconnected elements
     val u = unconnected()
-    if (upBound < u) { // first edge for source
-      if (loBound < u) { // first edge for target
+    if (upBound < u) {    // first edge for source
+      if (loBound < u) {  // first edge for target
       val min         = math.min(upBound, loBound)
         val max         = math.max(upBound, loBound)
         val newUnCon    = u - 2
@@ -184,21 +184,32 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
     * structure, throws an exception
     */
   def removeEdge(e: E)(implicit tx: S#Tx): Unit = {
-    if (edges.remove(e)) {
-      def remove(v: V, map: EdgeMap): Unit = {
-        val key     = v.hashCode()
-        val m0      = map.get(key).getOrElse(Map.empty)
-        val s0      = m0.getOrElse(v, throw new IllegalStateException(s"Edge $e is not in $v's map"))
-        val s1      = s0 - e
-        val m1      = if (s1.isEmpty) m0 - v else m0 + (v -> s1)
-        if (m1.isEmpty) map.remove(key) else map.add(key, m1)
+    if (!edges.remove(e)) throw new IllegalArgumentException(s"Edge $e was not added")
+
+    val src   = e.sourceVertex
+    val tgt   = e.targetVertex
+    removeEdge1(src, e, sourceEdgeMap, moveU = true)
+    removeEdge1(tgt, e, targetEdgeMap, moveU = true)
+  }
+
+  // removes edge from map but not `edges`. if `moveU` is true,
+  // moves vertex if it becomes unconnected
+  private def removeEdge1(v: V, e: E, map: EdgeMap, moveU: Boolean)(implicit tx: S#Tx): Unit = {
+    val key     = v.hashCode()
+    val m0      = map.get(key).getOrElse(Map.empty)
+    val s0      = m0.getOrElse(v, throw new IllegalStateException(s"Edge $e is not in $v's map"))
+    val s1      = s0 - e
+    val m1      = if (s1.isEmpty) m0 - v else m0 + (v -> s1)
+    if (m1.isEmpty) map.remove(key) else map.add(key, m1)
+    if (s1.isEmpty && moveU) {
+      val vIdx  = vertices.indexOf(v)
+      val u0    = unconnected()
+      if (vIdx < u0) throw new IllegalStateException(s"Vertex $v has marked as unconnected")
+      if (vIdx > u0) {
+        vertices.removeAt(vIdx)
+        vertices.insert(u0, v)
       }
-
-      remove(e.sourceVertex, sourceEdgeMap)
-      remove(e.targetVertex, targetEdgeMap)
-
-    } else {
-      throw new IllegalArgumentException(s"Edge $e was not added")
+      unconnected() = u0 + 1
     }
   }
 
@@ -213,9 +224,9 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
   }
 
   /** Removes a vertex and all associated edges. If the vertex is not
-    * contained in the structure, returns the unmodified topology.
+    * contained in the structure, throws an exception.
     *
-    * Note: Automatically removes outgoing edges, __but not incoming edges__
+    * Note: Automatically removes edges
     */
   def removeVertex(v: V)(implicit tx: S#Tx): Unit = {
     sourceEdgeMap.get(v.hashCode()).foreach { map =>
@@ -224,15 +235,37 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
       }
     }
     val idx = vertices.indexOf(v)
-    if (idx >= 0) {
-      vertices.removeAt(idx)
-      val u = unconnected()
-      if (idx < u) {
-        unconnected() = unconnected() - 1
-      }
-    } else {
-      throw new IllegalArgumentException(s"Vertex $v was not added")
+    if (idx < 0) throw new IllegalArgumentException(s"Vertex $v was not added")
+
+    vertices.removeAt(idx)
+    val u = unconnected()
+    if (idx >= u) throw new IllegalStateException(s"Vertex $v was not unconnected after removing edges")
+    unconnected() = u - 1
+  }
+
+  def validate()(implicit tx: S#Tx): Vec[String] = {
+    val u = unconnected()
+    val b = Vector.newBuilder[String]
+    if (u < 0 || u > vertices.size) b += s"Illegal number of unconnected vertices: $u"
+    vertices.iterator.zipWithIndex.foreach { case (v, idx) =>
+      val key = v.hashCode()
+      val hasEdges = sourceEdgeMap.get(key).exists(_.get(v).exists(_.nonEmpty)) ||
+                     targetEdgeMap.get(key).exists(_.get(v).exists(_.nonEmpty))
+      if (idx  < u &&  hasEdges) b += s"Vertex $v has edges although it is marked unconnected"
+      if (idx >= u && !hasEdges) b += s"Vertex $v has no edges although it is marked connected"
     }
+    edges.iterator.foreach { e =>
+      val s1 = sourceEdgeMap.get(e.sourceVertex.hashCode()).getOrElse(Map.empty).getOrElse(e.sourceVertex, Set.empty)
+      if (!s1.contains(e)) b += s"Edge $e is not found in sourceEdgeMap"
+      val s2 = targetEdgeMap.get(e.targetVertex.hashCode()).getOrElse(Map.empty).getOrElse(e.targetVertex, Set.empty)
+      if (!s2.contains(e)) b += s"Edge $e is not found in targetEdgeMap"
+    }
+    val numEdges1 = edges.size
+    val numEdges2 = sourceEdgeMap.iterator.map { case (_, map) => map.map(_._2.size).sum } .sum
+    val numEdges3 = targetEdgeMap.iterator.map { case (_, map) => map.map(_._2.size).sum } .sum
+    if (numEdges1 != numEdges2) b += s"Edge list has size $numEdges1, while sourceEdgeMap contains $numEdges2 entries"
+    if (numEdges1 != numEdges3) b += s"Edge list has size $numEdges1, while targetEdgeMap contains $numEdges3 entries"
+    b.result()
   }
 
   // note: assumes audio rate

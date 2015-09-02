@@ -64,6 +64,12 @@ trait Topology[S <: Sys[S], V, E <: Topology.Edge[V]] {
 
   def debugString(implicit tx: S#Tx): String
 
+  /** Validates the internal structure. If no errors are
+    * found, an empty collection is returned, otherwise
+    * a collection with all errors encountered is returned.
+    */
+  def validate()(implicit tx: S#Tx): Vec[String]
+
   /** For two connected vertices `a` and `b`, returns `-1` if `a` is before `b`, or `1` if `a` follows `b`,
     *  or `0` if both are equal. Throws an exception if `a` or `b` is unconnected.
     */

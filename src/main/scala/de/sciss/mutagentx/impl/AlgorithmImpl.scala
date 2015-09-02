@@ -112,7 +112,7 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
     // A topology's edgeMap uses source-vertices as keys. Therefore, we can see
     // if the an argument is connected by getting the edges for the ugen and finding
     // an edge that uses the inlet name.
-    val edgeSet = c.edgeSet(v) // .getOrElse(Set.empty)
+    val edgeSet = c.targets(v) // .getOrElse(Set.empty)
     val argsFree = geArgs(spec).filter { arg => !edgeSet.exists(_.inlet == arg.name) }
     val (hasDef, hasNoDef)          = argsFree.partition(_.defaults.contains(UndefinedRate))
     val (useNotDef, _ /* useDef */) = hasDef.partition(_ => coin(nonDefaultProb))

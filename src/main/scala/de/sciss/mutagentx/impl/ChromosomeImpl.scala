@@ -68,7 +68,7 @@ object ChromosomeImpl {
                   (v.asInstanceOf[AnyRef], classOf[Int])
 
                 case UGenSpec.ArgumentType.GE(_, _) =>
-                  val lastE   = top.edgeSet(last) // top.edgeMap.get(last)
+                  val lastE   = top.targets(last) // top.edgeMap.get(last)
                   val inGEOpt = lastE.flatMap { e =>
                       if (e.inlet == arg.name) real.get(e.targetVertex) else None
                     } .headOption
@@ -133,7 +133,7 @@ object ChromosomeImpl {
 
   def findIncompleteUGenInputs[S <: Sys[S]](t1: Chromosome[S], v: Vertex.UGen[S])(implicit tx: S#Tx): Vec[String] = {
     val spec      = v.info
-    val edgeSet   = t1.edgeSet(v) // edgeMap.get(v).getOrElse(Set.empty)
+    val edgeSet   = t1.targets(v) // edgeMap.get(v).getOrElse(Set.empty)
     val argsFree  = geArgs(spec).filter { arg => !edgeSet.exists(_.inlet == arg.name) }
     val inc       = argsFree.filterNot(_.defaults.contains(UndefinedRate))
     inc.map(_.name)
@@ -188,7 +188,7 @@ object ChromosomeImpl {
     // A topology's edgeMap uses source-vertices as keys. Therefore, we can see
     // if the an argument is connected by getting the edges for the ugen and finding
     // an edge that uses the inlet name.
-    val edgeSet = c.edgeSet(v) // edgeMap.get(v).getOrElse(Set.empty)
+    val edgeSet = c.targets(v) // edgeMap.get(v).getOrElse(Set.empty)
     val argsFree = geArgs(spec).filter { arg => !edgeSet.exists(_.inlet == arg.name) }
     val (hasDef, hasNoDef)          = argsFree.partition(_.defaults.contains(UndefinedRate))
     val (useNotDef, _ /* useDef */) = hasDef.partition(_ => coin(nonDefaultProb))
@@ -470,7 +470,8 @@ final class ChromosomeImpl[S <: Sys[S]](val id      : S#ID,
                                         val vertices: expr.List.Modifiable[S, Vertex[S]],
                                         val edges   : expr.List.Modifiable[S, Edge  [S]],
                                         val unconnected: S#Var[Int],
-                                        val sourceEdgeMap: SkipList.Map[S, Int, Map[Vertex[S], Set[Edge[S]]]])
+                                        val sourceEdgeMap: SkipList.Map[S, Int, Map[Vertex[S], Set[Edge[S]]]],
+                                        val targetEdgeMap: SkipList.Map[S, Int, Map[Vertex[S], Set[Edge[S]]]])
   extends TopologyImpl[S, Vertex[S], Edge[S]]
     with Chromosome[S] with  evt.impl.ConstObjImpl[S, Any] { in =>
 
@@ -483,8 +484,9 @@ final class ChromosomeImpl[S <: Sys[S]](val id      : S#ID,
     val vOut  = context[VListAux](vertices)
     val eOut  = context[EListAux](edges   )
     val uOut  = txOut.newVar(idOut, unconnected())
-    val mOut  = SkipList.Map.empty[Out, Int, Map[Vertex[Out], Set[Edge[Out]]]]
-    val out   = new ChromosomeImpl[Out](idOut, vOut, eOut, uOut, mOut)
+    val mSOut = SkipList.Map.empty[Out, Int, Map[Vertex[Out], Set[Edge[Out]]]]
+    val mTOut = SkipList.Map.empty[Out, Int, Map[Vertex[Out], Set[Edge[Out]]]]
+    val out   = new ChromosomeImpl[Out](idOut, vOut, eOut, uOut, mSOut, mTOut)
     context.defer(in, out) {
       in.sourceEdgeMap.iterator.foreach { case (key, mIn) =>
         val mOut = mIn.map { case (v, eIn) =>

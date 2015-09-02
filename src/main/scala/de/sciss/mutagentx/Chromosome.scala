@@ -17,8 +17,9 @@ object Chromosome extends Obj.Type {
     val vertices    = expr.List.Modifiable.read[S, Vertex[S]](in, access)
     val edges       = expr.List.Modifiable.read[S, Edge  [S]](in, access)
     val unconnected = tx.readIntVar(id, in)
-    val edgeMap     = SkipList.Map.read[S, Int, Map[Vertex[S], Set[Edge[S]]]](in, access)
-    new ChromosomeImpl[S](id, vertices, edges, unconnected, edgeMap)
+    val srcEdgeMap  = SkipList.Map.read[S, Int, Map[Vertex[S], Set[Edge[S]]]](in, access)
+    val tgtEdgeMap  = SkipList.Map.read[S, Int, Map[Vertex[S], Set[Edge[S]]]](in, access)
+    new ChromosomeImpl[S](id, vertices, edges, unconnected, srcEdgeMap, tgtEdgeMap)
   }
 
   def empty[S <: Sys[S]](implicit tx: S#Tx): Chromosome[S] = {
@@ -26,8 +27,9 @@ object Chromosome extends Obj.Type {
     val vertices    = expr.List.Modifiable[S, Vertex]
     val edges       = expr.List.Modifiable[S, Edge  ]
     val unconnected = tx.newIntVar(id, 0)
-    val edgeMap     = SkipList.Map.empty[S, Int, Map[Vertex[S], Set[Edge[S]]]]
-    new ChromosomeImpl[S](id, vertices, edges, unconnected, edgeMap)
+    val srcEdgeMap  = SkipList.Map.empty[S, Int, Map[Vertex[S], Set[Edge[S]]]]
+    val tgtEdgeMap  = SkipList.Map.empty[S, Int, Map[Vertex[S], Set[Edge[S]]]]
+    new ChromosomeImpl[S](id, vertices, edges, unconnected, srcEdgeMap, tgtEdgeMap)
   }
 
   implicit def serializer[S <: Sys[S]]: Serializer[S#Tx, S#Acc, Chromosome[S]] = anySer.asInstanceOf[Ser[S]]
