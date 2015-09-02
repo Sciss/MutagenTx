@@ -13,9 +13,12 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.data
-import de.sciss.lucre.stm.{Sys, Mutable, MutableSerializer}
+import de.sciss.lucre.stm.InMemoryLike.{Var, Txn, ID}
+import de.sciss.lucre.{stm, data}
+import de.sciss.lucre.stm.{Copy, Obj, Sys, Mutable, MutableSerializer}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
+
+import scala.concurrent.stm.Ref
 
 object Genome {
   def empty[S <: Sys[S]](implicit tx: S#Tx, ord: data.Ordering[S#Tx, Vertex[S]]): Genome[S] = {
@@ -26,12 +29,65 @@ object Genome {
     new GenomeImpl[S](id, chromosomes, fitness)
   }
 
+  // type Var[S <: Sys[S], A] = stm.Sink[S#Tx, A] with stm.Source[S#Tx, A]
+
+  def DurableHybrid(global: GlobalState.DurableHybrid, peer: Genome[stm.Durable])
+                   (implicit tx: stm.Durable#Tx): Genome[stm.InMemory] =
+    new Genome[stm.InMemory] {
+      type S = stm.InMemory
+      type D = stm.Durable
+      
+      // type ChromoAux[~ <: Sys[~]]
+      private val _global = global
+
+      import global.dtx
+      
+      private def copyChromo[In <: Sys[In], Out <: Sys[Out]](in: Chromosomes[In])
+                                                            (implicit txIn: In#Tx, txOut: Out#Tx): Chromosomes[Out] = {
+        val context = Copy[In, Out]
+        try {
+          in.map(context(_))
+        } finally {
+          context.finish()
+        }
+      }
+      
+      private val cRef: Ref[Chromosomes[S]] = Ref(copyChromo(peer.chromosomes())(tx, tx.inMemory))
+      private val fRef: Ref[Vec[Float]]     = Ref(peer.fitness())
+  
+      val chromosomes: Var[Chromosomes[S]] = 
+        new stm.Source[S#Tx, Chromosomes[S]] with stm.Sink[S#Tx, Chromosomes[S]] {
+          def apply()(implicit tx: S#Tx): Chromosomes[S] = cRef.get(tx.peer)
+
+          def update(v: Chromosomes[S])(implicit tx: S#Tx): Unit = {
+            cRef.set(v)(tx.peer)
+            peer.chromosomes.update(copyChromo(v))
+          }
+        }
+
+      val fitness: Var[Vec[Float]] =
+        new stm.Source[S#Tx, Vec[Float]] with stm.Sink[S#Tx, Vec[Float]] {
+          def apply()(implicit tx: S#Tx): Vec[Float] = fRef.get(tx.peer)
+
+          def update(v: Vec[Float])(implicit tx: S#Tx): Unit = {
+            fRef.set(v)(tx.peer)
+            ???
+          }
+        }
+  
+      def dispose()(implicit tx: Txn[S]): Unit = id.dispose()
+  
+      def write(out: DataOutput): Unit = throw new UnsupportedOperationException
+  
+      val id: ID[S] = tx.inMemory.newID()
+    }
+
   private final class GenomeImpl[S <: Sys[S]](val id: S#ID,
-                                 val chromosomes: S#Var[Vec[Chromosome[S]]],
+                                 val chromosomes: S#Var[Chromosomes[S]],
                                  val fitness    : S#Var[Vec[Float     ]])
     extends Genome[S] with Mutable.Impl[S] {
 
-    override def toString() = s"Genome$id"
+    override def toString = s"Genome$id"
 
     protected def writeData(out: DataOutput): Unit = {
       chromosomes .write(out)
@@ -45,20 +101,22 @@ object Genome {
     }
   }
 
-  implicit def Ser[S <: Sys[S]](implicit ord: data.Ordering[S#Tx, Vertex[S]]): Serializer[S#Tx, S#Acc, Genome[S]] =
+  implicit def serializer[S <: Sys[S]](implicit ord: data.Ordering[S#Tx, Vertex[S]]): Serializer[S#Tx, S#Acc, Genome[S]] =
     new Ser[S]
 
   private final class Ser[S <: Sys[S]](implicit ord: data.Ordering[S#Tx, Vertex[S]])
     extends MutableSerializer[S, Genome[S]] {
 
     protected def readData(in: DataInput, id: S#ID)(implicit tx: S#Tx): Genome[S] = {
-      val chromosomes   = tx.readVar[Vec[Chromosome[S]]](id, in)
+      val chromosomes   = tx.readVar[Chromosomes[S]](id, in)
       val fitness       = tx.readVar[Vec[Float     ]](id, in)(Serializer.indexedSeq)
       new GenomeImpl[S](id, chromosomes, fitness)
     }
   }
 }
 trait Genome[S <: Sys[S]] extends Mutable[S#ID, S#Tx] {
-  def chromosomes: S#Var[Vec[Chromosome[S]]]
-  def fitness    : S#Var[Vec[Float     ]]
+  type Var[A] = stm.Sink[S#Tx, A] with stm.Source[S#Tx, A]
+
+  def chromosomes: Var[Chromosomes[S]]
+  def fitness    : Var[Vec[Float     ]]
 }

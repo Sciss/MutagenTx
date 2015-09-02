@@ -14,6 +14,8 @@
 package de.sciss.mutagentx
 package impl
 
+import java.io.Closeable
+
 import de.sciss.file._
 import de.sciss.lucre.stm.{Obj, Sys}
 import de.sciss.lucre.{data, stm}
@@ -27,9 +29,9 @@ import scala.concurrent.stm.TxnExecutor
 import scala.concurrent.{Await, blocking}
 
 object CopyingAlgorithm {
-  def apply[S <: Sys[S], G <: GlobalState[S]](system: S, input: File, global: G, genomeH: stm.Source[S#Tx, Genome[S]],
+  def apply[S <: Sys[S], G <: GlobalState[S]](system: Closeable, input: File, global: G, genomeH: stm.Source[S#Tx, Genome[S]],
                                               ephemeral: Boolean, cleaner: Option[(S#Tx, Vec[Chromosome[S]]) => Unit] = None)
-                        (implicit cursor: stm.Cursor[S], ord: data.Ordering[S#Tx, Vertex[S]]): Algorithm[S] { type Global = G } = {
+                        (implicit ord: data.Ordering[S#Tx, Vertex[S]]): Algorithm[S] { type Global = G } = {
     val futInput = TxnExecutor.defaultAtomic { implicit tx =>
       impl.EvaluationImpl.getInputSpec(input)
     }
@@ -109,7 +111,7 @@ object CopyingAlgorithm {
     top
   }
 
-  private final class Impl[S <: Sys[S], G <: GlobalState[S]](val system: S, handle: stm.Source[S#Tx, Genome[S]],
+  private final class Impl[S <: Sys[S], G <: GlobalState[S]](system: Closeable, handle: stm.Source[S#Tx, Genome[S]],
                                         val global: G,
                                         val input: File, val inputExtr: File, val inputSpec: AudioFileSpec,
                                         val ephemeral: Boolean,
@@ -120,6 +122,8 @@ object CopyingAlgorithm {
     override def toString = s"CopyingAlgorithm(input = $input)@${hashCode().toHexString}"
 
     def genome(implicit tx: S#Tx): Genome[S] = handle()
+
+    def close(): Unit = system.close()
 
     type Global = G
 

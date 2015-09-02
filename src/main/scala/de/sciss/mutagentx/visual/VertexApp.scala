@@ -117,7 +117,7 @@ object VertexApp extends App {
 
       override def closeOperation(): Unit = {
         try {
-          v.algorithm.system.close()
+          v.algorithm.close()
         } finally {
           sys.exit(0)
         }

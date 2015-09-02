@@ -31,6 +31,8 @@ package object mutagentx {
   type Vec[+A]  = scala.collection.immutable.IndexedSeq[A]
   val  Vec      = scala.collection.immutable.IndexedSeq
 
+  type Chromosomes[S <: Sys[S]] = Vec[Chromosome[S]]
+
   def init(): Unit = {
     Vertex.init()
     Edge  .init()

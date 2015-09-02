@@ -62,15 +62,8 @@ object GeneratorApp extends SwingApplication {
   }
 
   final class InMemoryApp(input: File) extends GenApp[InMemory] {
-    // private var iterCount = 0
-
     type S = InMemory
     type A = Algorithm[InMemory]
-
-    //    def getIteration(a: A, iterInc: Int): Int = {
-    //      iterCount += iterInc
-    //      iterCount
-    //    }
 
     def init(): Processor[A] = {
       import Algorithm.executionContext
@@ -82,11 +75,11 @@ object GeneratorApp extends SwingApplication {
     private final class Init extends ProcessorImpl[A, Processor[A]] with Processor[A] {
       def body(): A = {
         val algorithm = Algorithm.inMemory(input)
-        val fut1 = algorithm.system.step { implicit tx =>
+        val fut1 = algorithm.global.cursor.step { implicit tx =>
           algorithm.initialize(Algorithm.population)
         }
         await(fut1, 0.0, 0.5)
-        val fut2 = algorithm.system.step { implicit tx =>
+        val fut2 = algorithm.global.cursor.step { implicit tx =>
           algorithm.evaluateAndUpdate()
         }
         await(fut2, 0.5, 0.5)
@@ -130,17 +123,41 @@ object GeneratorApp extends SwingApplication {
     type S = Durable
     type A = Algorithm.Durable
 
-    //    def getIteration(a: A, iterInc: Int): Int =
-    //      a.global.cursor.step { implicit tx =>
-    //        val i = a.global.iter()
-    //        val j = i + iterInc
-    //        a.global.iter() = j
-    //        j
-    //      }
+    def init(): Processor[A] = DurableInit(dir = dir, input = input, init = true)
+  }
+
+  private final class DurableHybridInit(dir: File, input: File, init: Boolean)
+    extends ProcessorImpl[Algorithm.InMemory, Processor[Algorithm.InMemory]] with Processor[Algorithm.InMemory] {
+
+    def body(): Algorithm.InMemory = {
+      val algorithm = Algorithm.durableHybrid(dir = dir, input = input)
+      val cursor = algorithm.global.cursor
+
+      val isNew = cursor.step { implicit tx =>
+        algorithm.genome.chromosomes().isEmpty
+      }
+      if (isNew && init) {
+        val futInit = cursor.step { implicit tx => algorithm.initialize(Algorithm.population) }
+        await(futInit, 0, 0.5)
+      }
+      if (isNew && init) {
+        val fut0 = cursor.step { implicit tx =>
+          algorithm.evaluateAndUpdate()
+        }
+        await(fut0, 0.5, 0.5)
+      }
+      algorithm
+    }
+  }
+
+  /** Durable/In-Memory hybrid for speed increase. */
+  final class DurableHybridApp(dir: File, input: File) extends GenApp[InMemory] {
+    type S = InMemory
+    type A = Algorithm.InMemory
 
     def init(): Processor[A] = {
       import Algorithm.executionContext
-      val res = new DurableInit(dir = dir, input = input, init = true)
+      val res = new DurableHybridInit(dir = dir, input = input, init = true)
       res.start()
       res
     }
@@ -193,6 +210,14 @@ object GeneratorApp extends SwingApplication {
   }
 }
 trait GenApp[S <: Sys[S]] {
+  // ---- abstract ----
+
+  type A <: Algorithm[S]
+
+  def init(): Processor[A]
+
+  // ---- impl ----
+
   def mkNumView() = {
     val t = new TextField(4)
     t.editable  = false
@@ -205,15 +230,13 @@ trait GenApp[S <: Sys[S]] {
   val ggMedian  = mkNumView()
   val ggIter    = mkNumView()
 
-  type A <: Algorithm[S]
-
   var algorithm = Option.empty[A]
-  var busy = Option.empty[Processor[Any]]
+  var busy      = Option.empty[Processor[Any]]
 
   import Algorithm.executionContext
 
   val ggRemoveUGen = Button("Remove UGen…") {
-    if (busy.isEmpty) algorithm.foreach { algo =>
+    if (busy.isEmpty) algorithm.foreach { algo: Algorithm[S] =>
       OptionPane.textInput(message = "UGen Name:", initial = "GbmanL").show(None).foreach { ugenName =>
         val proc = Processor[Int](s"Remove $ugenName") { self =>
           val cursor = algo.global.cursor
@@ -226,8 +249,7 @@ trait GenApp[S <: Sys[S]] {
               val these = c.vertices.iterator.collect {
                 case uv: Vertex.UGen[S] if uv.boxName == ugenName => uv
               } .toIndexedSeq
-              import algo.global.rng
-              these.foreach(impl.MutationImpl.removeVertex2[S](c, _))
+              these.foreach(impl.MutationImpl.removeVertex2[S](c, _)(tx, algo.global.rng))
               countIn + these.size
             }
             self.progress = (ci + 1).toDouble / numChromo
@@ -264,14 +286,6 @@ trait GenApp[S <: Sys[S]] {
     ggMedian.text = f"${sorted.median}%1.3f"
     ggIter  .text = numIter.toString
   }
-
-  def init(): Processor[A]
-
-//      .andThen { case Success(_) =>
-//        a.global.cursor.step { implicit tx =>
-//          a.evaluateAndUpdate()
-//        }
-//      }
 
   val ggProgress = new ProgressBar
 
@@ -372,7 +386,6 @@ trait GenApp[S <: Sys[S]] {
     }
   }
 
-
   val pBot = new FlowPanel(ggInit, ggStep1, ggStepN, ggStepNum, ggProgress, ggAbort)
 
   new Frame {
@@ -385,7 +398,7 @@ trait GenApp[S <: Sys[S]] {
     open()
 
     override def closeOperation(): Unit = {
-      try { algorithm.foreach(_.system.close()) } catch { case NonFatal(ex) => ex.printStackTrace() }
+      try { algorithm.foreach(_.close()) } catch { case NonFatal(ex) => ex.printStackTrace() }
       sys.exit()
     }
   }

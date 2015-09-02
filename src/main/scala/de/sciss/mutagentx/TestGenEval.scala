@@ -26,7 +26,7 @@ object TestGenEval extends App {
   val t = new Thread {
     override def run(): Unit = {
       this.synchronized(this.wait())
-      algorithm.system.close()
+      algorithm.close()
       sys.exit()
     }
     start()

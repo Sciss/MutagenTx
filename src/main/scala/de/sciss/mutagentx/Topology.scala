@@ -14,14 +14,34 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.data.SkipList
-import de.sciss.lucre.stm.{Elem, Sys, Mutable}
-import de.sciss.lucre.{data, expr}
+import de.sciss.lucre.stm.{Elem, Obj, Sys}
+import de.sciss.lucre.{event => evt, expr}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
 import scala.collection.mutable.{Set => MSet, Stack => MStack}
 import scala.language.higherKinds
 
-object Topology {
+object Topology extends Obj.Type {
+  final val typeID = 0x10000004
+
+  def readIdentifiedObj[S <: Sys[S]](in: DataInput, access: S#Acc)(implicit tx: S#Tx): Obj[S] = {
+    type EdgeAux[~ <: Sys[~]] = Edge[Elem[~]] with Elem[~]
+    readIdentifiedTopology[S, Elem, EdgeAux](in, access)
+  }
+
+  private def readIdentifiedTopology[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]]
+    (in: DataInput, access: S#Acc)(implicit tx: S#Tx,
+                                   vertexSer: Serializer[S#Tx, S#Acc, V[S]],
+                                   edgeSer  : Serializer[S#Tx, S#Acc, E[S]]): Topology[S, V[S], E[S]] = {
+
+    val id          = tx.readID(in, access)
+    val vertices    = expr.List.Modifiable.read[S, V[S]](in, access)
+    val edges       = expr.List.Modifiable.read[S, E[S]](in, access)
+    val unconnected = tx.readIntVar(id, in)
+    val edgeMap     = SkipList.Map.read[S, Int, Map[V[S], Set[E[S]]]](in, access) // tx.readDurableIDMap[Set[E]](in)
+    new Topology[S, V[S], E[S]](id, vertices, edges, unconnected, edgeMap)
+  }
+
   /** Creates an empty topology with no vertices or edges.
     *
     * @tparam V   vertex type
@@ -29,44 +49,50 @@ object Topology {
     */
   def empty[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]](implicit tx: S#Tx,
                                                    vertexSer: Serializer[S#Tx, S#Acc, V[S]],
-                                                   edgeSer  : Serializer[S#Tx, S#Acc, E[S]],
-                                                   ord: data.Ordering[S#Tx, V[S]]) = {
+                                                   edgeSer  : Serializer[S#Tx, S#Acc, E[S]]) = {
     val id = tx.newID()
     new Topology[S, V[S], E[S]](id, expr.List.Modifiable[S, V], expr.List.Modifiable[S, E], tx.newIntVar(id, 0),
-      SkipList.Map.empty[S, V[S], Set[E[S]]] /* tx.newDurableIDMap[Set[E]] */)
+      SkipList.Map.empty[S, Int, Map[V[S], Set[E[S]]]] /* tx.newDurableIDMap[Set[E]] */)
   }
 
   implicit def serializer[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]](
                                                   implicit vertexSer: Serializer[S#Tx, S#Acc, V[S]],
-                                                       edgeSer  : Serializer[S#Tx, S#Acc, E[S]],
-                                                        ord: data.Ordering[S#Tx, V[S]])
+                                                           edgeSer  : Serializer[S#Tx, S#Acc, E[S]])
     : Serializer[S#Tx, S#Acc, Topology[S, V[S], E[S]]] = new Ser[S, V, E]
 
   def read[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]](in: DataInput, access: S#Acc)
                                         (implicit tx: S#Tx, vertexSer: Serializer[S#Tx, S#Acc, V[S]],
-                                                            edgeSer  : Serializer[S#Tx, S#Acc, E[S]],
-                                         ord: data.Ordering[S#Tx, V[S]]) =
+                                                            edgeSer  : Serializer[S#Tx, S#Acc, E[S]]) =
     serializer[S, V, E].read(in, access)
 
-  private final class Ser[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]](
-                                                                implicit vertexSer: Serializer[S#Tx, S#Acc, V[S]],
-                                                                 edgeSer  : Serializer[S#Tx, S#Acc, E[S]],
-                                                                 ord: data.Ordering[S#Tx, V[S]])
+  private final class Ser[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]]
+      (implicit vertexSer: Serializer[S#Tx, S#Acc, V[S]], edgeSer: Serializer[S#Tx, S#Acc, E[S]])
     extends Serializer[S#Tx, S#Acc, Topology[S, V[S], E[S]]] {
 
     def write(top: Topology[S, V[S], E[S]], out: DataOutput): Unit = top.write(out)
 
     def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Topology[S, V[S], E[S]] = {
-      val id          = tx.readID(in, access)
-      val vertices    = expr.List.Modifiable.read[S, V[S]](in, access)
-      val edges       = expr.List.Modifiable.read[S, E[S]](in, access)
-      val unconnected = tx.readIntVar(id, in)
-      val edgeMap     = SkipList.Map.read[S, V[S], Set[E[S]]](in, access) // tx.readDurableIDMap[Set[E]](in)
-      new Topology[S, V[S], E[S]](id, vertices, edges, unconnected, edgeMap)
+      val tpe = in.readInt()
+      if (tpe != Topology.typeID) sys.error(s"Type mismatch, found $tpe, expected ${Topology.typeID}")
+      readIdentifiedTopology[S, V, E](in, access)
     }
   }
 
-  trait Edge[+V] {
+  object Edge extends Elem.Type {
+    def typeID: Int = ???
+
+    def readIdentifiedObj[S <: Sys[S]](in: DataInput, access: S#Acc)(implicit tx: S#Tx): Elem[S] = {
+      val cookie = in.readByte()
+      if (cookie != 3) sys.error(s"Unexpected cookie, found $cookie, expected 3")
+      new Edge[S] {
+        val sourceVertex  = Elem.read(in, access)
+        val targetVertex  = Elem.read(in, access)
+      // val inlet         = in.readUTF()
+      val inlet         = in.readShort()
+      (sourceVertex, targetVertex, inlet)
+    }
+  }
+  trait Edge[S <: Sys[S], +V <: Elem[S]] extends Elem[S]  {
     def sourceVertex: V
     def targetVertex: V
   }
@@ -104,10 +130,12 @@ final class Topology[S <: Sys[S], V, E <: Topology.Edge[V]] private (val id: S#I
                                                         val vertices: expr.List.Modifiable[S, V],
                                                         val edges   : expr.List.Modifiable[S, E],
                                                         val unconnected: S#Var[Int],
-                                                        val edgeMap: SkipList.Map[S, V, Set[E]])
-  extends Mutable.Impl[S] {
+                                                        val edgeMap: SkipList.Map[S, Int, Map[V, Set[E]]])
+  extends Obj[S] with evt.impl.ConstObjImpl[S, Any] {
 
   import Topology.{CycleDetected, Move, MoveAfter, MoveBefore}
+
+  override def tpe: Obj.Type = Topology
 
   private type T = Topology[S, V, E]
 
@@ -169,7 +197,12 @@ final class Topology[S <: Sys[S], V, E <: Topology.Edge[V]] private (val id: S#I
 
     def succeed(): Unit = {
       // edgeMap.put(source.id, edgeMap.get(source.id).getOrElse(Set.empty) + e)
-      edgeMap.add(source, edgeMap.get(source).getOrElse(Set.empty) + e)
+      val key = source.hashCode()
+      val m0 = edgeMap.get(key).getOrElse(Map.empty)
+      val s0 = m0.getOrElse(source, Set.empty)
+      val s1 = s0 + e
+      val m1 = m0 + (source -> s1)
+      edgeMap.add(key, m1)
       edges.addLast(e)
     }
 
@@ -242,8 +275,12 @@ final class Topology[S <: Sys[S], V, E <: Topology.Edge[V]] private (val id: S#I
   def removeEdge(e: E)(implicit tx: S#Tx): Unit = {
     if (edges.remove(e)) {
       val source  = e.sourceVertex
-      val newEMV  = edgeMap.get(source).getOrElse(Set.empty) - e
-      if (newEMV.isEmpty) edgeMap.remove(source) else edgeMap.add(source, newEMV)
+      val key     = source.hashCode()
+      val m0      = edgeMap.get(key).getOrElse(Map.empty)
+      val s0      = m0.getOrElse(source, Set.empty)
+      val s1      = s0 - e
+      val m1      = if (s1.isEmpty) m0 - source else m0 + (source -> s1)
+      if (m1.isEmpty) edgeMap.remove(key) else edgeMap.add(key, m1)
     }
   }
 
@@ -270,9 +307,13 @@ final class Topology[S <: Sys[S], V, E <: Topology.Edge[V]] private (val id: S#I
       if (idx < u) {
         unconnected() = unconnected() - 1
       } else {
-        edgeMap.get(v).foreach { e =>
-          edgeMap.remove(v)
-          e.foreach(edges.remove)
+        val key = v.hashCode()
+        edgeMap.get(key).foreach { m0 =>
+          m0.get(v).foreach { e =>
+            val m1 = m0 - v
+            if (m1.isEmpty) edgeMap.remove(key) else edgeMap.add(key, m1)
+            e.foreach(edges.remove)
+          }
         }
       }
     }
@@ -284,9 +325,11 @@ final class Topology[S <: Sys[S], V, E <: Topology.Edge[V]] private (val id: S#I
     while (targets.nonEmpty) {
       val v           = targets.pop()
       visited        += v
-      val m0          = edgeMap.get(v).getOrElse(Set.empty)
-      val m1          = if (v == newV) m0 + newE else m0
-      val moreTargets = m1.map(_.targetVertex)
+      val key         = v.hashCode()
+      val m0          = edgeMap.get(key).getOrElse(Map.empty)
+      val s0          = m0.getOrElse(v, Set.empty)
+      val s1          = if (v == newV) s0 + newE else s0
+      val moreTargets = s1.map(_.targetVertex)
       val grouped     = moreTargets.groupBy { t =>
         val vIdx = vertices.indexOf(t)
         if (vIdx < upBound) -1 else if (vIdx > upBound) 1 else 0

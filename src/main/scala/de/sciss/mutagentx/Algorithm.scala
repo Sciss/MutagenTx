@@ -13,6 +13,7 @@
 
 package de.sciss.mutagentx
 
+import java.io.Closeable
 import java.util.concurrent.TimeUnit
 
 import de.sciss.file._
@@ -21,7 +22,7 @@ import de.sciss.lucre.stm.Sys
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.{data, stm}
 import de.sciss.processor.Processor
-import de.sciss.serial.DataOutput
+import de.sciss.serial.{Serializer, DataOutput}
 import de.sciss.synth.UGenSpec
 import de.sciss.synth.io.AudioFileSpec
 
@@ -72,6 +73,16 @@ object Algorithm {
   def confluent(dir: File, input: File): Confluent =
     impl.ConfluentAlgorithm.apply(dir = dir, input = input)
 
+  implicit object InMemoryVertexOrdering extends data.Ordering[stm.InMemory#Tx, Vertex[stm.InMemory]] {
+    type S = stm.InMemory
+
+    def compare(a: Vertex[S], b: Vertex[S])(implicit tx: S#Tx): Int = {
+      val aid = stm.Escape.inMemoryID(a.id)
+      val bid = stm.Escape.inMemoryID(b.id)
+      if (aid < bid) -1 else if (aid > bid) 1 else 0
+    }
+  }
+
   implicit object DurableVertexOrdering extends data.Ordering[stm.Durable#Tx, Vertex[stm.Durable]] {
     type S = stm.Durable
 
@@ -82,12 +93,42 @@ object Algorithm {
     }
   }
 
+  def mkCleaner[S <: Sys[S]](a: Algorithm[S], dir: File): (S#Tx, Vec[Chromosome[S]]) => Unit = { (_tx, elite) =>
+    implicit val tx = _tx
+    val g   = a.genome
+    val old = g.chromosomes()
+    val fit = g.fitness()
+    g.chromosomes() = Vector.empty
+    val eliteSet: Set[Chromosome[S]] = elite.toSet
+    // val ser   = SynthGraphs.ValueSerializer //implicitly[ImmutableSerializer[SynthGraph]]
+    val iter  = a.global.numIterations()
+    val store = iter % 10 == 0
+    val f     = dir.parent / s"${dir.name}_iter$iter.bin"
+    lazy val out = DataOutput.open(f)
+
+    (old zip fit).foreach { case (c, fit0) =>
+      if (!eliteSet.contains(c)) {
+        if (store && fit0 > 0.4f) {
+          val graph = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true)
+          val input = SOMGenerator.Input(graph, iter = iter, fitness = fit0)
+          SOMGenerator.Input.serializer.write(input, out)
+        }
+        val v = c.vertices.iterator.toIndexedSeq
+        c.dispose()
+        v.foreach(_.dispose())
+      }
+    }
+
+    if (store) out.close()
+    ()
+  }
+
   def durable(dir: File, input: File): Durable = {
     type S = stm.Durable
     val dbc = BerkeleyDB.Config()
     dbc.lockTimeout = Duration(0, TimeUnit.SECONDS)
     val dbf = BerkeleyDB.factory(dir, dbc)
-    implicit val system = stm.Durable(dbf)
+    implicit val system: S = stm.Durable(dbf)
 
     val rootH = system.root[(GlobalState.Durable, Genome[S])] { implicit tx =>
       (GlobalState.Durable(), Genome.empty[S])
@@ -98,56 +139,48 @@ object Algorithm {
       (_global, tx.newHandle(_genome))
     }
 
-    //    val (global: GlobalState.Durable, genomeH: stm.Source[S#Tx, Genome[S]]) = system.step { implicit tx =>
-    //      (GlobalState.Durable(), tx.newHandle(Genome.empty[S]))
-    //    }
-
-    lazy val cleaner = { (_tx: S#Tx, elite: Vec[Chromosome[S]]) =>
-      implicit val tx = _tx
-      val g   = a.genome
-      val old = g.chromosomes()
-      val fit = g.fitness()
-      g.chromosomes() = Vector.empty
-      val eliteSet = elite.toSet
-      // val ser   = SynthGraphs.ValueSerializer //implicitly[ImmutableSerializer[SynthGraph]]
-      val iter  = a.global.numIterations()
-      val store = iter % 10 == 0
-      val f     = dir.parent / s"${dir.name}_iter$iter.bin"
-      lazy val out = DataOutput.open(f)
-
-      (old zip fit).foreach { case (c, fit0) =>
-        if (!eliteSet.contains(c)) {
-          if (store && fit0 > 0.4f) {
-            val graph = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true)
-            val input = SOMGenerator.Input(graph, iter = iter, fitness = fit0)
-            SOMGenerator.Input.serializer.write(input, out)
-          }
-          val v = c.vertices.iterator.toIndexedSeq
-          c.dispose()
-          v.foreach(_.dispose())
-        }
-      }
-
-      if (store) out.close()
-      ()
-    }
+    lazy val cleaner = mkCleaner(a, dir)
 
     lazy val a: Algorithm.Durable = impl.CopyingAlgorithm[S, GlobalState.Durable](system = system, input = input,
       global = global, genomeH = genomeH, ephemeral = true, cleaner = Some(cleaner))
     a
   }
 
+  def durableHybrid(dir: File, input: File): InMemory = {
+    type S = stm.InMemory
+    type D = stm.Durable
+
+    val dbc = BerkeleyDB.Config()
+    dbc.lockTimeout = Duration(0, TimeUnit.SECONDS)
+    val dbf = BerkeleyDB.factory(dir, dbc)
+    val systemD: D = stm.Durable(dbf)
+    // implicit val system: S = stm.Durable(dbf)
+
+    implicit val genomeSer  = Genome.serializer[D]
+    implicit val tupSer     = Serializer.tuple2[D#Tx, D#Acc, GlobalState.Durable, Genome[D]]
+    val rootH = systemD.root[(GlobalState.Durable, Genome[D])] { implicit dtx =>
+      implicit val tx = dtx.inMemory
+      (GlobalState.Durable(), Genome.empty[D])
+    }
+    // Yes, I know... Not nice...
+    val (global, genomeH) = systemD.step { implicit tx =>
+      val (_globalD, _genomeD) = rootH()
+      val _global = GlobalState.DurableHybrid(_globalD)
+      val _genome: Genome[S] = ???
+      val itx = tx.inMemory
+      (_global, itx.newHandle(_genome))
+    }
+
+    lazy val cleaner = mkCleaner(a, dir)
+
+    lazy val a: Algorithm.InMemory = impl.CopyingAlgorithm[S, GlobalState.InMemory](system = systemD,
+      input = input, global = global, genomeH = genomeH, ephemeral = true, cleaner = Some(cleaner))
+    a
+  }
+
   def inMemory(input: File): Algorithm[stm.InMemory] = {
     type S = stm.InMemory
     implicit val system = stm.InMemory()
-
-    implicit object VertexOrd extends data.Ordering[S#Tx, Vertex[S]] {
-      def compare(a: Vertex[S], b: Vertex[S])(implicit tx: S#Tx): Int = {
-        val aid = stm.Escape.inMemoryID(a.id)
-        val bid = stm.Escape.inMemoryID(b.id)
-        if (aid < bid) -1 else if (aid > bid) 1 else 0
-      }
-    }
 
     val (global: GlobalState[S], genomeH: stm.Source[S#Tx, Genome[S]]) = system.step { implicit tx =>
       (GlobalState.InMemory(), tx.newHandle(Genome.empty[S]))
@@ -169,7 +202,7 @@ object Algorithm {
     type Global = GlobalState.Confluent
   }
 }
-trait Algorithm[S <: Sys[S]] {
+trait Algorithm[S <: Sys[S]] extends Closeable {
   type C = Chromosome[S]
 
   def genome(implicit tx: S#Tx): Genome[S]
@@ -183,7 +216,7 @@ trait Algorithm[S <: Sys[S]] {
   /** Target sound's specification. */
   def inputSpec: AudioFileSpec
 
-  def system: S
+  // def system: S
 
   type Global <: GlobalState[S]
 

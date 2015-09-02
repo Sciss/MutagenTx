@@ -59,8 +59,8 @@ object CleanDB extends App {
       out.genome.fitness()        = fit
     }
 
-    in .system.close()
-    out.system.close()
+    in .close()
+    out.close()
     println(".")
     sys.exit()
 //  }

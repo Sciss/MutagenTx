@@ -14,11 +14,13 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.stm.DurableLike.{Txn, ID}
-import de.sciss.lucre.stm.{MutableSerializer, Sink, Source, Sys}
-import de.sciss.lucre.{confluent, event => evt, stm}
+import de.sciss.lucre.stm.DurableLike.ID
+import de.sciss.lucre.stm.{Cursor, MutableSerializer, Sink, Source, Sys}
+import de.sciss.lucre.{confluent, stm}
 import de.sciss.mutagentx.impl.TxnRandomBridge
 import de.sciss.serial.{DataInput, DataOutput, Serializer, Writable}
+
+import scala.concurrent.stm.{Ref, TxnLocal}
 
 object GlobalState {
   object InMemory {
@@ -30,6 +32,59 @@ object GlobalState {
       val cursor: stm.Cursor[S] = tx.system
       val numIterations         = tx.newIntVar(id, 0)
     }
+  }
+  type InMemory = GlobalState[stm.InMemory]
+
+  object DurableHybrid {
+    type S = stm.InMemory
+    type D = stm.Durable
+
+    def apply(peer: GlobalState.Durable)(implicit tx: D#Tx): DurableHybrid = new DurableHybrid {
+      // private[this] val system = tx.system
+      private[this] val dtxRef = TxnLocal[D#Tx]()
+
+      implicit def dtx(implicit tx: S#Tx): D#Tx = dtxRef.get(tx.peer)
+
+      implicit val rng: TxnRandom[S#Tx] = new TxnRandom[S#Tx] {
+        def setSeed(seed: Long)(implicit tx: S#Tx): Unit = peer.rng.setSeed(seed)
+
+        def nextBoolean()(implicit tx: S#Tx): Boolean  = peer.rng.nextBoolean()
+        def nextDouble ()(implicit tx: S#Tx): Double   = peer.rng.nextDouble ()
+        def nextLong   ()(implicit tx: S#Tx): Long     = peer.rng.nextLong   ()
+        def nextFloat  ()(implicit tx: S#Tx): Float    = peer.rng.nextFloat  ()
+        def nextInt    ()(implicit tx: S#Tx): Int      = peer.rng.nextInt    ()
+
+        def nextInt(n: Int)(implicit tx: S#Tx): Int    = peer.rng.nextInt(n)
+      }
+
+      val cursor: Cursor[S] = new Cursor[S] {
+        def step[A](fun: S#Tx => A): A =
+          peer.cursor.step { dtx =>
+            dtxRef.set(dtx)(dtx.peer)
+            fun(dtx.inMemory)
+          }
+
+        def position(implicit tx: S#Tx) = ()
+      }
+
+      val numIterations: Sink[S#Tx, Int] with Source[S#Tx, Int] =
+        new Sink[S#Tx, Int] with Source[S#Tx, Int] {
+          private val ref = Ref(peer.numIterations())
+
+          def update(v: Int)(implicit tx: S#Tx): Unit = {
+            ref.update(v)(tx.peer)
+            peer.numIterations() = v
+          }
+
+          def apply()(implicit tx: S#Tx): Int = ref.get(tx.peer)
+        }
+    }
+  }
+  trait DurableHybrid extends GlobalState[stm.InMemory] {
+    type S = stm.InMemory
+    type D = stm.Durable
+
+    implicit def dtx(implicit tx: S#Tx): D#Tx
   }
 
   object Durable {
@@ -43,7 +98,7 @@ object GlobalState {
       val cursor: stm.Cursor[S] = tx.system
     }
 
-    implicit def serializer(implicit system: S): Serializer[S#Tx, S#Acc, Durable] = new Ser
+    implicit def serializer: Serializer[S#Tx, S#Acc, Durable] = Ser
 
     private trait Impl extends Durable with stm.Mutable.Impl[S] {
       override def rng: TxnRandom.Persistent[S]
@@ -59,7 +114,7 @@ object GlobalState {
       }
     }
 
-    private final class Ser(implicit system: S) extends MutableSerializer[S, Durable] {
+    private object Ser extends MutableSerializer[S, Durable] {
       protected def readData(in: DataInput, _id: ID[S])(implicit tx: S#Tx /* Txn[S] */): Durable = new Impl {
         val id            = _id
         val rng           = TxnRandom.Persistent.read[S](in, ())

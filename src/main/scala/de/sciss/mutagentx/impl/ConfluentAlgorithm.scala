@@ -48,7 +48,7 @@ object ConfluentAlgorithm {
 
     implicit val system = confluent.Confluent(dbf)
     implicit val ord: data.Ordering[S#Tx, Vertex[S]] = ConfluentOrdering[Vertex[S]]
-    implicit val genomeSer = Genome.Ser[S]
+    implicit val genomeSer = Genome.serializer[S]
     // implicit val globalSer = GlobalState.Confluent.serializer
     val (handle: stm.Source[S#Tx, Genome[S]], global: GlobalState.Confluent) = system.rootWithDurable { implicit tx =>
       implicit val dtx = system.durableTx(tx)
@@ -60,7 +60,7 @@ object ConfluentAlgorithm {
     new Impl(system, handle, global, input = _input, inputExtr = _inputExtr, inputSpec = _inputSpec)
   }
 
-  private final class Impl(val system: S, handle: stm.Source[S#Tx, Genome[S]], val global: GlobalState.Confluent,
+  private final class Impl(system: S, handle: stm.Source[S#Tx, Genome[S]], val global: GlobalState.Confluent,
                            val input: File, val inputExtr: File, val inputSpec: AudioFileSpec)
     extends AlgorithmImpl[S] /* with Algorithm.Confluent */ { algo =>
 
@@ -73,6 +73,8 @@ object ConfluentAlgorithm {
     def genome(implicit tx: S#Tx): Genome[S] = handle()
 
     def ephemeral = false
+
+    def close(): Unit = system.close()
 
     import global.rng
 
