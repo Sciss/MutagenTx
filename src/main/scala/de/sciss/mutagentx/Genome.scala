@@ -71,7 +71,7 @@ object Genome {
 
           def update(v: Vec[Float])(implicit tx: S#Tx): Unit = {
             fRef.set(v)(tx.peer)
-            ???
+            peer.fitness.update(v)
           }
         }
   

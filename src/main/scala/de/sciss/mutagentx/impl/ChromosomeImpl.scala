@@ -17,7 +17,9 @@ package impl
 import java.util
 
 import de.sciss.lucre.confluent.TxnRandom
-import de.sciss.lucre.stm.Sys
+import de.sciss.lucre.data.SkipList
+import de.sciss.lucre.stm.{Copy, Elem, Sys}
+import de.sciss.lucre.{event => evt, expr}
 import de.sciss.synth.ugen.{BinaryOpUGen, Constant, SampleRate, UnaryOpUGen}
 import de.sciss.synth.{GE, Lazy, Rate, SynthGraph, UGenSpec, UndefinedRate, doNothing, ugen}
 
@@ -455,5 +457,35 @@ object ChromosomeImpl {
       linesS.mkString("SynthGraph {\n  ", "\n  ", "\n}")
     else
       linesS.mkString("\n")
+  }
+}
+final class ChromosomeImpl[S <: Sys[S]](val id      : S#ID,
+                                        val vertices: expr.List.Modifiable[S, Vertex[S]],
+                                        val edges   : expr.List.Modifiable[S, Edge  [S]],
+                                        val unconnected: S#Var[Int],
+                                        val edgeMap: SkipList.Map[S, Int, Map[Vertex[S], Set[Edge[S]]]])
+  extends TopologyImpl[S, Vertex[S], Edge[S]]
+    with Chromosome[S] with  evt.impl.ConstObjImpl[S, Any] { in =>
+
+  override def toString = s"Chromosome$id"
+
+  def copy[Out <: Sys[Out]]()(implicit tx: S#Tx, txOut: Out#Tx, context: Copy[S, Out]): Elem[Out] = {
+    val idOut = txOut.newID()
+    type VListAux[~ <: Sys[~]] = expr.List.Modifiable[~, Vertex[~]]
+    type EListAux[~ <: Sys[~]] = expr.List.Modifiable[~, Edge  [~]]
+    val vOut  = context[VListAux](vertices)
+    val eOut  = context[EListAux](edges   )
+    val uOut  = txOut.newVar(idOut, unconnected())
+    val mOut  = SkipList.Map.empty[Out, Int, Map[Vertex[Out], Set[Edge[Out]]]]
+    val out   = new ChromosomeImpl[Out](idOut, vOut, eOut, uOut, mOut)
+    context.defer(in, out) {
+      in.edgeMap.iterator.foreach { case (key, mIn) =>
+        val mOut = mIn.map { case (v, eIn) =>
+            context(v) -> eIn.map(context(_))
+        }
+        out.edgeMap.add(key -> mOut)
+      }
+    }
+    out
   }
 }

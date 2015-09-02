@@ -10,7 +10,7 @@ import scala.collection.mutable.{Set => MSet, Stack => MStack}
 
 trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V, E] {
 
-  val id: S#ID
+  // ---- abstract ----
 
   /** the vertices in the structure */
   def vertices: expr.List.Modifiable[S, V]
@@ -21,17 +21,24 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
   /** allows lookup of edges via vertex keys */
   def edgeMap: SkipList.Map[S, Int, Map[V, Set[E]]]
 
+  // ---- impl ----
+
   import Topology.{CycleDetected, Move, MoveAfter, MoveBefore}
 
   private type T = Topology[S, V, E]
 
-  override def toString = s"Topology($id)" // s"Topology($vertices, $edges)($unconnected, $edgeMap)"
+  // override def toString = s"Topology($id)" // s"Topology($vertices, $edges)($unconnected, $edgeMap)"
+
+  def edgeSet(v: V)(implicit tx: S#Tx): Set[E] =
+    edgeMap.get(v.hashCode()).fold(Set.empty[E]) { m =>
+      m.getOrElse(v, Set.empty)
+    }
 
   def debugString(implicit tx: S#Tx): String = {
     val vs = vertices.iterator.toList.mkString("vertices = [", ", ", "]")
     val es = edges   .iterator.toList.mkString("edges    = [", ", ", "]")
     val em = edgeMap .iterator.toList.mkString("edgeMap  = [", ", ", "]")
-    s"Topology($id,\n  $vs\n  $es\n  $em\n)"
+    s"Topology($vs\n  $es\n  $em\n)"
   }
 
   protected def disposeData()(implicit tx: S#Tx): Unit = {

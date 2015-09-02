@@ -93,7 +93,7 @@ object Algorithm {
     }
   }
 
-  def mkCleaner[S <: Sys[S]](a: Algorithm[S], dir: File): (S#Tx, Vec[Chromosome[S]]) => Unit = { (_tx, elite) =>
+  def mkCleaner[S <: Sys[S]](a: => Algorithm[S], dir: File): (S#Tx, Vec[Chromosome[S]]) => Unit = { (_tx, elite) =>
     implicit val tx = _tx
     val g   = a.genome
     val old = g.chromosomes()
@@ -166,7 +166,7 @@ object Algorithm {
     val (global, genomeH) = systemD.step { implicit tx =>
       val (_globalD, _genomeD) = rootH()
       val _global = GlobalState.DurableHybrid(_globalD)
-      val _genome: Genome[S] = ???
+      val _genome: Genome[S] = Genome.DurableHybrid(_global, _genomeD)
       val itx = tx.inMemory
       (_global, itx.newHandle(_genome))
     }

@@ -6,7 +6,7 @@ import de.sciss.lucre.stm
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
 object Edge extends Elem.Type {
-  def typeID: Int = 0x10000001
+  def typeID: Int = 0x40002
 
   def readIdentifiedObj[S <: Sys[S]](in: DataInput, access: S#Acc)(implicit tx: S#Tx): Edge[S] = {
     val cookie = in.readByte()

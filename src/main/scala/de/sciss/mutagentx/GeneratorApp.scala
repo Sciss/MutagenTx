@@ -49,12 +49,18 @@ object GeneratorApp extends SwingApplication {
         val in  = file("audio_work") / sfName
         new DurableApp(dir = dir, input = in)
 
+      case "--hybrid" +: dbName +: sfName +: _ =>
+        val dir = file("database"  ) / dbName
+        val in  = file("audio_work") / sfName
+        new DurableHybridApp(dir = dir, input = in)
+
       case _ =>
         Console.err.println(
           """Invocation:
             |
             |--confluent [<database-name> <sf-name>]
             |--durable <database-name> <sf-name>
+            |--hybrid <database-name> <sf-name>
             |--in-memory <sf-name>
             |""".stripMargin)
         sys.exit(1)

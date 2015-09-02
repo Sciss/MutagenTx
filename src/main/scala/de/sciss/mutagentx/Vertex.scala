@@ -21,7 +21,7 @@ import de.sciss.synth.ugen.{BinaryOpUGen, UnaryOpUGen}
 import de.sciss.synth.{GE, UGenSpec}
 
 object Vertex extends Obj.Type {
-  final val typeID = 0x10000003
+  final val typeID = 0x40001
 
   def readIdentifiedObj[S <: Sys[S]](in: DataInput, access: S#Acc)(implicit tx: S#Tx): Vertex[S] = {
     val cookie = in.readByte()
