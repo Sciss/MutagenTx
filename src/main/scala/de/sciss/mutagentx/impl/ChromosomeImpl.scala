@@ -488,12 +488,16 @@ final class ChromosomeImpl[S <: Sys[S]](val id      : S#ID,
     val mTOut = SkipList.Map.empty[Out, Int, Map[Vertex[Out], Set[Edge[Out]]]]
     val out   = new ChromosomeImpl[Out](idOut, vOut, eOut, uOut, mSOut, mTOut)
     context.defer(in, out) {
-      in.sourceEdgeMap.iterator.foreach { case (key, mIn) =>
-        val mOut = mIn.map { case (v, eIn) =>
-            context(v) -> eIn.map(context(_))
+      def copyMap(mIn: EdgeMap, mOut: SkipList.Map[Out, Int, Map[Vertex[Out], Set[Edge[Out]]]]): Unit =
+        mIn.iterator.foreach { case (key, miIn) =>
+          val miOut = miIn.map { case (v, eIn) =>
+              context(v) -> eIn.map(context(_))
+          }
+          mOut.add(key -> miOut)
         }
-        out.sourceEdgeMap.add(key -> mOut)
-      }
+
+      copyMap(in.sourceEdgeMap, out.sourceEdgeMap)
+      copyMap(in.targetEdgeMap, out.targetEdgeMap)
     }
     out
   }

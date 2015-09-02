@@ -277,14 +277,18 @@ trait GenApp[S <: Sys[S]] {
   val ggValidate = Button("Validate") {
     algorithm.foreach { algo: Algorithm[S] =>
       algo.global.cursor.step { implicit tx =>
-        val res = algo.genome.chromosomes().flatMap { c =>
-          c.validate()
+        val ok = algo.genome.chromosomes().forall { c =>
+          val errors = c.validate()
+          if (errors.nonEmpty) {
+            println(s"===== WARNING: found ${errors.size} errors =====")
+            errors.foreach(println)
+            println("\nChromosome:")
+            println(c.debugString)
+          }
+          errors.isEmpty
         }
-        if (res.isEmpty) {
+        if (ok) {
           println(s"No errors have been found.")
-        } else {
-          println(s"===== WARNING: found ${res.size} errors =====")
-          res.foreach(println)
         }
       }
     }
