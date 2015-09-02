@@ -278,14 +278,7 @@ trait GenApp[S <: Sys[S]] {
     algorithm.foreach { algo: Algorithm[S] =>
       algo.global.cursor.step { implicit tx =>
         val ok = algo.genome.chromosomes().forall { c =>
-          val errors = c.validate()
-          if (errors.nonEmpty) {
-            println(s"===== WARNING: found ${errors.size} errors =====")
-            errors.foreach(println)
-            println("\nChromosome:")
-            println(c.debugString)
-          }
-          errors.isEmpty
+          c.validate1()
         }
         if (ok) {
           println(s"No errors have been found.")

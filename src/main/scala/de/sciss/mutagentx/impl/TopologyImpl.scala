@@ -121,7 +121,7 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
     val u = unconnected()
     if (upBound < u) {    // first edge for source
       if (loBound < u) {  // first edge for target
-      val min         = math.min(upBound, loBound)
+        val min         = math.min(upBound, loBound)
         val max         = math.max(upBound, loBound)
         val newUnCon    = u - 2
         unconnected()   = newUnCon
@@ -184,33 +184,42 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
     * structure, throws an exception
     */
   def removeEdge(e: E)(implicit tx: S#Tx): Unit = {
+    // if (!validate1()) sys.error("removeEdge -1")
+
     if (!edges.remove(e)) throw new IllegalArgumentException(s"Edge $e was not added")
 
-    val src   = e.sourceVertex
-    val tgt   = e.targetVertex
-    removeEdge1(src, e, sourceEdgeMap, moveU = true)
-    removeEdge1(tgt, e, targetEdgeMap, moveU = true)
+    val src       = e.sourceVertex
+    val tgt       = e.targetVertex
+    val srcEmpty  = removeEdge1(src, e, sourceEdgeMap)
+    val tgtEmpty  = removeEdge1(tgt, e, targetEdgeMap)
+
+    if (srcEmpty && !targetEdgeMap.get(src.hashCode()).exists(_.contains(src))) vertexEmptied(src)
+    if (tgtEmpty && !sourceEdgeMap.get(tgt.hashCode()).exists(_.contains(tgt))) vertexEmptied(tgt)
+
+    // if (!validate1()) sys.error(s"removeEdge -2 $e")
   }
 
   // removes edge from map but not `edges`. if `moveU` is true,
   // moves vertex if it becomes unconnected
-  private def removeEdge1(v: V, e: E, map: EdgeMap, moveU: Boolean)(implicit tx: S#Tx): Unit = {
+  private def removeEdge1(v: V, e: E, map: EdgeMap)(implicit tx: S#Tx): Boolean = {
     val key     = v.hashCode()
     val m0      = map.get(key).getOrElse(Map.empty)
     val s0      = m0.getOrElse(v, throw new IllegalStateException(s"Edge $e is not in $v's map"))
     val s1      = s0 - e
     val m1      = if (s1.isEmpty) m0 - v else m0 + (v -> s1)
     if (m1.isEmpty) map.remove(key) else map.add(key, m1)
-    if (s1.isEmpty && moveU) {
-      val vIdx  = vertices.indexOf(v)
-      val u0    = unconnected()
-      if (vIdx < u0) throw new IllegalStateException(s"Vertex $v has marked as unconnected")
-      if (vIdx > u0) {
-        vertices.removeAt(vIdx)
-        vertices.insert(u0, v)
-      }
-      unconnected() = u0 + 1
+    s1.isEmpty
+  }
+
+  private def vertexEmptied(v: V)(implicit tx: S#Tx) = {
+    val vIdx  = vertices.indexOf(v)
+    val u0    = unconnected()
+    if (vIdx < u0) throw new IllegalStateException(s"Vertex $v was marked as unconnected ($vIdx < $u0)")
+    if (vIdx > u0) {
+      vertices.removeAt(vIdx)
+      vertices.insert(u0, v)
     }
+    unconnected() = u0 + 1
   }
 
   /** Adds a new vertex to the set of unconnected vertices. Throws an exception
@@ -229,17 +238,21 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
     * Note: Automatically removes edges
     */
   def removeVertex(v: V)(implicit tx: S#Tx): Unit = {
-    sourceEdgeMap.get(v.hashCode()).foreach { map =>
-      map.get(v).foreach { set =>
-        set.foreach(removeEdge)
+    def remove(m: EdgeMap): Unit =
+      m.get(v.hashCode()).foreach { map =>
+        map.get(v).foreach { set =>
+          set.foreach(removeEdge)
+        }
       }
-    }
+
+    remove(sourceEdgeMap)
+    remove(targetEdgeMap)
     val idx = vertices.indexOf(v)
     if (idx < 0) throw new IllegalArgumentException(s"Vertex $v was not added")
 
     vertices.removeAt(idx)
     val u = unconnected()
-    if (idx >= u) throw new IllegalStateException(s"Vertex $v was not unconnected after removing edges")
+    if (idx >= u) throw new IllegalStateException(s"Vertex $v was not unconnected after removing edges ($idx >= $u)")
     unconnected() = u - 1
   }
 
@@ -266,6 +279,17 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
     if (numEdges1 != numEdges2) b += s"Edge list has size $numEdges1, while sourceEdgeMap contains $numEdges2 entries"
     if (numEdges1 != numEdges3) b += s"Edge list has size $numEdges1, while targetEdgeMap contains $numEdges3 entries"
     b.result()
+  }
+
+  def validate1()(implicit tx: S#Tx): Boolean = {
+    val errors = validate()
+    if (errors.nonEmpty) {
+      println(s"===== WARNING: found ${errors.size} errors =====")
+      errors.foreach(println)
+      println("\nChromosome:")
+      println(debugString)
+    }
+    errors.isEmpty
   }
 
   // note: assumes audio rate

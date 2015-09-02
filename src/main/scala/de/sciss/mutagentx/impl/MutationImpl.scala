@@ -26,9 +26,11 @@ object MutationImpl {
   def printStats(): Unit = println(stats.mkString(", "))
 
   private def getTargets[S <: Sys[S]](top: Chromosome[S], v: Vertex[S])(implicit tx: S#Tx): Set[Edge[S]] =
-    top.edges.iterator.collect {
-      case e @ Edge(_, `v`, _) => e // a vertex `vi` that uses the removed vertex as one of its inlets
-    } .toSet
+    top.sources(v)
+
+//    top.edges.iterator.collect {
+//      case e @ Edge(_, `v`, _) => e // a vertex `vi` that uses the removed vertex as one of its inlets
+//    } .toSet
 
   def removeVertex1[S <: Sys[S]](top: Chromosome[S])
                                 (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Vertex[S] = {
@@ -43,9 +45,9 @@ object MutationImpl {
   def removeVertex2[S <: Sys[S]](top: Chromosome[S], v: Vertex[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Unit = {
     val targets = getTargets(top, v)
     top.removeVertex(v)
-    targets.foreach { e =>
-      top.removeEdge(e)
-    }
+//    targets.foreach { e =>
+//      top.removeEdge(e)
+//    }
     targets.foreach { case Edge(t: Vertex.UGen[S], _, _) =>
       assert(t != v)
       ChromosomeImpl.completeUGenInputs[S](top, t)
@@ -81,6 +83,10 @@ object MutationImpl {
             case 6 => mergeVertex (chosen)
           }
           // println(s"BEFORE $tpe ($success1): $OLDNUM AFTER ${chosen.vertices.size}")
+
+          if (success1) {
+            chosen.validate1()
+          }
 
           success0 | success1 // i.e. at least one mutation was applied
         }
