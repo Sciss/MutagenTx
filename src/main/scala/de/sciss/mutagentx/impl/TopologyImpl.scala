@@ -16,10 +16,15 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
   def vertices: expr.List.Modifiable[S, V]
   /** a set of edges between the vertices */
   def edges   : expr.List.Modifiable[S, E]
+
+  type EdgeMap = SkipList.Map[S, Int, Map[V, Set[E]]]
+
   /** the number of unconnected vertices (the leading elements in `vertices`) */
-  def unconnected: S#Var[Int]
+  protected def unconnected: S#Var[Int]
   /** allows lookup of edges via vertex keys */
-  def edgeMap: SkipList.Map[S, Int, Map[V, Set[E]]]
+  protected def sourceEdgeMap: EdgeMap
+  /** allows lookup of edges via vertex keys */
+  protected def targetEdgeMap: EdgeMap
 
   // ---- impl ----
 
@@ -29,30 +34,38 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
 
   // override def toString = s"Topology($id)" // s"Topology($vertices, $edges)($unconnected, $edgeMap)"
 
-  def edgeSet(v: V)(implicit tx: S#Tx): Set[E] =
-    edgeMap.get(v.hashCode()).fold(Set.empty[E]) { m =>
+  def targets(v: V)(implicit tx: S#Tx): Set[E] =
+    sourceEdgeMap.get(v.hashCode()).fold(Set.empty[E]) { m =>
+      m.getOrElse(v, Set.empty)
+    }
+
+  def sources(v: V)(implicit tx: S#Tx): Set[E] =
+    targetEdgeMap.get(v.hashCode()).fold(Set.empty[E]) { m =>
       m.getOrElse(v, Set.empty)
     }
 
   def debugString(implicit tx: S#Tx): String = {
-    val vs = vertices.iterator.toList.mkString("vertices = [", ", ", "]")
-    val es = edges   .iterator.toList.mkString("edges    = [", ", ", "]")
-    val em = edgeMap .iterator.toList.mkString("edgeMap  = [", ", ", "]")
-    s"Topology($vs\n  $es\n  $em\n)"
+    val vs = vertices     .iterator.toList.mkString("vertices = [", ", ", "]")
+    val es = edges        .iterator.toList.mkString("edges    = [", ", ", "]")
+    val sm = sourceEdgeMap.iterator.toList.mkString("sourceMap= [", ", ", "]")
+    val tm = targetEdgeMap.iterator.toList.mkString("targetMap= [", ", ", "]")
+    s"Topology($vs\n  $es\n  $sm\n  $tm\n)"
   }
 
   protected def disposeData()(implicit tx: S#Tx): Unit = {
-    vertices    .dispose()
-    edges       .dispose()
-    unconnected .dispose()
-    edgeMap     .dispose()
+    vertices      .dispose()
+    edges         .dispose()
+    unconnected   .dispose()
+    sourceEdgeMap .dispose()
+    targetEdgeMap .dispose()
   }
 
   protected def writeData(out: DataOutput): Unit = {
-    vertices    .write(out)
-    edges       .write(out)
-    unconnected .write(out)
-    edgeMap     .write(out)
+    vertices      .write(out)
+    edges         .write(out)
+    unconnected   .write(out)
+    sourceEdgeMap .write(out)
+    targetEdgeMap .write(out)
   }
 
   /** For two connected vertices `a` and `b`, returns `-1` if `a` is before `b`, or `1` if `a` follows `b`,
@@ -90,12 +103,17 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
 
     def succeed(): Unit = {
       // edgeMap.put(source.id, edgeMap.get(source.id).getOrElse(Set.empty) + e)
-      val key = source.hashCode()
-      val m0 = edgeMap.get(key).getOrElse(Map.empty)
-      val s0 = m0.getOrElse(source, Set.empty)
-      val s1 = s0 + e
-      val m1 = m0 + (source -> s1)
-      edgeMap.add(key, m1)
+
+      def insert(v: V, map: EdgeMap): Unit = {
+        val key = v.hashCode()
+        val m0  = map.get(key).getOrElse(Map.empty)
+        val s0  = m0.getOrElse(v, Set.empty)
+        val s1  = s0 + e
+        val m1  = m0 + (v -> s1)
+        map.add(key, m1)
+      }
+      insert(source, sourceEdgeMap)
+      insert(target, targetEdgeMap)
       edges.addLast(e)
     }
 
@@ -167,13 +185,20 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
     */
   def removeEdge(e: E)(implicit tx: S#Tx): Unit = {
     if (edges.remove(e)) {
-      val source  = e.sourceVertex
-      val key     = source.hashCode()
-      val m0      = edgeMap.get(key).getOrElse(Map.empty)
-      val s0      = m0.getOrElse(source, Set.empty)
-      val s1      = s0 - e
-      val m1      = if (s1.isEmpty) m0 - source else m0 + (source -> s1)
-      if (m1.isEmpty) edgeMap.remove(key) else edgeMap.add(key, m1)
+      def remove(v: V, map: EdgeMap): Unit = {
+        val key     = v.hashCode()
+        val m0      = map.get(key).getOrElse(Map.empty)
+        val s0      = m0.getOrElse(v, throw new IllegalStateException(s"Edge $e is not in $v's map"))
+        val s1      = s0 - e
+        val m1      = if (s1.isEmpty) m0 - v else m0 + (v -> s1)
+        if (m1.isEmpty) map.remove(key) else map.add(key, m1)
+      }
+
+      remove(e.sourceVertex, sourceEdgeMap)
+      remove(e.targetVertex, targetEdgeMap)
+
+    } else {
+      throw new IllegalArgumentException(s"Edge $e was not added")
     }
   }
 
@@ -193,22 +218,20 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
     * Note: Automatically removes outgoing edges, __but not incoming edges__
     */
   def removeVertex(v: V)(implicit tx: S#Tx): Unit = {
+    sourceEdgeMap.get(v.hashCode()).foreach { map =>
+      map.get(v).foreach { set =>
+        set.foreach(removeEdge)
+      }
+    }
     val idx = vertices.indexOf(v)
     if (idx >= 0) {
       vertices.removeAt(idx)
       val u = unconnected()
       if (idx < u) {
         unconnected() = unconnected() - 1
-      } else {
-        val key = v.hashCode()
-        edgeMap.get(key).foreach { m0 =>
-          m0.get(v).foreach { e =>
-            val m1 = m0 - v
-            if (m1.isEmpty) edgeMap.remove(key) else edgeMap.add(key, m1)
-            e.foreach(edges.remove)
-          }
-        }
       }
+    } else {
+      throw new IllegalArgumentException(s"Vertex $v was not added")
     }
   }
 
@@ -219,7 +242,7 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
       val v           = targets.pop()
       visited        += v
       val key         = v.hashCode()
-      val m0          = edgeMap.get(key).getOrElse(Map.empty)
+      val m0          = sourceEdgeMap.get(key).getOrElse(Map.empty)
       val s0          = m0.getOrElse(v, Set.empty)
       val s1          = if (v == newV) s0 + newE else s0
       val moreTargets = s1.map(_.targetVertex)

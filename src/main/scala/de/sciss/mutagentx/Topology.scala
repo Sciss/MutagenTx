@@ -13,69 +13,12 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.data.SkipList
-import de.sciss.lucre.stm.{Elem, Obj, Sys}
-import de.sciss.lucre.{event => evt, expr}
-import de.sciss.serial.{DataInput, DataOutput, Serializer}
+import de.sciss.lucre.stm.Sys
+import de.sciss.lucre.expr
 
-import scala.collection.mutable.{Set => MSet, Stack => MStack}
 import scala.language.higherKinds
 
 object Topology {
-  //  def readIdentifiedObj[S <: Sys[S]](in: DataInput, access: S#Acc)(implicit tx: S#Tx): Obj[S] = {
-  //    type EdgeAux[~ <: Sys[~]] = Edge[Elem[~]] with Elem[~]
-  //    readIdentifiedTopology[S, Elem, EdgeAux](in, access)
-  //  }
-
-  //  private def readIdentifiedTopology[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]]
-  //    (in: DataInput, access: S#Acc)(implicit tx: S#Tx,
-  //                                   vertexSer: Serializer[S#Tx, S#Acc, V[S]],
-  //                                   edgeSer  : Serializer[S#Tx, S#Acc, E[S]]): Topology[S, V[S], E[S]] = {
-  //
-  //    val id          = tx.readID(in, access)
-  //    val vertices    = expr.List.Modifiable.read[S, V[S]](in, access)
-  //    val edges       = expr.List.Modifiable.read[S, E[S]](in, access)
-  //    val unconnected = tx.readIntVar(id, in)
-  //    val edgeMap     = SkipList.Map.read[S, Int, Map[V[S], Set[E[S]]]](in, access) // tx.readDurableIDMap[Set[E]](in)
-  //    new Topology[S, V[S], E[S]](id, vertices, edges, unconnected, edgeMap)
-  //  }
-
-  //  /** Creates an empty topology with no vertices or edges.
-  //    *
-  //    * @tparam V   vertex type
-  //    * @tparam E   edge type
-  //    */
-  //  def empty[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]](implicit tx: S#Tx,
-  //                                                   vertexSer: Serializer[S#Tx, S#Acc, V[S]],
-  //                                                   edgeSer  : Serializer[S#Tx, S#Acc, E[S]]) = {
-  //    val id = tx.newID()
-  //    new Topology[S, V[S], E[S]](id, expr.List.Modifiable[S, V], expr.List.Modifiable[S, E], tx.newIntVar(id, 0),
-  //      SkipList.Map.empty[S, Int, Map[V[S], Set[E[S]]]] /* tx.newDurableIDMap[Set[E]] */)
-  //  }
-
-  //  implicit def serializer[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]](
-  //                                                  implicit vertexSer: Serializer[S#Tx, S#Acc, V[S]],
-  //                                                           edgeSer  : Serializer[S#Tx, S#Acc, E[S]])
-  //    : Serializer[S#Tx, S#Acc, Topology[S, V[S], E[S]]] = new Ser[S, V, E]
-  //
-  //  def read[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]](in: DataInput, access: S#Acc)
-  //                                        (implicit tx: S#Tx, vertexSer: Serializer[S#Tx, S#Acc, V[S]],
-  //                                                            edgeSer  : Serializer[S#Tx, S#Acc, E[S]]) =
-  //    serializer[S, V, E].read(in, access)
-  //
-  //  private final class Ser[S <: Sys[S], V[~ <: Sys[~]] <: Elem[~], E[~ <: Sys[~]] <: Edge[V[~]] with Elem[~]]
-  //      (implicit vertexSer: Serializer[S#Tx, S#Acc, V[S]], edgeSer: Serializer[S#Tx, S#Acc, E[S]])
-  //    extends Serializer[S#Tx, S#Acc, Topology[S, V[S], E[S]]] {
-  //
-  //    def write(top: Topology[S, V[S], E[S]], out: DataOutput): Unit = top.write(out)
-  //
-  //    def read(in: DataInput, access: S#Acc)(implicit tx: S#Tx): Topology[S, V[S], E[S]] = {
-  //      val tpe = in.readInt()
-  //      if (tpe != Topology.typeID) sys.error(s"Type mismatch, found $tpe, expected ${Topology.typeID}")
-  //      readIdentifiedTopology[S, V, E](in, access)
-  //    }
-  //  }
-
   trait Edge[+V] {
     def sourceVertex: V
     def targetVertex: V
@@ -112,7 +55,8 @@ trait Topology[S <: Sys[S], V, E <: Topology.Edge[V]] {
   // def unconnected: S#Var[Int]
   // def edgeMap: SkipList.Map[S, Int, Map[V, Set[E]]])
 
-  def edgeSet(v: V)(implicit tx: S#Tx): Set[E]
+  def targets(v: V)(implicit tx: S#Tx): Set[E]
+  def sources(v: V)(implicit tx: S#Tx): Set[E]
 
   import Topology.Move
 
@@ -150,7 +94,7 @@ trait Topology[S <: Sys[S], V, E <: Topology.Edge[V]] {
   def canAddEdge(e: E)(implicit tx: S#Tx): Boolean
 
   /** Removes the edge from the topology. If the edge is not contained in the
-    * structure, returns the topology unmodified.
+    * structure, throws an exception.
     */
   def removeEdge(e: E)(implicit tx: S#Tx): Unit
 
@@ -160,9 +104,9 @@ trait Topology[S <: Sys[S], V, E <: Topology.Edge[V]] {
   def addVertex(v: V)(implicit tx: S#Tx): Unit
 
   /** Removes a vertex and all associated edges. If the vertex is not
-    * contained in the structure, returns the unmodified topology.
+    * contained in the structure, throws an exception
     *
-    * Note: Automatically removes outgoing edges, __but not incoming edges__
+    * Note: Automatically removes all edges
     */
   def removeVertex(v: V)(implicit tx: S#Tx): Unit
 }

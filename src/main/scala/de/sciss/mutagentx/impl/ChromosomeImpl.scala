@@ -470,7 +470,7 @@ final class ChromosomeImpl[S <: Sys[S]](val id      : S#ID,
                                         val vertices: expr.List.Modifiable[S, Vertex[S]],
                                         val edges   : expr.List.Modifiable[S, Edge  [S]],
                                         val unconnected: S#Var[Int],
-                                        val edgeMap: SkipList.Map[S, Int, Map[Vertex[S], Set[Edge[S]]]])
+                                        val sourceEdgeMap: SkipList.Map[S, Int, Map[Vertex[S], Set[Edge[S]]]])
   extends TopologyImpl[S, Vertex[S], Edge[S]]
     with Chromosome[S] with  evt.impl.ConstObjImpl[S, Any] { in =>
 
@@ -486,11 +486,11 @@ final class ChromosomeImpl[S <: Sys[S]](val id      : S#ID,
     val mOut  = SkipList.Map.empty[Out, Int, Map[Vertex[Out], Set[Edge[Out]]]]
     val out   = new ChromosomeImpl[Out](idOut, vOut, eOut, uOut, mOut)
     context.defer(in, out) {
-      in.edgeMap.iterator.foreach { case (key, mIn) =>
+      in.sourceEdgeMap.iterator.foreach { case (key, mIn) =>
         val mOut = mIn.map { case (v, eIn) =>
             context(v) -> eIn.map(context(_))
         }
-        out.edgeMap.add(key -> mOut)
+        out.sourceEdgeMap.add(key -> mOut)
       }
     }
     out
