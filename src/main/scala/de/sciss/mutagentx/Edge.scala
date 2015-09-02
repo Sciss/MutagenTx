@@ -42,7 +42,7 @@ object Edge extends Elem.Type {
   * Therefore, the `sourceVertex`'s `inlet` will be occupied by `targetVertex`
   */
 case class Edge[S <: Sys[S]](sourceVertex: Vertex.UGen[S], targetVertex: Vertex[S], inletIndex: Int)
-  extends Topology.Edge[S, Vertex[S]] with stm.impl.ConstElemImpl[S] {
+  extends Topology.Edge[Vertex[S]] with stm.impl.ConstElemImpl[S] {
 
   def tpe: Elem.Type = Edge
 

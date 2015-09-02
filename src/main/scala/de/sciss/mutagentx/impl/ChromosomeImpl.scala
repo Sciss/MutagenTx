@@ -65,12 +65,11 @@ object ChromosomeImpl {
                   (v.asInstanceOf[AnyRef], classOf[Int])
 
                 case UGenSpec.ArgumentType.GE(_, _) =>
-                  val lastE   = top.edgeMap.get(last)
-                  val inGEOpt = lastE.flatMap { set =>
-                    set.flatMap { e =>
+                  val lastE   = top.edgeSet(last) // top.edgeMap.get(last)
+                  val inGEOpt = lastE.flatMap { e =>
                       if (e.inlet == arg.name) real.get(e.targetVertex) else None
                     } .headOption
-                  }
+
                   val inGE = inGEOpt.getOrElse {
                     val xOpt = arg.defaults.get(UndefinedRate)
                     val x    = xOpt.getOrElse {
@@ -131,7 +130,7 @@ object ChromosomeImpl {
 
   def findIncompleteUGenInputs[S <: Sys[S]](t1: Chromosome[S], v: Vertex.UGen[S])(implicit tx: S#Tx): Vec[String] = {
     val spec      = v.info
-    val edgeSet   = t1.edgeMap.get(v).getOrElse(Set.empty)
+    val edgeSet   = t1.edgeSet(v) // edgeMap.get(v).getOrElse(Set.empty)
     val argsFree  = geArgs(spec).filter { arg => !edgeSet.exists(_.inlet == arg.name) }
     val inc       = argsFree.filterNot(_.defaults.contains(UndefinedRate))
     inc.map(_.name)
@@ -186,7 +185,7 @@ object ChromosomeImpl {
     // A topology's edgeMap uses source-vertices as keys. Therefore, we can see
     // if the an argument is connected by getting the edges for the ugen and finding
     // an edge that uses the inlet name.
-    val edgeSet = c.edgeMap.get(v).getOrElse(Set.empty)
+    val edgeSet = c.edgeSet(v) // edgeMap.get(v).getOrElse(Set.empty)
     val argsFree = geArgs(spec).filter { arg => !edgeSet.exists(_.inlet == arg.name) }
     val (hasDef, hasNoDef)          = argsFree.partition(_.defaults.contains(UndefinedRate))
     val (useNotDef, _ /* useDef */) = hasDef.partition(_ => coin(nonDefaultProb))

@@ -97,7 +97,7 @@ object ConfluentAlgorithm {
           val chosen2 = chosen1H()
           impl.CrossoverImpl(algo, chosen1 = chosen1, chosen2 = chosen2)
 
-          implicit val cSer = chromosomeSerializer[S]
+          implicit val cSer = Chromosome.serializer[S]
           val _res0 = tx.newHandleM(chosen1)
           val _res1 = if (res.size + 1 == n) _res0 :: Nil else {
             _res0 :: tx.newHandleM(chosen2) :: Nil
@@ -130,7 +130,7 @@ object ConfluentAlgorithm {
           val chosen0 = chosenH()
           val ok = impl.MutationImpl(algo, chosen = chosen0)
           if (ok) {
-            implicit val cSer = chromosomeSerializer[S]
+            implicit val cSer = Chromosome.serializer[S]
             Some(tx.newHandleM(chosen0))
           } else None
         }

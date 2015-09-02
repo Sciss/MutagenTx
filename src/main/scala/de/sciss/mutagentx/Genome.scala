@@ -13,16 +13,16 @@
 
 package de.sciss.mutagentx
 
-import de.sciss.lucre.stm.InMemoryLike.{Var, Txn, ID}
-import de.sciss.lucre.{stm, data}
-import de.sciss.lucre.stm.{Copy, Obj, Sys, Mutable, MutableSerializer}
+import de.sciss.lucre.stm.InMemoryLike.{ID, Txn}
+import de.sciss.lucre.stm.{NoSys, Copy, Mutable, MutableSerializer, Sys}
+import de.sciss.lucre.{data, stm}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
 import scala.concurrent.stm.Ref
 
 object Genome {
-  def empty[S <: Sys[S]](implicit tx: S#Tx, ord: data.Ordering[S#Tx, Vertex[S]]): Genome[S] = {
-    implicit val chrSer = Chromosome.serializer[S, Vertex, Edge]
+  def empty[S <: Sys[S]](implicit tx: S#Tx): Genome[S] = {
+    implicit val chrSer = Chromosome.serializer[S]
     val id          = tx.newID()
     val chromosomes = tx.newVar(id, Vec.empty[Chromosome[S]])
     val fitness     = tx.newVar(id, Vec.empty[Float])(Serializer.indexedSeq)
@@ -44,7 +44,7 @@ object Genome {
       
       private def copyChromo[In <: Sys[In], Out <: Sys[Out]](in: Chromosomes[In])
                                                             (implicit txIn: In#Tx, txOut: Out#Tx): Chromosomes[Out] = {
-        val context = Copy[In, Out]
+        val context = Copy[In, Out](txIn, txOut)
         try {
           in.map(context(_))
         } finally {
@@ -101,11 +101,11 @@ object Genome {
     }
   }
 
-  implicit def serializer[S <: Sys[S]](implicit ord: data.Ordering[S#Tx, Vertex[S]]): Serializer[S#Tx, S#Acc, Genome[S]] =
-    new Ser[S]
+  implicit def serializer[S <: Sys[S]]: Serializer[S#Tx, S#Acc, Genome[S]] = anySer.asInstanceOf[Ser[S]]
 
-  private final class Ser[S <: Sys[S]](implicit ord: data.Ordering[S#Tx, Vertex[S]])
-    extends MutableSerializer[S, Genome[S]] {
+  private val anySer = new Ser[NoSys]
+
+  private final class Ser[S <: Sys[S]] extends MutableSerializer[S, Genome[S]] {
 
     protected def readData(in: DataInput, id: S#ID)(implicit tx: S#Tx): Genome[S] = {
       val chromosomes   = tx.readVar[Chromosomes[S]](id, in)

@@ -104,12 +104,17 @@ class TopologySpec extends FlatSpec with Matchers {
       val _sc0 = tc.vertices.iterator.toList.mkString(",")
       val _sc1 = tc.edges   .iterator.toList.sortBy(e => e.sourceVertex.name -> e.targetVertex.name).mkString(",")
 
-      assert(tc.edgeMap.get(vca).fold(0)(_.size) === 1)
-      assert(tc.edgeMap.get(vcb).fold(0)(_.size) === 1)
-      assert(tc.edgeMap.get(vcd).fold(0)(_.size) === 1)
+//      assert(tc.edgeMap.get(vca).fold(0)(_.size) === 1)
+//      assert(tc.edgeMap.get(vcb).fold(0)(_.size) === 1)
+//      assert(tc.edgeMap.get(vcd).fold(0)(_.size) === 1)
+
+      assert(tc.edgeSet(vca).size === 1)
+      assert(tc.edgeSet(vcb).size === 1)
+      assert(tc.edgeSet(vcd).size === 1)
 
       tc.removeVertex(vca)
-      assert(tc.edgeMap.contains(vca) === false)
+      // assert(tc.edgeMap.contains(vca) === false)
+      assert(tc.edgeSet(vca).isEmpty)
 
       val _sc2 = tc.vertices.iterator.toList.mkString(",")
       val _sc3 = tc.edges   .iterator.toList.sortBy(e => e.sourceVertex.name -> e.targetVertex.name).mkString(",")
@@ -156,7 +161,7 @@ class TopologySpec extends FlatSpec with Matchers {
     val system      = Confluent(BerkeleyDB.tmp())
     val (_, cursor) = system.cursorRoot(_ => ()) { implicit tx => _ => system.newCursor() }
 
-    val (mcs, sc0, sc1, sc2) = cursor.step { implicit tx =>
+    val (mcs, sc0, sc1 /* , sc2 */) = cursor.step { implicit tx =>
       val tc = ??? : TopologyC[S, VC, EC] // TopologyC.empty[S, VC, EC]
       val vLinX = VC("LinXFade2")
       val vC22  = VC("Constant22")
@@ -181,15 +186,15 @@ class TopologySpec extends FlatSpec with Matchers {
       val _mc10 = tc.addEdge(EC(vBall, vLinX, "friction"))
       val _sc0 = tc.vertices.iterator.toList.mkString(",")
       val _sc1 = tc.edges   .iterator.toList.sortBy(_.toString  ).mkString(",")
-      val _sc2 = tc.edgeMap .iterator.toList.sortBy(_.toString()).mkString(",")
+//      val _sc2 = tc.edgeMap .iterator.toList.sortBy(_.toString()).mkString(",")
 
       val _mcs = Seq(_mc0, _mc1, _mc2, _mc3, _mc4, _mc5, _mc6, _mc7, _mc8, _mc9, _mc10)
-      (_mcs, _sc0, _sc1, _sc2)
+      (_mcs, _sc0, _sc1 /*, _sc2 */)
     }
 
     assert(mis.map(_.toString) === mcs.map(_.toString))
     assert(si0 === sc0)
     assert(si1 === sc1)
-    assert(si2 === sc2)
+    // assert(si2 === sc2)
   }
 }

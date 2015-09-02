@@ -157,7 +157,7 @@ object MutationImpl {
   private def changeVertexUGen[S <: Sys[S]](top: Chromosome[S], vu: Vertex.UGen[S])
                                            (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Unit = {
     val outlet  = getTargets(top, vu)
-    val inlets  = top.edgeMap.get(vu).getOrElse(Set.empty)
+    val inlets  = top.edgeSet(vu) // .getOrElse(Set.empty)
     outlet.foreach(top.removeEdge)
     inlets.foreach(top.removeEdge)
     top.removeVertex(vu)
@@ -199,7 +199,7 @@ object MutationImpl {
 
     if (candidates.isEmpty) false else {
       val v     = Util.choose(candidates)
-      val edges = top.edgeMap.get(v).getOrElse(Set.empty)
+      val edges = top.edgeSet(v) // edgeMap.get(v).getOrElse(Set.empty)
       if (edges.isEmpty) false else {
         top.removeEdge(Util.choose(edges))
         ChromosomeImpl.completeUGenInputs[S](top, v)
@@ -213,12 +213,12 @@ object MutationImpl {
     val vertices    = top.vertices
 
     val candidates  = vertices.iterator.collect {
-      case v: Vertex.UGen[S] if top.edgeMap.get(v).exists(_.size >= 2) => v
+      case v: Vertex.UGen[S] if top.edgeSet(v).size >= 2 /* edgeMap.get(v).exists(_.size >= 2) */ => v
     } .toIndexedSeq
 
     if (candidates.isEmpty) false else {
       val v     = Util.choose(candidates)
-      val edges = top.edgeMap.get(v).getOrElse(Set.empty)
+      val edges = top.edgeSet(v) // edgeMap.get(v).getOrElse(Set.empty)
       val e1    = Util.choose(edges)
       val e2    = Util.choose(edges - e1)
       top.removeEdge(e1)
@@ -258,7 +258,7 @@ object MutationImpl {
         val eNew = eOld.copy1(targetVertex = vertexNew)
         top.addEdge(eNew) // .get
       }
-      top.edgeMap.get(vertexOld).foreach { set =>
+      val set = top.edgeSet(vertexOld) /* edgeMap.get(vertexOld).foreach { set => */
         vertexNew match {
           case vNewU: Vertex.UGen[S] =>
             set.foreach { eOld =>
@@ -267,7 +267,7 @@ object MutationImpl {
             }
           case _ =>
         }
-      }
+      // }
       checkComplete(top, s"splitVertex()")
       stats(5) += 1
       true

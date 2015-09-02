@@ -43,7 +43,7 @@ object CopyingAlgorithm {
 
   def mkCopy[S <: Sys[S]](in: Chromosome[S])(implicit tx: S#Tx, ord: data.Ordering[S#Tx, Vertex[S]]): Chromosome[S] = {
     var map = Map.empty[Vertex[S], Vertex[S]]
-    val top = Topology.empty[S, Vertex, Edge]
+    val top = Chromosome.empty[S] // , Vertex, Edge]
     in.vertices.iterator.foreach { vIn =>
       val vOut = Obj.copy(vIn)
       map += vIn -> vOut
@@ -71,7 +71,7 @@ object CopyingAlgorithm {
     var map  = Map.empty[Vertex[S], VertexC]
     var sq   = Vec.empty[VertexC]
     var mapT = Map.empty[VertexC, Vertex[T]]
-    val top = ct.step { implicit tx => Topology.empty[T, Vertex, Edge] }
+    val top = ct.step { implicit tx => Chromosome.empty[T] /* , Vertex, Edge] */ }
 
     cs.step { implicit tx =>
       in.vertices.iterator.foreach { vIn =>
@@ -144,7 +144,7 @@ object CopyingAlgorithm {
           val chosen2c  = mkCopy(chosen2)
           impl.CrossoverImpl(algo, chosen1 = chosen1c, chosen2 = chosen2c)
 
-          implicit val cSer = chromosomeSerializer[S]
+          // implicit val cSer = chromosomeSerializer[S]
           val _res0 = tx.newHandle(chosen1c)
           val _res1 = if (res.size + 1 == n) _res0 :: Nil else {
             _res0 :: tx.newHandle(chosen2c) :: Nil
@@ -167,7 +167,7 @@ object CopyingAlgorithm {
           val chosen1 = mkCopy(chosen0)
           val ok = impl.MutationImpl(algo, chosen = chosen1)
           if (ok) {
-            implicit val cSer = chromosomeSerializer[S]
+            // implicit val cSer = chromosomeSerializer[S]
             Some(tx.newHandle(chosen1))
           } else None
         }
