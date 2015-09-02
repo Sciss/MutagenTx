@@ -10,7 +10,7 @@ object Edge extends Elem.Type {
 
   def readIdentifiedObj[S <: Sys[S]](in: DataInput, access: S#Acc)(implicit tx: S#Tx): Edge[S] = {
     val cookie = in.readByte()
-    require (cookie == 3)
+    if (cookie != 3) sys.error(s"Unexpected cookie, found $cookie, expected 3")
     val sourceVertex  = Vertex.UGen.read(in, access)
     val targetVertex  = Vertex.Ser .read(in, access)
     // val inlet         = in.readUTF()

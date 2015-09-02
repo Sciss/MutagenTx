@@ -30,4 +30,9 @@ package object mutagentx {
 
   type Vec[+A]  = scala.collection.immutable.IndexedSeq[A]
   val  Vec      = scala.collection.immutable.IndexedSeq
+
+  def init(): Unit = {
+    Vertex.init()
+    Edge  .init()
+  }
 }

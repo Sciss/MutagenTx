@@ -55,9 +55,13 @@ object Vertex extends Obj.Type {
     def unapply[S <: Sys[S]](v: UGen[S]): Option[UGenSpec] = Some(v.info)
 
     def read[S <: Sys[S]](in: DataInput, access: S#Acc)(implicit tx: S#Tx): UGen[S] = {
-      val id  = tx.readID(in, access)
-      val tpe = in.readByte()
-      require(tpe == 1, s"Expected Vertex.UGen cookie 1 but found $tpe")
+      val tpe   = in.readInt()
+      if (tpe != Vertex.typeID) sys.error(s"Type mismatch, found $tpe, expected ${Vertex.typeID}")
+      val cookie  = in.readByte()
+      if (cookie != 3) sys.error(s"Unexpected cookie, found $cookie, expected 3")
+      val id    = tx.readID(in, access)
+      val tpe1  = in.readByte()
+      if (tpe1 != 1) sys.error(s"Expected Vertex.UGen cookie 1 but found $tpe1")
       readIdentified(id, in, access)
     }
 

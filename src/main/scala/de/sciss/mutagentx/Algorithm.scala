@@ -19,7 +19,7 @@ import de.sciss.file._
 import de.sciss.lucre
 import de.sciss.lucre.stm.Sys
 import de.sciss.lucre.stm.store.BerkeleyDB
-import de.sciss.lucre.{event => evt, confluent, data, stm}
+import de.sciss.lucre.{data, stm}
 import de.sciss.processor.Processor
 import de.sciss.serial.DataOutput
 import de.sciss.synth.UGenSpec

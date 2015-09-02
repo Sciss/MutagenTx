@@ -7,7 +7,7 @@ import com.alee.laf.checkbox.WebCheckBoxStyle
 import com.alee.laf.progressbar.WebProgressBarStyle
 import de.sciss.desktop.OptionPane
 import de.sciss.file._
-import de.sciss.kollflitz
+import de.sciss.{mutagentx, kollflitz}
 import de.sciss.lucre.confluent
 import de.sciss.lucre.stm.{Sys, Durable, InMemory}
 import de.sciss.lucre.swing.defer
@@ -23,11 +23,13 @@ import scala.util.{Failure, Success}
 
 object GeneratorApp extends SwingApplication {
   def startup(args: Array[String]): Unit = {
+    mutagentx.init()
+
     WebLookAndFeel.install()
     WebCheckBoxStyle   .animated            = false
     WebProgressBarStyle.progressTopColor    = Color.lightGray
     WebProgressBarStyle.progressBottomColor = Color.gray
-    // XXX TODO: how to really turn of animation?
+    // XXX TODO: how to really turn off animation?
     WebProgressBarStyle.highlightWhite      = new Color(255, 255, 255, 0)
     WebProgressBarStyle.highlightDarkWhite  = new Color(255, 255, 255, 0)
 
