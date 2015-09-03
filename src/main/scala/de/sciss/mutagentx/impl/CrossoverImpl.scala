@@ -13,6 +13,7 @@ object CrossoverImpl {
   def apply[S <: Sys[S]](algorithm: Algorithm[S], chosen1: Chromosome[S], chosen2: Chromosome[S])
                         (implicit tx: S#Tx, ord: data.Ordering[S#Tx, Vertex[S]]): Unit = {
     import algorithm.global.{rng => random}
+    import algorithm.config._
 //    var res = Vector.empty[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)]
 //    while (res.size < n) {
 //      val idx0      = res.size << 1
@@ -60,8 +61,8 @@ object CrossoverImpl {
         }
 
         @tailrec def shrinkTop(top: Chromosome[S], target: Int, iter: Int): Unit =
-          if (top.vertices.size > target && iter != Algorithm.maxNumVertices) {
-            MutationImpl.removeVertex1[S](top)
+          if (top.vertices.size > target && iter != maxNumVertices) {
+            MutationImpl.removeVertex1[S](algorithm.config, top)
             shrinkTop(top, target = target, iter = iter + 1)
           }
 
@@ -79,7 +80,7 @@ object CrossoverImpl {
         val c2 = mkTop(head2, edgesHead2, tail1, edgesTail1)
 
         def complete(top: Chromosome[S], inc: Set[Vertex.UGen[S]]): Unit = {
-          inc.foreach { v => ChromosomeImpl.completeUGenInputs[S](top, v) }
+          inc.foreach { v => ChromosomeImpl.completeUGenInputs[S](algorithm.config, top, v) }
           shrinkTop(chosen1, top.vertices.size, 0)
         }
 

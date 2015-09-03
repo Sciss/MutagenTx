@@ -29,15 +29,16 @@ import scala.concurrent.stm.TxnExecutor
 import scala.concurrent.{Await, blocking}
 
 object CopyingAlgorithm {
-  def apply[S <: Sys[S], G <: GlobalState[S]](system: Closeable, input: File, global: G, genomeH: stm.Source[S#Tx, Genome[S]],
+  def apply[S <: Sys[S], G <: GlobalState[S]](config: Algorithm.Config,
+                                              system: Closeable, input: File, global: G, genomeH: stm.Source[S#Tx, Genome[S]],
                                               ephemeral: Boolean, cleaner: Option[(S#Tx, Vec[Chromosome[S]]) => Unit] = None)
                         (implicit ord: data.Ordering[S#Tx, Vertex[S]]): Algorithm[S] { type Global = G } = {
     val futInput = TxnExecutor.defaultAtomic { implicit tx =>
-      impl.EvaluationImpl.getInputSpec(input)
+      impl.EvaluationImpl.getInputSpec(config, input)
     }
     val (_inputExtr, _inputSpec) = Await.result(futInput, Duration.Inf)
 
-    new Impl[S, G](system, genomeH, global, input = input, inputExtr = _inputExtr, inputSpec = _inputSpec,
+    new Impl[S, G](config, system, genomeH, global, input = input, inputExtr = _inputExtr, inputSpec = _inputSpec,
       ephemeral = ephemeral, cleaner = cleaner)
   }
 
@@ -117,13 +118,16 @@ object CopyingAlgorithm {
 //    top
 //  }
 
-  private final class Impl[S <: Sys[S], G <: GlobalState[S]](system: Closeable, handle: stm.Source[S#Tx, Genome[S]],
+  private final class Impl[S <: Sys[S], G <: GlobalState[S]](val config: Algorithm.Config,
+                                                             system: Closeable, handle: stm.Source[S#Tx, Genome[S]],
                                         val global: G,
                                         val input: File, val inputExtr: File, val inputSpec: AudioFileSpec,
                                         val ephemeral: Boolean,
                                         cleaner: Option[(S#Tx, Vec[Chromosome[S]]) => Unit])
                                        (implicit val ord: data.Ordering[S#Tx, Vertex[S]])
     extends AlgorithmImpl[S] { algo =>
+
+    import config._
 
     override def toString = s"CopyingAlgorithm(input = $input)@${hashCode().toHexString}"
 
@@ -202,8 +206,8 @@ object CopyingAlgorithm {
             (_el, Util.scramble(_sel.toIndexedSeq), all.size)
           }
         }
-        val nGen    = pop - el.size - Algorithm.numGolem
-        val nMut    = (Algorithm.mutationProb * nGen + 0.5).toInt
+        val nGen    = pop - el.size - numGolem
+        val nMut    = (mutationProb * nGen + 0.5).toInt
         val nCross  = nGen - nMut
 
         progress = 0.05
@@ -212,7 +216,7 @@ object CopyingAlgorithm {
         // if (DEBUG) println(s"pop $pop, el ${el.size}, sel ${sel.size}, nMut $nMut, nCross $nCross")
 
         val mut     = blocking(mutate    (sel, nMut  ))
-        progress = Algorithm.mutationProb * 0.55 + 0.05
+        progress = mutationProb * 0.55 + 0.05
         checkAborted()
         val cross   = blocking(crossover (sel, nCross))
         progress = 0.6
@@ -223,7 +227,7 @@ object CopyingAlgorithm {
             cleaner.foreach { c =>
               c.apply(tx, el)
             }
-            val golem = Vector.fill(Algorithm.numGolem)(mkIndividual())
+            val golem = Vector.fill(numGolem)(mkIndividual())
             genome.chromosomes() = el ++ (mut ++ cross).map(_.apply()) ++ golem
             evaluateAndUpdate()
           }

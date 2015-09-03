@@ -14,6 +14,7 @@ import de.sciss.lucre.swing.defer
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
 import de.sciss.synth.ugen.ConfigOut
+import scopt.OptionParser
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, blocking}
@@ -36,38 +37,46 @@ object GeneratorApp extends SwingApplication {
     // ConfigOut.CLIP = true
     ConfigOut.LIMITER = true
 
-    args.toIndexedSeq match {
-      case "--confluent" +: tail =>
-        new ConfluentApp(tail)
+    val parser = new scopt.OptionParser[Algorithm.Config]("GeneratorApp") {
 
-      case "--in-memory" +: sfName +: _ =>
-        val in = file("audio_work") / sfName
-        new InMemoryApp(in)
-
-      case "--durable" +: dbName +: sfName +: _ =>
-        val dir = file("database"  ) / dbName
-        val in  = file("audio_work") / sfName
-        new DurableApp(dir = dir, input = in)
-
-      case "--hybrid" +: dbName +: sfName +: _ =>
-        val dir = file("database"  ) / dbName
-        val in  = file("audio_work") / sfName
-        new DurableHybridApp(dir = dir, input = in)
-
-      case _ =>
-        Console.err.println(
-          """Invocation:
-            |
-            |--confluent [<database-name> <sf-name>]
-            |--durable <database-name> <sf-name>
-            |--hybrid <database-name> <sf-name>
-            |--in-memory <sf-name>
-            |""".stripMargin)
-        sys.exit(1)
     }
+
+    parser.parse(args, Algorithm.Config()).fold(sys.exit(1)) { config =>
+      ???
+    }
+//
+//    args.toIndexedSeq match {
+//      case "--confluent" +: tail =>
+//        new ConfluentApp(tail)
+//
+//      case "--in-memory" +: sfName +: _ =>
+//        val in = file("audio_work") / sfName
+//        new InMemoryApp(in)
+//
+//      case "--durable" +: dbName +: sfName +: _ =>
+//        val dir = file("database"  ) / dbName
+//        val in  = file("audio_work") / sfName
+//        new DurableApp(dir = dir, input = in)
+//
+//      case "--hybrid" +: dbName +: sfName +: _ =>
+//        val dir = file("database"  ) / dbName
+//        val in  = file("audio_work") / sfName
+//        new DurableHybridApp(dir = dir, input = in)
+//
+//      case _ =>
+//        Console.err.println(
+//          """Invocation:
+//            |
+//            |--confluent [<database-name> <sf-name>]
+//            |--durable <database-name> <sf-name>
+//            |--hybrid <database-name> <sf-name>
+//            |--in-memory <sf-name>
+//            |""".stripMargin)
+//        sys.exit(1)
+//    }
   }
 
-  final class InMemoryApp(input: File) extends GenApp[InMemory] {
+  final class InMemoryApp(config: Algorithm.Config) extends GenApp[InMemory] {
     type S = InMemory
     type A = Algorithm[InMemory]
 
@@ -80,9 +89,9 @@ object GeneratorApp extends SwingApplication {
 
     private final class Init extends ProcessorImpl[A, Processor[A]] with Processor[A] {
       def body(): A = {
-        val algorithm = Algorithm.inMemory(input)
+        val algorithm = Algorithm.inMemory(config)
         val fut1 = algorithm.global.cursor.step { implicit tx =>
-          algorithm.initialize(Algorithm.population)
+          algorithm.initialize()
         }
         await(fut1, 0.0, 0.5)
         val fut2 = algorithm.global.cursor.step { implicit tx =>
@@ -94,25 +103,25 @@ object GeneratorApp extends SwingApplication {
     }
   }
 
-  def DurableInit(dir: File, input: File, init: Boolean): Processor[Algorithm.Durable] = {
-    val res = new DurableInit(dir = dir, input = input, init = init)
+  def DurableInit(config: Algorithm.Config, init: Boolean): Processor[Algorithm.Durable] = {
+    val res = new DurableInit(config, init = init)
     import Algorithm.executionContext
     res.start()
     res
   }
 
-  private final class DurableInit(dir: File, input: File, init: Boolean)
+  private final class DurableInit(config: Algorithm.Config, init: Boolean)
     extends ProcessorImpl[Algorithm.Durable, Processor[Algorithm.Durable]] with Processor[Algorithm.Durable] {
 
     def body(): Algorithm.Durable = {
-      val algorithm = Algorithm.durable(dir = dir, input = input)
+      val algorithm = Algorithm.durable(config)
       val cursor = algorithm.global.cursor
 
       val isNew = cursor.step { implicit tx =>
         algorithm.genome.chromosomes().isEmpty
       }
       if (isNew && init) {
-        val futInit = cursor.step { implicit tx => algorithm.initialize(Algorithm.population) }
+        val futInit = cursor.step { implicit tx => algorithm.initialize() }
         await(futInit, 0, 0.5)
       }
       if (isNew && init) {
@@ -125,25 +134,25 @@ object GeneratorApp extends SwingApplication {
     }
   }
 
-  final class DurableApp(dir: File, input: File) extends GenApp[Durable] {
+  final class DurableApp(config: Algorithm.Config) extends GenApp[Durable] {
     type S = Durable
     type A = Algorithm.Durable
 
-    def init(): Processor[A] = DurableInit(dir = dir, input = input, init = true)
+    def init(): Processor[A] = DurableInit(config, init = true)
   }
 
-  private final class DurableHybridInit(dir: File, input: File, init: Boolean)
+  private final class DurableHybridInit(config: Algorithm.Config, init: Boolean)
     extends ProcessorImpl[Algorithm.InMemory, Processor[Algorithm.InMemory]] with Processor[Algorithm.InMemory] {
 
     def body(): Algorithm.InMemory = {
-      val algorithm = Algorithm.durableHybrid(dir = dir, input = input)
+      val algorithm = Algorithm.durableHybrid(config)
       val cursor = algorithm.global.cursor
 
       val isNew = cursor.step { implicit tx =>
         algorithm.genome.chromosomes().isEmpty
       }
       if (isNew && init) {
-        val futInit = cursor.step { implicit tx => algorithm.initialize(Algorithm.population) }
+        val futInit = cursor.step { implicit tx => algorithm.initialize() }
         await(futInit, 0, 0.5)
       }
       if (isNew && init) {
@@ -157,19 +166,19 @@ object GeneratorApp extends SwingApplication {
   }
 
   /** Durable/In-Memory hybrid for speed increase. */
-  final class DurableHybridApp(dir: File, input: File) extends GenApp[InMemory] {
+  final class DurableHybridApp(config: Algorithm.Config) extends GenApp[InMemory] {
     type S = InMemory
     type A = Algorithm.InMemory
 
     def init(): Processor[A] = {
       import Algorithm.executionContext
-      val res = new DurableHybridInit(dir = dir, input = input, init = true)
+      val res = new DurableHybridInit(config, init = true)
       res.start()
       res
     }
   }
 
-  final class ConfluentApp(args: Vec[String]) extends GenApp[confluent.Confluent] {
+  final class ConfluentApp(config: Algorithm.Config) extends GenApp[confluent.Confluent] {
     type S = confluent.Confluent
     type A = Algorithm.Confluent
 
@@ -191,15 +200,16 @@ object GeneratorApp extends SwingApplication {
 
     private final class Init extends ProcessorImpl[A, Processor[A]] with Processor[A] {
       protected def body(): A = {
-        val dir = file("database"  ) / (if (args.length > 0) args(0) else "betanovuss")
-        val in  = file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
-        val algorithm = blocking(Algorithm.confluent(dir = dir, input = in))
+        import config._
+        val dir = databaseFile // file("database"  ) / (if (args.length > 0) args(0) else "betanovuss")
+        val in  = audioFile // file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
+        val algorithm = blocking(Algorithm.confluent(config)) // , dir = dir, input = in))
 
         val cursor = algorithm.global.cursor
         val isNew = cursor.step { implicit tx =>
           val _isNew = algorithm.genome.chromosomes().isEmpty
           if (_isNew) {
-            val futInit = algorithm.initialize(Algorithm.population)
+            val futInit = algorithm.initialize()
             await(futInit, 0, 0.5)
           }
           _isNew
@@ -255,7 +265,7 @@ trait GenApp[S <: Sys[S]] {
               val these = c.vertices.iterator.collect {
                 case uv: Vertex.UGen[S] if uv.boxName == ugenName => uv
               } .toIndexedSeq
-              these.foreach(impl.MutationImpl.removeVertex2[S](c, _)(tx, algo.global.rng))
+              these.foreach(impl.MutationImpl.removeVertex2[S](algo.config, c, _)(tx, algo.global.rng))
               countIn + these.size
             }
             self.progress = (ci + 1).toDouble / numChromo

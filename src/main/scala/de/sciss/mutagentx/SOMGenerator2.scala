@@ -299,7 +299,7 @@ object SOMGenerator2 {
     val proc = Processor[Unit]("gen-def") { self =>
       val specFut     = TxnExecutor.defaultAtomic { implicit itx =>
         implicit val tx = TxnLike.wrap(itx)
-        impl.EvaluationImpl.getInputSpec(audioInput)
+        impl.EvaluationImpl.getInputSpec(???, audioInput)
       }
       val (inputFile, inputSpec) = Await.result(specFut, Duration.Inf)
 

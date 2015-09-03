@@ -310,7 +310,7 @@ object SOMGenerator extends App {
       return
     }
 
-    val a       = Algorithm.confluent(dir = dir, input = in)
+    val a       = Algorithm.confluent(???) // dir = dir, input = in)
     val csr     = a.global.cursor
     val path    = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
     val numIter = path.size / 2

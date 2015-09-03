@@ -15,7 +15,7 @@ package de.sciss.mutagentx
 package impl
 
 import de.sciss.file._
-import de.sciss.lucre.stm.DataStore
+import de.sciss.lucre.stm.{Sys, DataStore}
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.{confluent, data, stm}
 import de.sciss.processor.Processor
@@ -28,21 +28,21 @@ import scala.concurrent.stm.TxnExecutor
 object ConfluentAlgorithm {
   type S = confluent.Confluent
 
-  def tmp(input: File): Algorithm.Confluent = {
+  def tmp(config: Algorithm.Config, input: File): Algorithm.Confluent = {
     val cfg = BerkeleyDB.Config()
     // cfg.lockTimeout = Duration(2000, TimeUnit.MILLISECONDS)
     val dbf = BerkeleyDB.tmp(cfg)
-    create(dbf, input)
+    create(config, dbf, input)
   }
 
-  def apply(dir: File, input: File): Algorithm.Confluent = {
+  def apply(config: Algorithm.Config, dir: File, input: File): Algorithm.Confluent = {
     val dbf = BerkeleyDB.factory(dir)
-    create(dbf, input)
+    create(config, dbf, input)
   }
 
-  private def create(dbf: DataStore.Factory, _input: File): Algorithm.Confluent = {
+  private def create(config: Algorithm.Config, dbf: DataStore.Factory, _input: File): Algorithm.Confluent = {
     val futInput = TxnExecutor.defaultAtomic { implicit tx =>
-      impl.EvaluationImpl.getInputSpec(_input)
+      impl.EvaluationImpl.getInputSpec(config, _input)
     }
     val (_inputExtr, _inputSpec) = Await.result(futInput, Duration.Inf)
 
@@ -57,12 +57,15 @@ object ConfluentAlgorithm {
       GlobalState.Confluent()
     }
 
-    new Impl(system, handle, global, input = _input, inputExtr = _inputExtr, inputSpec = _inputSpec)
+    new Impl(config, system, handle, global, input = _input, inputExtr = _inputExtr, inputSpec = _inputSpec)
   }
 
-  private final class Impl(system: S, handle: stm.Source[S#Tx, Genome[S]], val global: GlobalState.Confluent,
+  private final class Impl(val config: Algorithm.Config, system: S, handle: stm.Source[S#Tx, Genome[S]],
+                           val global: GlobalState.Confluent,
                            val input: File, val inputExtr: File, val inputSpec: AudioFileSpec)
     extends AlgorithmImpl[S] /* with Algorithm.Confluent */ { algo =>
+
+    import config._
 
     type Global = GlobalState.Confluent
 
@@ -155,7 +158,7 @@ object ConfluentAlgorithm {
       }
 
       val nGen    = pop - el.size
-      val nMut    = (Algorithm.mutationProb * nGen + 0.5).toInt
+      val nMut    = (mutationProb * nGen + 0.5).toInt
       val nCross  = nGen - nMut
 
       // if (DEBUG) println(s"pop $pop, el ${el.size}, sel ${sel.size}, nMut $nMut, nCross $nCross")

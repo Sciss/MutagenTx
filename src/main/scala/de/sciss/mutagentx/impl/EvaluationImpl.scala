@@ -91,8 +91,9 @@ object EvaluationImpl {
     }
   }
 
-  def getInputSpec(input: File)(implicit tx: TxnLike): Future[(File, AudioFileSpec)] = {
-    val key       = input -> Algorithm.numCoeffs
+  def getInputSpec(config: Algorithm.Config, input: File)(implicit tx: TxnLike): Future[(File, AudioFileSpec)] = {
+    import config._
+    val key       = input -> numMFCC
     val futMeta   = cache.acquire(key)(tx.peer)
     val res       = futMeta.map { v =>
       val inputExtr = v.meta
@@ -178,43 +179,44 @@ object EvaluationImpl {
     bnc0
   }
 
-  def evaluate[S <: Sys[S]](c: Chromosome[S], algorithm: Algorithm[S], inputSpec: AudioFileSpec, inputExtr: File)
+  def evaluate[S <: Sys[S]](config: Algorithm.Config, c: Chromosome[S], inputSpec: AudioFileSpec, inputExtr: File)
               (implicit tx: S#Tx): (SynthGraph, Future[Float]) = {
     val graph = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true /* false */) // c.graph
     // val cH          = tx.newHandle(c)
     val numVertices = c.vertices.size
     val p           = Promise[Float]()
     tx.afterCommit {
-      p.completeWith(evaluateFut(/* cH, */ graph, inputSpec, inputExtr = inputExtr, numVertices = numVertices))
+      p.completeWith(evaluateFut(config, graph, inputSpec, inputExtr = inputExtr, numVertices = numVertices))
     }
     (graph, p.future)
   }
 
-  def evaluateBounce(bounce: File, input: File): Future[Float] = {
+  def evaluateBounce(config: Algorithm.Config, bounce: File, input: File): Future[Float] = {
     val futSpec = TxnExecutor.defaultAtomic { implicit itx =>
       implicit val tx = TxnLike.wrap(itx)
-      getInputSpec(input)
+      getInputSpec(config, input)
     }
     futSpec.map { case (inputExtr, inputSpec) =>
-      val fut = eval1(wait = None, bounceF = bounce, inputSpec = inputSpec, inputExtr = inputExtr)
+      val fut = eval1(config, wait = None, bounceF = bounce, inputSpec = inputSpec, inputExtr = inputExtr)
       val res = Await.result(fut, Duration.Inf)
       res.toFloat
     }
   }
 
-  private def evaluateFut(graph: SynthGraph, inputSpec: AudioFileSpec,
+  private def evaluateFut(config: Algorithm.Config, graph: SynthGraph, inputSpec: AudioFileSpec,
                           inputExtr: File, numVertices: Int): Future[Float] = {
+    import config._
     val audioF  = File.createTemp(prefix = "muta_bnc", suffix = ".aif")
     val bnc0    = bounce(graph, audioF = audioF, inputSpec = inputSpec)
-    val simFut  = eval1(wait = Some(bnc0), bounceF = audioF, inputSpec = inputSpec, inputExtr = inputExtr)
+    val simFut  = eval1(config, wait = Some(bnc0), bounceF = audioF, inputSpec = inputSpec, inputExtr = inputExtr)
     val res = simFut.map { sim0 =>
       import numbers.Implicits._
-      val pen = Algorithm.vertexPenalty
+      val pen = vertexPenalty
 //      if (sim0 > 0.46) {
 //        println(s"DEBUG $audioF")
 //      }
       val sim = if (pen <= 0) sim0 else
-        sim0 - numVertices.linlin(Algorithm.minNumVertices, Algorithm.maxNumVertices, 0, pen)
+        sim0 - numVertices.linlin(minNumVertices, maxNumVertices, 0, pen)
       sim.toFloat // new Evaluated(cH, sim)
     }
     res.onComplete { case _ =>
@@ -223,8 +225,9 @@ object EvaluationImpl {
     res
   }
 
-  private def eval1(wait: Option[Processor[Any]], bounceF: File, inputSpec: AudioFileSpec,
+  private def eval1(config: Algorithm.Config, wait: Option[Processor[Any]], bounceF: File, inputSpec: AudioFileSpec,
                     inputExtr: File): Future[Double] = {
+    import config.{wait => _, _}
     val bnc = Future {
       wait.foreach { bnc0 =>
         Await.result(bnc0, Duration(4.0, TimeUnit.SECONDS))
@@ -266,8 +269,8 @@ object EvaluationImpl {
     val genExtr             = genFolder / "gen_feat.xml"
 
     val normF   = genFolder / Strugatzki.NormalizeName
-    if (Algorithm.normalizeCoeffs) {
-      if (Algorithm.numCoeffs != featNorms.length + 1)
+    if (normalizeMFCC) {
+      if (numMFCC != featNorms.length + 1)
         throw new IllegalArgumentException(s"Normalize option requires numCoeffs == ${featNorms.length - 1}")
       blocking {
         val normAF  = AudioFile.openWrite(normF, AudioFileSpec(numChannels = featNorms.length, sampleRate = 44100))
@@ -282,7 +285,7 @@ object EvaluationImpl {
       exCfg.audioInput      = bounceF
       exCfg.featureOutput   = featF
       exCfg.metaOutput      = Some(genExtr)
-      exCfg.numCoeffs       = Algorithm.numCoeffs
+      exCfg.numCoeffs       = numMFCC
       val _ex               = FeatureExtraction(exCfg)
       _ex.start()
       //      _ex.onFailure {
@@ -302,13 +305,13 @@ object EvaluationImpl {
       corrCfg.minSpacing    = Long.MaxValue >> 1
       corrCfg.numMatches    = 1
       corrCfg.numPerFile    = 1
-      corrCfg.maxBoost      = Algorithm.maxBoost.toFloat
-      corrCfg.normalize     = Algorithm.normalizeCoeffs
+      corrCfg.maxBoost      = maxBoost.toFloat
+      corrCfg.normalize     = normalizeMFCC
       corrCfg.minPunch      = numFrames
       corrCfg.maxPunch      = numFrames
       corrCfg.punchIn       = FeatureCorrelation.Punch(
         span = Span(0L, numFrames),
-        temporalWeight = Algorithm.temporalWeight.toFloat)
+        temporalWeight = temporalWeight.toFloat)
       val _corr             = FeatureCorrelation(corrCfg)
       _corr.start()
       _corr
@@ -339,7 +342,7 @@ object EvaluationImpl {
     val res = simFut
 
     res.onComplete { case _ =>
-      if (Algorithm.normalizeCoeffs) normF.delete()
+      if (normalizeMFCC) normF.delete()
       featF     .delete()
       // audioF    .delete()
       genExtr   .delete()

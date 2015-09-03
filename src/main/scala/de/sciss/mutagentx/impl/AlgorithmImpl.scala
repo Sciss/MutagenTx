@@ -27,14 +27,15 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future, blocking}
 
 trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
-  import Algorithm.{DEBUG, constProb, maxNumVertices, minNumVertices, numElitism, selectionFrac}
+  import Algorithm.DEBUG
+  import config._
   import Util.{choose, coin, exprand, rrand}
   import global.rng
 
   /** Creates the initial population of size `n`. */
-  def initialize(n: Int)(implicit tx: S#Tx): Processor[Unit] = {
+  def initialize()(implicit tx: S#Tx): Processor[Unit] = {
     import Algorithm.executionContext
-    val res = new Initializer(n)
+    val res = new Initializer(config.population)
     res.start()
     res
   }
@@ -106,7 +107,6 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
     * it is fully wired.
     */
   def completeUGenInputs(c: C, v: Vertex.UGen[S])(implicit tx: S#Tx): Unit = {
-    import Algorithm.nonDefaultProb
     val spec    = v.info
     // An edge's source is the consuming UGen, i.e. the one whose inlet is occupied!
     // A topology's edgeMap uses source-vertices as keys. Therefore, we can see
@@ -188,13 +188,13 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
       val numClumps   = clumps.size
 
       val nextIter    = global.cursor.step { implicit tx => global.numIterations() + 1 }
-      val graphPen    = Algorithm.graphPenaltyIter > 0 && (nextIter % Algorithm.graphPenaltyIter == 0)
+      val graphPen    = graphPenaltyIter > 0 && (nextIter % graphPenaltyIter == 0)
       val progWeight  = 1.0 / (if (graphPen) numClumps << 1 else numClumps)
 
       val (graphs, fit0) = clumps.zipWithIndex.flatMap { case (clump, ci) =>
         val (graphs0: Vec[SynthGraph], futClump: Vec[Future[Float]]) = global.cursor.step { implicit tx =>
           clump.map { cH =>
-            impl.EvaluationImpl.evaluate(cH(), algo, inputSpec, inputExtr)
+            impl.EvaluationImpl.evaluate(config, cH(), inputSpec, inputExtr)
           }
         } .unzip
         val clumpRes = Await.result(Future.sequence(futClump), Duration.Inf)
@@ -208,7 +208,7 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
         val N = graphs.size
         val sims = graphs.zipWithIndex.map { case (a, ai) =>
           val (simSum, simNum) = ((0.0, 0) /: graphs) { case (old @ (sum, num), b) =>
-            if ((a ne b) && coin1(Algorithm.graphPenaltyCoin))
+            if ((a ne b) && coin1(graphPenaltyCoin))
               (sum + EvaluationImpl.graphSimilarity(a, b), num + 1)
             else old
           }
@@ -217,10 +217,10 @@ trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
           simSum / simNum
         }
         val minSim = 0.0 // sims.min
-        val maxSim = Algorithm.graphPenaltyCeil // sims.max
+        val maxSim = graphPenaltyCeil // sims.max
         val fit1 = (fit0 zip sims).map { case (f, sim) =>
           import numbers.Implicits._
-          val pen = sim.linlin(minSim, maxSim, 0.0, Algorithm.graphPenaltyAmt)
+          val pen = sim.linlin(minSim, maxSim, 0.0, graphPenaltyAmt)
           f * math.max(0.0f, (1.0 - pen).toFloat)
         }
 

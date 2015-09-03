@@ -20,7 +20,7 @@ object VertexApp extends App {
   def run(): Unit = {
     val dir = file("database"  ) / (if (args.length > 0) args(0) else "betanovuss")
     val in  = file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
-    val a   = Algorithm.confluent(dir = dir, input = in)
+    val a   = Algorithm.confluent(???) // dir = dir, input = in)
     val csr = a.global.cursor
     val v   = csr.step { implicit tx => Visual(a) }
 

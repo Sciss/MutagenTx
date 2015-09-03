@@ -6,13 +6,13 @@ import scala.util.{Success, Failure}
 
 object TestGenEval extends App {
   val in        = file("audio_work") / "Betanovuss150410_1Cut.aif"
-  val algorithm = Algorithm.tmpConfluent(in)
+  val algorithm = Algorithm.tmpConfluent(??? /* in */)
 
   import Algorithm.executionContext
 
   val cursor    = algorithm.global.cursor
   val fut0 = cursor.step { implicit tx =>
-    algorithm.initialize(100)
+    algorithm.initialize()
   }
   val fut1 = fut0.map { _ =>
     cursor.step { implicit tx =>

@@ -33,32 +33,41 @@ import scala.language.higherKinds
 object Algorithm {
   val DEBUG = false
 
-  // ---- generation ----
-  val population      : Int     = 20 // 100 // 1000
-  val constProb       : Double  = 0.5
-  val minNumVertices  : Int     = 64 // 30
-  val maxNumVertices  : Int     = 256 // 100
-  val nonDefaultProb  : Double  = 0.95 // 0.99 // 0.5
+  case class Config(audioFile: File = file("target.aif"), databaseFile: File = file("output.db"),
+                    population: Int = 500, constProb: Double = 0.5, minNumVertices: Int = 64, maxNumVertices: Int = 256,
+                    nonDefaultProb: Double = 0.95, numMFCC: Int = 42, normalizeMFCC: Boolean = false,
+                    maxBoost: Double = 10.0, temporalWeight: Double = 0.3,  vertexPenalty: Double = 0.02,
+                    graphPenaltyIter: Int = 10, graphPenaltyCeil: Double = 0.275, graphPenaltyAmt: Double = 0.2,
+                    graphPenaltyCoin: Double = 0.25,
+                    selectionFrac: Double = 0.33, numElitism: Int = 3, mutMin: Int = 2, mutMax: Int = 4,
+                    mutationProb: Double = 0.75, numGolem: Int = 15)
 
-  // ---- evaluation ----
-  val numCoeffs       : Int     = 42
-  val normalizeCoeffs : Boolean = false // true
-  val maxBoost        : Double  = 10.0
-  val temporalWeight  : Double  = 0.3
-  val vertexPenalty   : Double  = 0.01
-
-  val graphPenaltyIter: Int     = 10
-  val graphPenaltyCeil: Double  = 0.275
-  val graphPenaltyAmt : Double  = 0.2
-  val graphPenaltyCoin: Double  = 0.25  // subsampling probability to increase speed (1 = all neighbors, 0.5 = every second)
-
-  // ---- breeding ----
-  val selectionFrac   : Double  = 0.33
-  val numElitism      : Int     = 0 // 5
-  val mutMin          : Int     = 2
-  val mutMax          : Int     = 4
-  val mutationProb    : Double  = 0.75
-  val numGolem        : Int     = 15
+//  // ---- generation ----
+//  val population      : Int     = 500 // 100 // 1000
+//  val constProb       : Double  = 0.5
+//  val minNumVertices  : Int     = 64 // 30
+//  val maxNumVertices  : Int     = 256 // 100
+//  val nonDefaultProb  : Double  = 0.95 // 0.99 // 0.5
+//
+//  // ---- evaluation ----
+//  val numCoeffs       : Int     = 42
+//  val normalizeCoeffs : Boolean = false // true
+//  val maxBoost        : Double  = 10.0
+//  val temporalWeight  : Double  = 0.3
+//  val vertexPenalty   : Double  = 0.02
+//
+//  val graphPenaltyIter: Int     = 10
+//  val graphPenaltyCeil: Double  = 0.275
+//  val graphPenaltyAmt : Double  = 0.2
+//  val graphPenaltyCoin: Double  = 0.25  // subsampling probability to increase speed (1 = all neighbors, 0.5 = every second)
+//
+//  // ---- breeding ----
+//  val selectionFrac   : Double  = 0.33
+//  val numElitism      : Int     = 0 // 5
+//  val mutMin          : Int     = 2
+//  val mutMax          : Int     = 4
+//  val mutationProb    : Double  = 0.75
+//  val numGolem        : Int     = 15
 
   implicit val executionContext: ExecutionContext = {
     ExecutionContext.Implicits.global
@@ -67,11 +76,11 @@ object Algorithm {
     // ExecutionContext.fromExecutor(ex)
   }
 
-  def tmpConfluent(input: File): Confluent =
-    impl.ConfluentAlgorithm.tmp(input)
+  def tmpConfluent(config: Algorithm.Config): Confluent =
+    impl.ConfluentAlgorithm.tmp(config, ???)
 
-  def confluent(dir: File, input: File): Confluent =
-    impl.ConfluentAlgorithm.apply(dir = dir, input = input)
+  def confluent(config: Algorithm.Config): Confluent =
+    impl.ConfluentAlgorithm.apply(config, dir = ???, input = ???)
 
   implicit object InMemoryVertexOrdering extends data.Ordering[stm.InMemory#Tx, Vertex[stm.InMemory]] {
     type S = stm.InMemory
@@ -125,7 +134,8 @@ object Algorithm {
     ()
   }
 
-  def durable(dir: File, input: File): Durable = {
+  def durable(config: Algorithm.Config): Durable = {
+    import config.{databaseFile => dir, audioFile => input}
     type S = stm.Durable
     val dbc = BerkeleyDB.Config()
     dbc.lockTimeout = Duration(0, TimeUnit.SECONDS)
@@ -143,12 +153,14 @@ object Algorithm {
 
     lazy val cleaner = mkCleaner(a, dir)
 
-    lazy val a: Algorithm.Durable = impl.CopyingAlgorithm[S, GlobalState.Durable](system = system, input = input,
+    lazy val a: Algorithm.Durable = impl.CopyingAlgorithm[S, GlobalState.Durable](config,
+      system = system, input = input,
       global = global, genomeH = genomeH, ephemeral = true, cleaner = Some(cleaner))
     a
   }
 
-  def durableHybrid(dir: File, input: File): InMemory = {
+  def durableHybrid(config: Algorithm.Config): InMemory = {
+    import config.{databaseFile => dir, audioFile => input}
     type S = stm.InMemory
     type D = stm.Durable
 
@@ -175,12 +187,14 @@ object Algorithm {
 
     lazy val cleaner = mkCleaner(a, dir)
 
-    lazy val a: Algorithm.InMemory = impl.CopyingAlgorithm[S, GlobalState.InMemory](system = systemD,
+    lazy val a: Algorithm.InMemory = impl.CopyingAlgorithm[S, GlobalState.InMemory](config,
+      system = systemD,
       input = input, global = global, genomeH = genomeH, ephemeral = true, cleaner = Some(cleaner))
     a
   }
 
-  def inMemory(input: File): Algorithm[stm.InMemory] = {
+  def inMemory(config: Algorithm.Config): Algorithm[stm.InMemory] = {
+    import config.{audioFile => input}
     type S = stm.InMemory
     implicit val system = stm.InMemory()
 
@@ -188,7 +202,7 @@ object Algorithm {
       (GlobalState.InMemory(), tx.newHandle(Genome.empty[S]))
     }
 
-    impl.CopyingAlgorithm[S, GlobalState[S]](system = system, input = input, global = global,
+    impl.CopyingAlgorithm[S, GlobalState[S]](config, system = system, input = input, global = global,
       genomeH = genomeH, ephemeral = true)
   }
 
@@ -227,7 +241,7 @@ trait Algorithm[S <: Sys[S]] extends Closeable {
   implicit def ord: data.Ordering[S#Tx, Vertex[S]]
 
   /** Creates the initial population of size `n`. */
-  def initialize(n: Int)(implicit tx: S#Tx): Processor[Unit]
+  def initialize()(implicit tx: S#Tx): Processor[Unit]
 
   /** Creates an individual chromosome. */
   def mkIndividual()(implicit tx: S#Tx): C
@@ -276,4 +290,6 @@ trait Algorithm[S <: Sys[S]] extends Closeable {
     * - evaluation
     */
   def iterate(): Processor[Unit]
+
+  val config: Algorithm.Config
 }

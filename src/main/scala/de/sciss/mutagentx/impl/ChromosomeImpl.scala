@@ -161,8 +161,9 @@ object ChromosomeImpl {
     f.toIndexedSeq
   }
 
-  def addVertex[S <: Sys[S]](c: Chromosome[S])(implicit tx: S#Tx, random: TxnRandom[S#Tx]): Vertex[S] = {
-    import Algorithm.constProb
+  def addVertex[S <: Sys[S]](config: Algorithm.Config, c: Chromosome[S])
+                            (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Vertex[S] = {
+    import config.{constProb, nonDefaultProb}
     import Util.coin
 
     if (coin(constProb)) {
@@ -173,14 +174,14 @@ object ChromosomeImpl {
     } else {
       val _v  = mkUGen()
       c.addVertex(_v)
-      completeUGenInputs(c, _v)
+      completeUGenInputs(config, c, _v)
       _v
     }
   }
 
-  def completeUGenInputs[S <: Sys[S]](c: Chromosome[S], v: Vertex.UGen[S])
+  def completeUGenInputs[S <: Sys[S]](config: Algorithm.Config, c: Chromosome[S], v: Vertex.UGen[S])
                                     (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
-    import Algorithm.nonDefaultProb
+    import config.nonDefaultProb
     import Util.{choose, coin}
 
     val spec    = v.info

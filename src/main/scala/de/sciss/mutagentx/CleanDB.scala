@@ -14,8 +14,8 @@ object CleanDB extends App {
   val dbIn      = dataDir / "derrida1_1_216500"
   val dbOut     = dataDir / "derrida1_1_216500_CLEAN"
   require(!dbOut.exists)
-  val inFut     =                      GeneratorApp.DurableInit(dir = dbIn , input = audioFile, init = false)
-  val outFut    = inFut.flatMap { _ => GeneratorApp.DurableInit(dir = dbOut, input = audioFile, init = false) }
+  val inFut     =                      GeneratorApp.DurableInit(???, /* dir = dbIn , input = audioFile, */ init = false)
+  val outFut    = inFut.flatMap { _ => GeneratorApp.DurableInit(???, /* dir = dbOut, input = audioFile, */ init = false) }
 
   val in        = Await.result(inFut , Duration.Inf)
   val out       = Await.result(outFut, Duration.Inf)
