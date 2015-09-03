@@ -435,12 +435,18 @@ object ChromosomeImpl {
             val Seq(_, a0, b) = args
             // XXX TODO --- stupid workaround for ScalaCollider #52
             val a = if ((opS == "min" || opS == "max") && line.args(1).value.isInstanceOf[Constant])
-              s"Constant($a0)"
+              s"Constant(${a0}f)"
             else a0
             s"$a $opS $b"
         }
       } else if (line.elemName == "UnaryOpUGen") {
         line.args.head.value match {
+          case UnaryOpUGen.Neg =>
+            val Seq(_, a) = args
+            s"-$a"
+          case UnaryOpUGen.Not =>
+            val Seq(_, a) = args
+            s"UnaryOpUGen($a, UnaryOpUGen.Not)"
           case op: UnaryOpUGen.Op =>
             val opS = uncapitalize(op.name)
             val Seq(_, a) = args

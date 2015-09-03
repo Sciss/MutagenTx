@@ -108,13 +108,13 @@ class TopologySpec extends FlatSpec with Matchers {
 //      assert(tc.edgeMap.get(vcb).fold(0)(_.size) === 1)
 //      assert(tc.edgeMap.get(vcd).fold(0)(_.size) === 1)
 
-      assert(tc.edgeSet(vca).size === 1)
-      assert(tc.edgeSet(vcb).size === 1)
-      assert(tc.edgeSet(vcd).size === 1)
+      assert(tc.targets(vca).size === 1)
+      assert(tc.targets(vcb).size === 1)
+      assert(tc.targets(vcd).size === 1)
 
       tc.removeVertex(vca)
       // assert(tc.edgeMap.contains(vca) === false)
-      assert(tc.edgeSet(vca).isEmpty)
+      assert(tc.targets(vca).isEmpty)
 
       val _sc2 = tc.vertices.iterator.toList.mkString(",")
       val _sc3 = tc.edges   .iterator.toList.sortBy(e => e.sourceVertex.name -> e.targetVertex.name).mkString(",")

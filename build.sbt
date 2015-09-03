@@ -21,9 +21,9 @@ fork in run := true
 // ---- main dependencies ----
 
 lazy val lucreVersion               = "3.0.0-SNAPSHOT"
-lazy val scalaColliderUGensVersion  = "1.13.3"
-lazy val scalaColliderVersion       = "1.17.3"
-lazy val scalaColliderSwingVersion  = "1.25.2"
+lazy val scalaColliderUGensVersion  = "1.13.4"
+lazy val scalaColliderVersion       = "1.17.4"
+lazy val scalaColliderSwingVersion  = "1.25.3"
 lazy val soundProcessesVersion      = "3.0.0-SNAPSHOT"
 lazy val strugatzkiVersion          = "2.9.0"
 lazy val fileUtilVersion            = "1.1.1"
