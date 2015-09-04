@@ -35,10 +35,23 @@ object Genome {
   private def readHybrid(config: Algorithm.Config, global: GlobalState.DurableHybrid)
                         (implicit tx: stm.Durable#Tx): (Chromosomes[stm.InMemory], Vec[Float]) = {
     implicit val itx = tx.inMemory
-    val iter  = global.numIterations()
-    val dir   = config.databaseFile
-    val f0    = dir.parent / s"${dir.name}_iter$iter.bin"
-    val f1    = dir.parent / s"${dir.name}_iter${iter - 1}.bin"
+    // val iter    = global.numIterations()
+    val dir     = config.databaseFile
+    val base    = dir.parent
+    val prefix  = s"${dir.name}_iter"
+    val suffix  = ".bin"
+    val all     = base.children(f => f.name.startsWith(prefix) && f.name.endsWith(suffix)).map { f =>
+      val n = f.name
+      n.substring(prefix.length, n.length - suffix.length).toInt
+    }
+    val iter    = if (all.isEmpty) global.numIterations() else {
+      val res = all.max
+      global.initIterations(res + 1)
+      res
+    }
+
+    val f0    = base / s"$prefix$iter$suffix"
+    val f1    = base / s"$prefix${iter - 1}$suffix"
     if (!f1.isFile && !f0.isFile) return (Vector.empty, Vector.empty)
     val f     = if (f1.isFile) f1 else f0
 
@@ -68,22 +81,22 @@ object Genome {
   def DurableHybrid(config: Algorithm.Config, global: GlobalState.DurableHybrid, peer: Genome[stm.Durable])
                    (implicit tx: stm.Durable#Tx): Genome[stm.InMemory] = {
     val (c0, f0) = readHybrid(config, global)
-    new Genome[stm.InMemory] {
+    val genome = new Genome[stm.InMemory] {
       type S = stm.InMemory
       type D = stm.Durable
 
       private[this] val _global = global
       // import _global.dtx
       
-      private def copyChromosome[In <: Sys[In], Out <: Sys[Out]](in: Chromosomes[In])
-                                                                (implicit txIn: In#Tx, txOut: Out#Tx): Chromosomes[Out] = {
-        val context = Copy[In, Out](txIn, txOut)
-        try {
-          in.map(context(_))
-        } finally {
-          context.finish()
-        }
-      }
+//      private def copyChromosome[In <: Sys[In], Out <: Sys[Out]](in: Chromosomes[In])
+//                                                                (implicit txIn: In#Tx, txOut: Out#Tx): Chromosomes[Out] = {
+//        val context = Copy[In, Out](txIn, txOut)
+//        try {
+//          in.map(context(_))
+//        } finally {
+//          context.finish()
+//        }
+//      }
       
       private val cRef: Ref[Chromosomes[S]] = Ref(c0)
       private val fRef: Ref[Vec[Float]]     = Ref(f0)
@@ -144,6 +157,7 @@ object Genome {
   
       val id: ID[S] = tx.inMemory.newID()
     }
+    genome
   }
 
   private final class GenomeImpl[S <: Sys[S]](val id: S#ID,

@@ -42,7 +42,12 @@ object ChromosomeImpl {
       case _: ConfigOut | _: Mix | _: Mix.Mono | _: RandSeed => None
 
       case Constant(f) =>
-        val v = Vertex.Constant(f)
+        val f1 = if (f.isNaN) {
+          Console.err.println("Warning: replacing NaN by zero in mkChromosome")
+          0f
+        } else f
+
+        val v = Vertex.Constant(f1)
         m.put(p, v)
         c.addVertex(v)
         Some(v)
@@ -103,7 +108,7 @@ object ChromosomeImpl {
     @tailrec def loop(rem: Vec[Vertex[S]], real: Map[Vertex[S], GE]): Map[Vertex[S], GE] = rem match {
       case init :+ last =>
         val value: GE = last match {
-          case vf: Vertex.Constant[S] => ugen.Constant(vf.f())
+          case vf: Vertex.Constant[S] => ugen.Constant(vf.f)
           case u: Vertex.UGen[S] =>
             val spec = u.info
             val ins = spec.args.map { arg =>
@@ -198,7 +203,7 @@ object ChromosomeImpl {
     res
   }
 
-  private def getRoots[S <: Sys[S]](top: Chromosome[S])(implicit tx: S#Tx): Vec[Vertex.UGen[S]] = {
+  def getRoots[S <: Sys[S]](top: Chromosome[S])(implicit tx: S#Tx): Vec[Vertex.UGen[S]] = {
     val ugens = top.vertices.iterator.collect {
       case ugen: Vertex.UGen[S] => ugen
     }

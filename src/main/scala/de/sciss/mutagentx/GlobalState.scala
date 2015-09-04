@@ -39,9 +39,11 @@ object GlobalState {
     type S = stm.InMemory
     type D = stm.Durable
 
-    def apply(peer: GlobalState.Durable)(implicit tx: D#Tx): DurableHybrid = new DurableHybrid {
+    def apply(_peer: GlobalState.Durable)(implicit tx: D#Tx): DurableHybrid = new DurableHybrid {
       // private[this] val system = tx.system
       private[this] val dtxRef = TxnLocal[D#Tx]()
+
+      val peer: GlobalState.Durable = _peer
 
       implicit def dtx(implicit tx: S#Tx): D#Tx = dtxRef.get(tx.peer)
 
@@ -67,17 +69,25 @@ object GlobalState {
         def position(implicit tx: S#Tx) = ()
       }
 
+      private val iterRef = Ref(peer.numIterations())
+
       val numIterations: Sink[S#Tx, Int] with Source[S#Tx, Int] =
         new Sink[S#Tx, Int] with Source[S#Tx, Int] {
-          private val ref = Ref(peer.numIterations())
 
           def update(v: Int)(implicit tx: S#Tx): Unit = {
-            ref.update(v)(tx.peer)
+            iterRef.update(v)(tx.peer)
             peer.numIterations() = v
           }
 
-          def apply()(implicit tx: S#Tx): Int = ref.get(tx.peer)
+          def apply()(implicit tx: S#Tx): Int = iterRef.get(tx.peer)
         }
+
+      // this one doesn't implicitly look of a `D#Tx`, therefore
+      // doesn't fail during root init
+      def initIterations(v: Int)(implicit tx: D#Tx): Unit = {
+        iterRef.update(v)(tx.peer)
+        peer.numIterations() = v
+      }
     }
   }
   trait DurableHybrid extends GlobalState[stm.InMemory] {
@@ -85,6 +95,10 @@ object GlobalState {
     type D = stm.Durable
 
     implicit def dtx(implicit tx: S#Tx): D#Tx
+
+    def initIterations(i: Int)(implicit tx: D#Tx): Unit
+
+    def peer: GlobalState.Durable // [stm.Durable]
   }
 
   object Durable {

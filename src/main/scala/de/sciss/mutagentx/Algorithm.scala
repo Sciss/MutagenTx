@@ -41,6 +41,7 @@ object Algorithm {
   }
   sealed trait SysType
 
+  // N.B. sample rate is taken from audioFile!
   case class Config(
     // ---- files and type ----
     audioFile       : File    = file("target.aif"),
@@ -184,6 +185,7 @@ object Algorithm {
       val (_globalD, _genomeD) = rootH()
       val _global = GlobalState.DurableHybrid(_globalD)
       val _genome: Genome[S] = Genome.DurableHybrid(config, _global, _genomeD)
+      // _globalD.numIterations() = _iter0
       val itx = tx.inMemory
       (_global, itx.newHandle(_genome))
     }

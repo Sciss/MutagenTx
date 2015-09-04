@@ -163,9 +163,9 @@ object MutationImpl {
     val fNew: Float = if (Util.coin())
       ChromosomeImpl.mkConstantValue()            // completely random
     else
-      vc.f() * Util.exprand(0.9, 1.0/0.9).toFloat  // gradual change
+      vc.f * Util.exprand(0.9, 1.0/0.9).toFloat  // gradual change
 
-    vc.f() = fNew
+    vc.f = fNew
   }
 
   private def changeVertexUGen[S <: Sys[S]](config: Algorithm.Config, top: Chromosome[S], vu: Vertex.UGen[S])

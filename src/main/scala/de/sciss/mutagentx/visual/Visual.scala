@@ -181,7 +181,7 @@ object Visual {
       } { vv =>
         (v, vv) match {
           case (vc: Vertex.Constant[S], vvc: VisualConstant[S]) =>
-            val value = vc.f()
+            val value = vc.f
             if (vvc.value != value) {
               println(f"VALUE ${vvc.value}%1.3f >>> $value%1.3f")
               vvc.value = value   // XXX animate -- how? THREADING

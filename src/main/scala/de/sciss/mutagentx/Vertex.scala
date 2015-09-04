@@ -167,12 +167,13 @@ object Vertex extends Obj.Type {
   //  }
   object Constant {
     def apply[S <: Sys[S]](f: Float)(implicit tx: S#Tx): Constant[S] = {
+      if (f.isNaN) throw new IllegalArgumentException
       val id = tx.newID()
       new Constant[S](id, tx.newVar(id, f))
     }
-    def unapply[S <: Sys[S]](v: Constant[S])(implicit tx: S#Tx): Option[Float] = Some(v.f())
+    def unapply[S <: Sys[S]](v: Constant[S])(implicit tx: S#Tx): Option[Float] = Some(v.f)
   }
-  class Constant[S <: Sys[S]](val id: S#ID, val f: S#Var[Float])
+  class Constant[S <: Sys[S]] private[Vertex] (val id: S#ID, fv: S#Var[Float])
     extends Vertex[S]
     with evt.impl.ConstObjImpl[S, Any] {
 
@@ -180,11 +181,22 @@ object Vertex extends Obj.Type {
 
     override def toString() = s"Constant$id"
 
+    def f(implicit tx: S#Tx): Float = fv()
+    def f_=(value: Float)(implicit tx: S#Tx): Unit = {
+      val f1 = if (value.isNaN) {
+        Console.err.println("Trying to set a constant to NaN")
+        new Exception().printStackTrace()
+        0f
+      } else value
+
+      fv() = f1
+    }
+
     def isUGen = false
 
     def copy[Out <: Sys[Out]]()(implicit tx: S#Tx, txOut: Out#Tx, context: Copy[S, Out]): Elem[Out] = {
       val newID   = txOut.newID()
-      val newVar  = txOut.newVar(newID, f())
+      val newVar  = txOut.newVar(newID, fv())
       new Constant[Out](newID, newVar)
     }
 
@@ -193,11 +205,11 @@ object Vertex extends Obj.Type {
     //    def copyT[T <: Sys[T]]()(implicit stx: S#Tx, ttx: T#Tx): Constant[T] = Constant[T](f())
 
     // def boxName = f.toString
-    protected def disposeData()(implicit tx: S#Tx): Unit = f.dispose()
+    protected def disposeData()(implicit tx: S#Tx): Unit = fv.dispose()
 
     protected def writeData(out: DataOutput): Unit = {
       out.writeByte(0)
-      f.write(out)
+      fv.write(out)
     }
   }
 }

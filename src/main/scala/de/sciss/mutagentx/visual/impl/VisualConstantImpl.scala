@@ -15,7 +15,7 @@ object VisualConstantImpl {
 
   def apply[S <: Sys[S]](_main: Visual[S], v: Vertex.Constant[S])(implicit tx: S#Tx): VisualConstant[S] =
     new VisualConstant[S] with VisualVertexImpl[S] {
-      private var _value: Float = v.f()
+      private var _value: Float = v.f
       private var _targetValue = _value
 
       val main  = _main
