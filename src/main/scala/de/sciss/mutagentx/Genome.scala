@@ -32,8 +32,42 @@ object Genome {
 
   // type Var[S <: Sys[S], A] = stm.Sink[S#Tx, A] with stm.Source[S#Tx, A]
 
+  private def readHybrid(config: Algorithm.Config, global: GlobalState.DurableHybrid)
+                        (implicit tx: stm.Durable#Tx): (Chromosomes[stm.InMemory], Vec[Float]) = {
+    implicit val itx = tx.inMemory
+    val iter  = global.numIterations()
+    val dir   = config.databaseFile
+    val f0    = dir.parent / s"${dir.name}_iter$iter.bin"
+    val f1    = dir.parent / s"${dir.name}_iter${iter - 1}.bin"
+    if (!f1.isFile && !f0.isFile) return (Vector.empty, Vector.empty)
+    val f     = if (f1.isFile) f1 else f0
+
+    type I = stm.InMemory
+
+    // not really cool to do this within the transaction,
+    // but well, in the worst case we write the same
+    // file more than once.
+    val in = DataInput.open(f)
+    try {
+      var cb = Vector.newBuilder[Chromosome[I]]
+      val fb = Vector.newBuilder[Float]
+      while (in.position < in.size) {
+        val input = SOMGenerator.Input.serializer.read(in)
+        val g     = input.graph
+        val fit   = input.fitness
+        val c     = impl.ChromosomeImpl.mkChromosome[I](g)
+        cb += c
+        fb += fit
+      }
+      (cb.result(), fb.result())
+    } finally {
+      in.close()
+    }
+  }
+
   def DurableHybrid(config: Algorithm.Config, global: GlobalState.DurableHybrid, peer: Genome[stm.Durable])
-                   (implicit tx: stm.Durable#Tx): Genome[stm.InMemory] =
+                   (implicit tx: stm.Durable#Tx): Genome[stm.InMemory] = {
+    val (c0, f0) = readHybrid(config, global)
     new Genome[stm.InMemory] {
       type S = stm.InMemory
       type D = stm.Durable
@@ -51,8 +85,8 @@ object Genome {
         }
       }
       
-      private val cRef: Ref[Chromosomes[S]] = Ref(copyChromosome(peer.chromosomes())(tx, tx.inMemory))
-      private val fRef: Ref[Vec[Float]]     = Ref(peer.fitness())
+      private val cRef: Ref[Chromosomes[S]] = Ref(c0)
+      private val fRef: Ref[Vec[Float]]     = Ref(f0)
 
       private[this] val updCIter = Ref(-1)
       private[this] val updFIter = Ref(-1)
@@ -110,6 +144,7 @@ object Genome {
   
       val id: ID[S] = tx.inMemory.newID()
     }
+  }
 
   private final class GenomeImpl[S <: Sys[S]](val id: S#ID,
                                  val chromosomes: S#Var[Chromosomes[S]],

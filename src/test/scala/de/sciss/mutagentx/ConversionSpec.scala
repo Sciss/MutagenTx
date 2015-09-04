@@ -21,7 +21,7 @@ class ConversionSpec extends FlatSpec with Matchers {
     val g0 = SynthGraph {
       import synth._
       import ugen._
-      // simulate what Chromsome does in expansion:
+      // simulate what Chromosome does in expansion:
       RandSeed.ir()
 
       val f = 80       // fundamental frequency
