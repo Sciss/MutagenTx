@@ -67,3 +67,4 @@ libraryDependencies ++= Seq(
 
 scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xfuture")
 
+mainClass in assembly := Some("de.sciss.mutagentx.GeneratorApp")
