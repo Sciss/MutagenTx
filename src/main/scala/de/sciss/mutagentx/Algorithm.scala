@@ -33,41 +33,44 @@ import scala.language.higherKinds
 object Algorithm {
   val DEBUG = false
 
-  case class Config(audioFile: File = file("target.aif"), databaseFile: File = file("output.db"),
-                    population: Int = 500, constProb: Double = 0.5, minNumVertices: Int = 64, maxNumVertices: Int = 256,
-                    nonDefaultProb: Double = 0.95, numMFCC: Int = 42, normalizeMFCC: Boolean = false,
-                    maxBoost: Double = 10.0, temporalWeight: Double = 0.3,  vertexPenalty: Double = 0.02,
-                    graphPenaltyIter: Int = 10, graphPenaltyCeil: Double = 0.275, graphPenaltyAmt: Double = 0.2,
-                    graphPenaltyCoin: Double = 0.25,
-                    selectionFrac: Double = 0.33, numElitism: Int = 3, mutMin: Int = 2, mutMax: Int = 4,
-                    mutationProb: Double = 0.75, numGolem: Int = 15)
+  object SysType {
+    case object InMemory  extends SysType
+    case object Durable   extends SysType
+    case object Hybrid    extends SysType
+    case object Confluent extends SysType
+  }
+  sealed trait SysType
 
-//  // ---- generation ----
-//  val population      : Int     = 500 // 100 // 1000
-//  val constProb       : Double  = 0.5
-//  val minNumVertices  : Int     = 64 // 30
-//  val maxNumVertices  : Int     = 256 // 100
-//  val nonDefaultProb  : Double  = 0.95 // 0.99 // 0.5
-//
-//  // ---- evaluation ----
-//  val numCoeffs       : Int     = 42
-//  val normalizeCoeffs : Boolean = false // true
-//  val maxBoost        : Double  = 10.0
-//  val temporalWeight  : Double  = 0.3
-//  val vertexPenalty   : Double  = 0.02
-//
-//  val graphPenaltyIter: Int     = 10
-//  val graphPenaltyCeil: Double  = 0.275
-//  val graphPenaltyAmt : Double  = 0.2
-//  val graphPenaltyCoin: Double  = 0.25  // subsampling probability to increase speed (1 = all neighbors, 0.5 = every second)
-//
-//  // ---- breeding ----
-//  val selectionFrac   : Double  = 0.33
-//  val numElitism      : Int     = 0 // 5
-//  val mutMin          : Int     = 2
-//  val mutMax          : Int     = 4
-//  val mutationProb    : Double  = 0.75
-//  val numGolem        : Int     = 15
+  case class Config(
+    // ---- files and type ----
+    audioFile       : File    = file("target.aif"),
+    databaseFile    : File    = file("output.db"),
+    tpe             : SysType = SysType.Hybrid,
+    // ---- generation ----
+    population      : Int     = 500,
+    constProb       : Double  = 0.5,
+    minNumVertices  : Int     = 64,
+    maxNumVertices  : Int     = 256,
+    nonDefaultProb  : Double  = 0.95,
+    // ---- evaluation ----
+    numMFCC         : Int     = 42,
+    normalizeMFCC   : Boolean = false,
+    maxBoost        : Double  = 10.0,
+    temporalWeight  : Double  = 0.3,
+    // ---- graph penalty ----
+    vertexPenalty   : Double  = 0.02,
+    graphPenaltyIter: Int     = 10,
+    graphPenaltyCeil: Double  = 0.275,
+    graphPenaltyAmt : Double  = 0.2,
+    graphPenaltyCoin: Double  = 0.25,
+    // ---- breeding ----
+    selectionFrac   : Double  = 0.33,
+    numElitism      : Int     = 3,
+    mutMin          : Int     = 2,
+    mutMax          : Int     = 4,
+    mutationProb    : Double  = 0.75,
+    numGolem        : Int     = 15
+  )
 
   implicit val executionContext: ExecutionContext = {
     ExecutionContext.Implicits.global
@@ -180,16 +183,16 @@ object Algorithm {
     val (global, genomeH) = systemD.step { implicit tx =>
       val (_globalD, _genomeD) = rootH()
       val _global = GlobalState.DurableHybrid(_globalD)
-      val _genome: Genome[S] = Genome.DurableHybrid(_global, _genomeD)
+      val _genome: Genome[S] = Genome.DurableHybrid(config, _global, _genomeD)
       val itx = tx.inMemory
       (_global, itx.newHandle(_genome))
     }
 
-    lazy val cleaner = mkCleaner(a, dir)
+    // lazy val cleaner = mkCleaner(a, dir)
 
     lazy val a: Algorithm.InMemory = impl.CopyingAlgorithm[S, GlobalState.InMemory](config,
       system = systemD,
-      input = input, global = global, genomeH = genomeH, ephemeral = true, cleaner = Some(cleaner))
+      input = input, global = global, genomeH = genomeH, ephemeral = true, cleaner = None /* Some(cleaner) */)
     a
   }
 

@@ -20,33 +20,81 @@ import de.sciss.lucre.confluent.TxnRandom
 import de.sciss.lucre.data.SkipList
 import de.sciss.lucre.stm.{Copy, Elem, Sys}
 import de.sciss.lucre.{event => evt, expr}
-import de.sciss.synth.ugen.{BinaryOpUGen, Constant, SampleRate, UnaryOpUGen}
+import de.sciss.synth
+import de.sciss.synth.ugen.{BinaryOpUGen, ConfigOut, Constant, Mix, Nyquist, RandSeed, SampleRate, UnaryOpUGen}
 import de.sciss.synth.{GE, Lazy, Rate, SynthGraph, UGenSpec, UndefinedRate, doNothing, ugen}
 
 import scala.annotation.tailrec
 import scala.util.control.NonFatal
 
 object ChromosomeImpl {
-//  def mkChromosome[S <: Sys[S]](g: SynthGraph)(implicit tx: S#Tx): Chromosome[S] = {
-//    val c = Topology.empty[S, Vertex[S], Edge[S]]
-//    var m = new util.IdentityHashMap[Lazy, Vertex.UGen[S]]
-//
-//    g.sources.foreach {
-//      case _: ConfigOut | _: Mix | _: Mix.Mono | _: RandSeed =>
-//
-//      case ge: BinaryOpUGen =>
-//        val info = ... : UGenSpec
-//        val v    = Vertex.UGen(info)
-//        m.put(ge, v)
-//
-//      case ge: GE =>
-//        val info = UGens.map(ge.productPrefix)
-//        val v    = Vertex.UGen(info)
-//        c.addVertex(v)
-//        m.put(ge, v)
-//    }
-//    ...
-//  }
+  /** Reconstructs a chromosome from a given graph. Note that this
+    * does not know which default arguments were present and which not,
+    * therefore it simply omits producing constants for the default
+    * values.
+    */
+  def mkChromosome[S <: Sys[S]](g: SynthGraph)(implicit tx: S#Tx): Chromosome[S] = {
+    val c = Chromosome.empty[S]
+    val m = new java.util.IdentityHashMap[Product, Vertex[S]]
+
+    def addOne(p: Product): Option[Vertex[S]] = Option(m.get(p)).orElse(p match {
+      // remove 'preamble' and output
+      case _: ConfigOut | _: Mix | _: Mix.Mono | _: RandSeed => None
+
+      case Constant(f) =>
+        val v = Vertex.Constant(f)
+        m.put(p, v)
+        c.addVertex(v)
+        Some(v)
+      case ge: GE =>
+        val name = p match {
+          case bin: BinaryOpUGen =>
+            s"Bin_${bin.selector.id}"
+          case un: UnaryOpUGen =>
+            s"Un_${un.selector.id}"
+          case _ => p.productPrefix
+        }
+        val info = UGens.map(name)
+        val v    = Vertex.UGen(info)
+        m.put(p, v)
+        c.addVertex(v)
+        v.info.args.foreach { arg =>
+          arg.tpe match {
+            case _: UGenSpec.ArgumentType.GE =>
+              lazy val value: Any = {
+                val m = ge.getClass.getMethod(arg.name)
+                m.invoke(ge)
+              }
+
+              val isDefault = arg.defaults.get(ge.rate).exists { av =>
+                val avc = av match {
+                  case UGenSpec.ArgumentValue.Int(i)        => Constant(i)
+                  case UGenSpec.ArgumentValue.Float(f)      => Constant(f)
+                  case UGenSpec.ArgumentValue.Inf           => Constant(de.sciss.synth.inf)
+                  case UGenSpec.ArgumentValue.Nyquist       => Nyquist()
+                  case UGenSpec.ArgumentValue.Boolean(b)    => Constant(if (b) 1f else 0f)
+                  case UGenSpec.ArgumentValue.String(s)     => s
+                  case UGenSpec.ArgumentValue.DoneAction(d) => synth.DoneAction.toGE(d)
+                }
+                avc == value
+              }
+              if (!isDefault) value match {
+                case p1: Product =>
+                  val childVertex = addOne(p1).getOrElse(sys.error(s"Cannot create vertex for $p1"))
+                  c.addEdge(Edge.make(v, childVertex, arg.name))
+
+                case _ => sys.error(s"Unsupported product element $value in $ge")
+              }
+
+            case _ =>  // ignore Int
+          }
+        }
+        Some(v)
+    })
+
+    g.sources.foreach(addOne)
+    c
+  }
 
   def mkSynthGraph[S <: Sys[S]](c: Chromosome[S], mono: Boolean, removeNaNs: Boolean, config: Boolean)
                   (implicit tx: S#Tx /*, random: TxnRandom[D#Tx] */): SynthGraph = {
@@ -158,13 +206,13 @@ object ChromosomeImpl {
     val f = ugens.filter { ugen =>
       edges.forall(_.targetVertex != ugen)
     }
-    f.toIndexedSeq
+    f.toIndexedSeq.reverse
   }
 
   def addVertex[S <: Sys[S]](config: Algorithm.Config, c: Chromosome[S])
                             (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Vertex[S] = {
-    import config.{constProb, nonDefaultProb}
     import Util.coin
+    import config.constProb
 
     if (coin(constProb)) {
       val _v = mkConstant()
@@ -181,8 +229,8 @@ object ChromosomeImpl {
 
   def completeUGenInputs[S <: Sys[S]](config: Algorithm.Config, c: Chromosome[S], v: Vertex.UGen[S])
                                     (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
-    import config.nonDefaultProb
     import Util.{choose, coin}
+    import config.nonDefaultProb
 
     val spec    = v.info
     // An edge's source is the consuming UGen, i.e. the one whose inlet is occupied!

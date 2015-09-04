@@ -13,6 +13,7 @@
 
 package de.sciss.mutagentx
 
+import de.sciss.file._
 import de.sciss.lucre.stm
 import de.sciss.lucre.stm.InMemoryLike.{ID, Txn}
 import de.sciss.lucre.stm.{Copy, Mutable, MutableSerializer, NoSys, Sys}
@@ -31,19 +32,17 @@ object Genome {
 
   // type Var[S <: Sys[S], A] = stm.Sink[S#Tx, A] with stm.Source[S#Tx, A]
 
-  def DurableHybrid(global: GlobalState.DurableHybrid, peer: Genome[stm.Durable])
+  def DurableHybrid(config: Algorithm.Config, global: GlobalState.DurableHybrid, peer: Genome[stm.Durable])
                    (implicit tx: stm.Durable#Tx): Genome[stm.InMemory] =
     new Genome[stm.InMemory] {
       type S = stm.InMemory
       type D = stm.Durable
-      
-      // type ChromoAux[~ <: Sys[~]]
-      private val _global = global
 
-      import global.dtx
+      private[this] val _global = global
+      // import _global.dtx
       
-      private def copyChromo[In <: Sys[In], Out <: Sys[Out]](in: Chromosomes[In])
-                                                            (implicit txIn: In#Tx, txOut: Out#Tx): Chromosomes[Out] = {
+      private def copyChromosome[In <: Sys[In], Out <: Sys[Out]](in: Chromosomes[In])
+                                                                (implicit txIn: In#Tx, txOut: Out#Tx): Chromosomes[Out] = {
         val context = Copy[In, Out](txIn, txOut)
         try {
           in.map(context(_))
@@ -52,16 +51,42 @@ object Genome {
         }
       }
       
-      private val cRef: Ref[Chromosomes[S]] = Ref(copyChromo(peer.chromosomes())(tx, tx.inMemory))
+      private val cRef: Ref[Chromosomes[S]] = Ref(copyChromosome(peer.chromosomes())(tx, tx.inMemory))
       private val fRef: Ref[Vec[Float]]     = Ref(peer.fitness())
-  
+
+      private[this] val updCIter = Ref(-1)
+      private[this] val updFIter = Ref(-1)
+
+      // called as soon as both cx and fx have been set within the same iteration
+      private[this] def flush(iter: Int, cx: Chromosomes[S], fx: Vec[Float])(implicit tx: S#Tx): Unit = {
+        val dir   = config.databaseFile
+        val f     = dir.parent / s"${dir.name}_iter$iter.bin"
+        // not really cool to do this within the transaction,
+        // but well, in the worst case we write the same
+        // file more than once.
+        val out   = DataOutput.open(f)
+        try {
+          (cx zip fx).foreach { case (c, fit) =>
+            val graph = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true)
+            val input = SOMGenerator.Input(graph, iter = iter, fitness = fit)
+            SOMGenerator.Input.serializer.write(input, out)
+          }
+        } finally {
+          out.close()
+        }
+      }
+
       val chromosomes: Var[Chromosomes[S]] = 
         new stm.Source[S#Tx, Chromosomes[S]] with stm.Sink[S#Tx, Chromosomes[S]] {
           def apply()(implicit tx: S#Tx): Chromosomes[S] = cRef.get(tx.peer)
 
-          def update(v: Chromosomes[S])(implicit tx: S#Tx): Unit = {
-            cRef.set(v)(tx.peer)
-            peer.chromosomes.update(copyChromo(v))
+          def update(cx: Chromosomes[S])(implicit tx: S#Tx): Unit = {
+            implicit val itx = tx.peer
+            cRef()      = cx
+            val fIter   = updFIter()
+            val iter    = _global.numIterations()
+            updCIter()  = iter
+            if (fIter == iter) flush(iter, cx, fitness())
           }
         }
 
@@ -69,9 +94,13 @@ object Genome {
         new stm.Source[S#Tx, Vec[Float]] with stm.Sink[S#Tx, Vec[Float]] {
           def apply()(implicit tx: S#Tx): Vec[Float] = fRef.get(tx.peer)
 
-          def update(v: Vec[Float])(implicit tx: S#Tx): Unit = {
-            fRef.set(v)(tx.peer)
-            peer.fitness.update(v)
+          def update(fx: Vec[Float])(implicit tx: S#Tx): Unit = {
+            implicit val itx = tx.peer
+            fRef()      = fx
+            val cIter   = updCIter()
+            val iter    = _global.numIterations()
+            updFIter()  = iter
+            if (cIter == iter) flush(iter, chromosomes(), fx)
           }
         }
   

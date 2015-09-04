@@ -7,6 +7,7 @@ import com.alee.laf.checkbox.WebCheckBoxStyle
 import com.alee.laf.progressbar.WebProgressBarStyle
 import de.sciss.desktop.OptionPane
 import de.sciss.file._
+import de.sciss.mutagentx.Algorithm.SysType
 import de.sciss.{mutagentx, kollflitz}
 import de.sciss.lucre.confluent
 import de.sciss.lucre.stm.{Sys, Durable, InMemory}
@@ -38,42 +39,70 @@ object GeneratorApp extends SwingApplication {
     ConfigOut.LIMITER = true
 
     val parser = new scopt.OptionParser[Algorithm.Config]("GeneratorApp") {
-
+      opt[File]('t', "target").text("Search target audio file path").required().action {
+        case (v, c) => c.copy(audioFile = v)
+      }
+      opt[File]('d', "database").text("Output database file").action { case (v, c) => c.copy(databaseFile = v) }
+      opt[Unit]("in-memory").text("Select in-memory system type").action {
+        case (v, c) => c.copy(tpe = SysType.InMemory) }
+      opt[Unit]("durable").text("Select durable system type").action {
+        case (v, c) => c.copy(tpe = SysType.Durable) }
+      opt[Unit]("hybrid").text("Select hybrid durable system type (default)").action {
+        case (v, c) => c.copy(tpe = SysType.Hybrid) }
+      opt[Unit]("confluent").text("Select confluent system type").action {
+        case (v, c) => c.copy(tpe = SysType.Confluent) }
+      opt[Int]('p', "population").text("Population size").action { case (v, c) => c.copy(population = v) }
+      opt[Double]("const-prob").text("Probability (0 to 1) of constants over UGen creation").action {
+        case (v, c) => c.copy(constProb = v) }
+      opt[Int]('m', "min-vertices").text("Minimum number of vertices").action {
+        case (v, c) => c.copy(minNumVertices = v) }
+      opt[Int]('x', "max-vertices").text("Maximum number of vertices").action {
+        case (v, c) => c.copy(maxNumVertices = v) }
+      opt[Double]("non-default-prob").text("Probability (0 to 1) of filling in default inlets").action {
+        case (v, c) => c.copy(nonDefaultProb = v) }
+      opt[Int]('c', "num-mfcc").text("Number of MFCC coefficients").action { case (v, c) => c.copy(numMFCC = v) }
+      opt[Unit]('n', "norm-mfcc").text("Normalize MFCC coefficients").action {
+        case (v, c) => c.copy(normalizeMFCC = true) }
+      opt[Double]("non-default-prob").text("Probability (0 to 1) of filling in default inlets").action {
+        case (v, c) => c.copy(nonDefaultProb = v) }
+      opt[Double]("max-boost").text("Maximum amplitude boost allowed during cross-correlation").action {
+        case (v, c) => c.copy(maxBoost = v) }
+      opt[Double]('w', "temporal-weight")
+        .text("Weighting between purely spectral (0) and purely temporal (1) features").action {
+        case (v, c) => c.copy(temporalWeight = v) }
+      opt[Double]("vertex-penalty").text("Penalty (0 to 1) for high number of vertices").action {
+        case (v, c) => c.copy(vertexPenalty = v) }
+      opt[Double]("graph-penalty").text("Amount of penalty for two graphs with maximum similarity").action {
+        case (v, c) => c.copy(graphPenaltyAmt = v) }
+      opt[Int]("graph-penalty-iter").text("Number of iterations between graph penalty application").action {
+        case (v, c) => c.copy(graphPenaltyIter = v) }
+      opt[Double]("graph-penalty-ceil").text("Maximum expected (clipped) inter-graph similarity").action {
+        case (v, c) => c.copy(graphPenaltyCeil = v) }
+      opt[Double]("graph-penalty-prob").text("Probability (0 to 1) of subjecting graph to similarity test").action {
+        case (v, c) => c.copy(graphPenaltyCoin = v) }
+      opt[Double]('s', "selection-frac").text("Fraction (0 to 1) of individuals selected for breeding").action {
+        case (v, c) => c.copy(selectionFrac = v) }
+      opt[Int]('e', "elitism").text("Number of elite individuals").action { case (v, c) => c.copy(numElitism = v) }
+      opt[Int]("min-mut").text("Minimum mutations per individual").action { case (v, c) => c.copy(mutMin = v) }
+      opt[Int]("max-mut").text("Maximum mutations per individual").action { case (v, c) => c.copy(mutMax = v) }
+      opt[Double]('u', "mutation-prob").text("Probability (0 to 1) of mutation over crossover").action {
+        case (v, c) => c.copy(mutationProb = v) }
+      opt[Int]('g', "golem").text("Number of newborn individuals per iteration").action {
+        case (v, c) => c.copy(numGolem = v) }
     }
 
     parser.parse(args, Algorithm.Config()).fold(sys.exit(1)) { config =>
-      ???
+      config.tpe match {
+        case SysType.InMemory =>
+          new InMemoryApp(config)
+        case SysType.Durable =>
+          new DurableApp(config)
+        case SysType.Hybrid =>
+          new DurableHybridApp(config)
+        case SysType.Confluent =>
+          new ConfluentApp(config)
+      }
     }
-//
-//    args.toIndexedSeq match {
-//      case "--confluent" +: tail =>
-//        new ConfluentApp(tail)
-//
-//      case "--in-memory" +: sfName +: _ =>
-//        val in = file("audio_work") / sfName
-//        new InMemoryApp(in)
-//
-//      case "--durable" +: dbName +: sfName +: _ =>
-//        val dir = file("database"  ) / dbName
-//        val in  = file("audio_work") / sfName
-//        new DurableApp(dir = dir, input = in)
-//
-//      case "--hybrid" +: dbName +: sfName +: _ =>
-//        val dir = file("database"  ) / dbName
-//        val in  = file("audio_work") / sfName
-//        new DurableHybridApp(dir = dir, input = in)
-//
-//      case _ =>
-//        Console.err.println(
-//          """Invocation:
-//            |
-//            |--confluent [<database-name> <sf-name>]
-//            |--durable <database-name> <sf-name>
-//            |--hybrid <database-name> <sf-name>
-//            |--in-memory <sf-name>
-//            |""".stripMargin)
-//        sys.exit(1)
-//    }
   }
 
   final class InMemoryApp(config: Algorithm.Config) extends GenApp[InMemory] {

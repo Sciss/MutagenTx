@@ -30,36 +30,56 @@ object ParamRanges {
     )),
     "DelayN" -> Info(params = Map(
       "in"            -> Spec(dcBlock = true),
-      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0),
+      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0, scalar = true),
       "delayTime"     -> Spec(lo = 0.0, lessThan = "maxDelayTime")
     )),
     "DelayL" -> Info(params = Map(
       "in"            -> Spec(dcBlock = true),
-      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0),
+      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0, scalar = true),
       "delayTime"     -> Spec(lo = 0.0, lessThan = "maxDelayTime")
     )),
     "DelayC" -> Info(params = Map(
       "in"            -> Spec(dcBlock = true),
-      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0),
+      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0, scalar = true),
       "delayTime"     -> Spec(lo = 0.0, lessThan = "maxDelayTime")
     )),
     "CombN" -> Info(params = Map(
       "in"            -> Spec(dcBlock = true),
-      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0),
+      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0, scalar = true),
       "delayTime"     -> Spec(lo = 0.0, lessThan = "maxDelayTime")
       // "decayTime"     -> Spec()
     )),
     "CombL" -> Info(params = Map(
       "in"            -> Spec(dcBlock = true),
-      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0),
+      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0, scalar = true),
       "delayTime"     -> Spec(lo = 0.0, lessThan = "maxDelayTime")
       // "decayTime"     -> Spec()
     )),
     "CombC" -> Info(params = Map(
       "in"            -> Spec(dcBlock = true),
-      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0),
+      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0, scalar = true),
       "delayTime"     -> Spec(lo = 0.0, lessThan = "maxDelayTime")
       // "decayTime"     -> Spec()
-    ))
+    )),
+    "AllpassN" -> Info(params = Map(
+      "in"            -> Spec(dcBlock = true),
+      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0, scalar = true),
+      "delayTime"     -> Spec(lo = 0.0, lessThan = "maxDelayTime")
+      // "decayTime"     -> Spec()
+    )),
+    "AllpassL" -> Info(params = Map(
+      "in"            -> Spec(dcBlock = true),
+      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0, scalar = true),
+      "delayTime"     -> Spec(lo = 0.0, lessThan = "maxDelayTime")
+      // "decayTime"     -> Spec()
+    )),
+    "AllpassC" -> Info(params = Map(
+      "in"            -> Spec(dcBlock = true),
+      "maxDelayTime"  -> Spec(lo = 0.0, hi = 20.0, scalar = true),
+      "delayTime"     -> Spec(lo = 0.0, lessThan = "maxDelayTime")
+      // "decayTime"     -> Spec()
+    )),
+    "CuspN" -> Info(),
+    "CuspL" -> Info()
   )
 }

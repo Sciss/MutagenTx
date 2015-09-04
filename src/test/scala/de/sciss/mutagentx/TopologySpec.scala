@@ -8,7 +8,7 @@ import de.sciss.synth.proc.Confluent
 import de.sciss.topology.{Topology => TopologyI}
 import org.scalatest.{FlatSpec, Matchers}
 
-import scala.util.{Try, Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 /*
 
