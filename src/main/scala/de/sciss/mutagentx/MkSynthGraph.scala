@@ -1,6 +1,7 @@
 package de.sciss.mutagentx
 
 import de.sciss.lucre.stm.Sys
+import de.sciss.mutagentx.ParamRanges.Dynamic
 import de.sciss.synth.ugen.{LeakDC, Constant}
 import de.sciss.synth.{UndefinedRate, UGenSpec, ugen, GE, SynthGraph}
 
@@ -22,6 +23,37 @@ object MkSynthGraph {
 
     @tailrec def loop(rem: Vec[Vertex[S]], real: Map[Vertex[S], GE]): Map[Vertex[S], GE] = rem match {
       case init :+ last =>
+        def isDynamic(in: GE): Boolean = in match {
+          case Constant(_) => false
+          case _ =>
+            ParamRanges.map.get(Chromosome.elemName(in)).exists { info =>
+              def getArg(name: String): Any = in.getClass.getMethod(name).invoke(in)
+
+              def check(d: Dynamic): Boolean = d match {
+                case Dynamic.Always => true
+                case Dynamic.And(elems @ _*) => elems.forall(check)
+                case Dynamic.Or (elems @ _*) => elems.exists(check)
+                case Dynamic.IfOver (param, v) =>
+                  getArg(param) match {
+                    case Constant(f) if f >= v => true
+                    case _ => false // XXX TODO --- could be more complex
+                  }
+                case Dynamic.IfUnder(param, v) =>
+                  getArg(param) match {
+                    case Constant(f) if f <= v => true
+                    case _ => false // XXX TODO --- could be more complex
+                  }
+                case Dynamic.In(param) =>
+                  getArg(param) match {
+                    case argGE: GE => isDynamic(argGE)
+                    case _ => false
+                  }
+              }
+
+              info.dynamic.exists(check)
+            }
+        }
+
         val value: GE = last match {
           case vf: Vertex.Constant[S] => ugen.Constant(vf.f)
           case u: Vertex.UGen[S] =>
@@ -67,10 +99,7 @@ object MkSynthGraph {
                         }
                         // XXX TODO -- `lessThan`
 
-                        val inGE2: GE = if (!pSpec.dynamic) inGE1 else {
-                          // XXX TODO --- add `dynamic` to ParamRanges.Info
-                          LeakDC.ar(inGE1)
-                        }
+                        val inGE2: GE = if (!pSpec.dynamic || isDynamic(inGE1)) inGE1 else LeakDC.ar(inGE1)
 
                         inGE2
                       }
