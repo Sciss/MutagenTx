@@ -34,6 +34,9 @@ object UGens {
       !spec.rates.set.contains(demand)
   } ++ UGenSpec.standardUGens.valuesIterator.filter { spec => AddUGens.contains(spec.name) }).toIndexedSeq
 
+  private val ugens1: Vec[UGenSpec] = ParamRanges.map.keysIterator.map(
+    name => UGenSpec.standardUGens(name)).toIndexedSeq
+
   private val binUGens: Vec[UGenSpec] = {
     import BinaryOpUGen._
     val ops = Vector[Op](Plus, Minus, Times, Div, Mod, Eq, Neq, Lt, Gt, Leq, Geq, Min, Max, BitAnd, BitOr, BitXor,
@@ -110,6 +113,7 @@ object UGens {
   }
 
   val seq: Vec[UGenSpec] = ugens0 ++ binUGens ++ unaryUGens ++ envUGens ++ sumUGens
+//  val seq: Vec[UGenSpec] = ugens1 ++ binUGens ++ unaryUGens ++ sumUGens
 
   val map: Map[String, UGenSpec] = seq.map(s => s.name -> s)(breakOut)
 
