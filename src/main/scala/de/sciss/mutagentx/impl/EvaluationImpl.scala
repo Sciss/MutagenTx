@@ -181,7 +181,7 @@ object EvaluationImpl {
 
   def evaluate[S <: Sys[S]](config: Algorithm.Config, c: Chromosome[S], inputSpec: AudioFileSpec, inputExtr: File)
               (implicit tx: S#Tx): (SynthGraph, Future[Float]) = {
-    val graph = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true /* false */) // c.graph
+    val graph = ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true, ranges = true)
     // val cH          = tx.newHandle(c)
     val numVertices = c.vertices.size
     val p           = Promise[Float]()

@@ -36,7 +36,7 @@ class ConversionSpec extends FlatSpec with Matchers {
             math.random * 0.5 // Rand(0,0.5)   // grain decay time
           )
       }
-      // simulate what Chromsome does in expansion:
+      // simulate what Chromosome does in expansion:
       val mono = Mix.mono(sig)
       ConfigOut(mono)
     }
@@ -46,7 +46,7 @@ class ConversionSpec extends FlatSpec with Matchers {
 
     val g1 = system.step { implicit tx =>
       val c0 = impl.ChromosomeImpl.mkChromosome(g0)
-      impl.ChromosomeImpl.mkSynthGraph(c0, mono = true, removeNaNs = false, config = true)
+      impl.ChromosomeImpl.mkSynthGraph(c0, mono = true, removeNaNs = false, config = true, ranges = false)
     }
 
     val g0s = g0.sources.toSet

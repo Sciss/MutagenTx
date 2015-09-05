@@ -59,7 +59,7 @@ object ChromosomeImpl {
             s"Un_${un.selector.id}"
           case _ => p.productPrefix
         }
-        val info = UGens.map(name)
+        val info = UGens.mapAll(name)
         val v    = Vertex.UGen(info)
         m.put(p, v)
         c.addVertex(v)
@@ -101,7 +101,7 @@ object ChromosomeImpl {
     c
   }
 
-  def mkSynthGraph[S <: Sys[S]](c: Chromosome[S], mono: Boolean, removeNaNs: Boolean, config: Boolean)
+  def mkSynthGraph[S <: Sys[S]](c: Chromosome[S], mono: Boolean, removeNaNs: Boolean, config: Boolean, ranges: Boolean)
                   (implicit tx: S#Tx /*, random: TxnRandom[D#Tx] */): SynthGraph = {
     val top = c
 

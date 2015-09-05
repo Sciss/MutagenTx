@@ -1,5 +1,7 @@
 package de.sciss.mutagentx
 
+import de.sciss.synth.ugen.BinaryOpUGen
+
 import scala.language.implicitConversions
 
 object ParamRanges {
@@ -1606,6 +1608,45 @@ object ParamRanges {
     // EnvGen, Linen, IEnvGen
 
    */
+
+    s"Bin_${BinaryOpUGen.Plus     .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Minus    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Mod      .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Eq       .id}" -> Info(outLo = 0.0, outHi = 1.0),
+    s"Bin_${BinaryOpUGen.Neq      .id}" -> Info(outLo = 0.0, outHi = 1.0),
+    s"Bin_${BinaryOpUGen.Lt       .id}" -> Info(outLo = 0.0, outHi = 1.0),
+    s"Bin_${BinaryOpUGen.Gt       .id}" -> Info(outLo = 0.0, outHi = 1.0),
+    s"Bin_${BinaryOpUGen.Leq      .id}" -> Info(outLo = 0.0, outHi = 1.0),
+    s"Bin_${BinaryOpUGen.Geq      .id}" -> Info(outLo = 0.0, outHi = 1.0),
+    s"Bin_${BinaryOpUGen.Min      .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Max      .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.BitAnd   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.BitOr    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.BitXor   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.RoundTo  .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.RoundUpTo.id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Trunc    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Atan2    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Hypot    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Hypotx   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Pow      .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Ring1    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Ring2    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Ring3    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Ring4    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Difsqr   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Sumsqr   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Sqrsum   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Sqrdif   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Absdif   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Thresh   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Amclip   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Scaleneg .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Clip2    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Excess   .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Fold2    .id}" -> Info(),
+    s"Bin_${BinaryOpUGen.Wrap2    .id}" -> Info(),
+    // Div,
 
     "GVerb" -> Info(params = Map(
       "in"            -> Spec(dynamic = true),

@@ -21,6 +21,7 @@ import com.alee.laf.WebLookAndFeel
 import de.sciss.audiowidgets.Transport
 import de.sciss.desktop.{DialogSource, FileDialog, FocusType, KeyStrokes, OptionPane}
 import de.sciss.file._
+import de.sciss.lucre.stm.InMemory
 import de.sciss.lucre.swing.defer
 import de.sciss.mutagentx.impl.EvaluationImpl
 import de.sciss.serial.DataInput
@@ -165,13 +166,21 @@ object IterPlayback {
       synthOpt = Nil
     }
 
+    val inMemory  = InMemory()
+    type I        = InMemory
+
     def playSynth(): Unit = {
       stopSynth()
       Try(Server.default).toOption.foreach { s =>
         val graphs = selectedGraphs()
         synthGraphOpt = graphs.headOption
         val amp    = 1.0 / graphs.size
-        val synths = graphs.map { graph =>
+        val synths = graphs.map { graph0 =>
+          // apply 'ranges'
+          val graph = inMemory.step { implicit tx =>
+            val c0 = impl.ChromosomeImpl.mkChromosome[I](graph0)
+            impl.ChromosomeImpl.mkSynthGraph[I](c0, mono = false, removeNaNs = true, config = true, ranges = true)
+          }
           val df    = SynthDef("test", graph.expand(DefaultUGenGraphBuilderFactory))
           val syn   = df.play(s, args = Seq("amp" -> amp))
           syn
