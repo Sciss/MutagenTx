@@ -114,7 +114,7 @@ object Genome {
         val out   = DataOutput.open(f)
         try {
           (cx zip fx).foreach { case (c, fit) =>
-            val graph = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true, ranges = false)
+            val graph = MkSynthGraph(c, mono = true, removeNaNs = false, config = true, ranges = false)
             val input = SOMGenerator.Input(graph, iter = iter, fitness = fit)
             SOMGenerator.Input.serializer.write(input, out)
           }

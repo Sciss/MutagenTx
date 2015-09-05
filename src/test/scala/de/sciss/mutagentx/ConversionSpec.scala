@@ -46,7 +46,7 @@ class ConversionSpec extends FlatSpec with Matchers {
 
     val g1 = system.step { implicit tx =>
       val c0 = impl.ChromosomeImpl.mkChromosome(g0)
-      impl.ChromosomeImpl.mkSynthGraph(c0, mono = true, removeNaNs = false, config = true, ranges = false)
+      MkSynthGraph(c0, mono = true, removeNaNs = false, config = true, ranges = false)
     }
 
     val g0s = g0.sources.toSet

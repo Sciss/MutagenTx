@@ -169,6 +169,13 @@ object IterPlayback {
     val inMemory  = InMemory()
     type I        = InMemory
 
+    // apply 'ranges'
+    def mkGraph(in: SynthGraph): SynthGraph =
+      inMemory.step { implicit tx =>
+        val c0 = impl.ChromosomeImpl.mkChromosome[I](in)
+        MkSynthGraph[I](c0, mono = false, removeNaNs = true, config = true, ranges = true)
+      }
+
     def playSynth(): Unit = {
       stopSynth()
       Try(Server.default).toOption.foreach { s =>
@@ -176,11 +183,7 @@ object IterPlayback {
         synthGraphOpt = graphs.headOption
         val amp    = 1.0 / graphs.size
         val synths = graphs.map { graph0 =>
-          // apply 'ranges'
-          val graph = inMemory.step { implicit tx =>
-            val c0 = impl.ChromosomeImpl.mkChromosome[I](graph0)
-            impl.ChromosomeImpl.mkSynthGraph[I](c0, mono = false, removeNaNs = true, config = true, ranges = true)
-          }
+          val graph = mkGraph(graph0)
           val df    = SynthDef("test", graph.expand(DefaultUGenGraphBuilderFactory))
           val syn   = df.play(s, args = Seq("amp" -> amp))
           syn
@@ -210,8 +213,9 @@ object IterPlayback {
     pStatus.bootAction = Some(boot)
     val bs = Transport.makeButtonStrip(Seq(Transport.Stop(stopSynth()), Transport.Play(playSynth())))
     val ggPrint = Button("Print") {
-      synthGraphOpt.foreach { graph =>
-        val x = impl.ChromosomeImpl.graphToString(graph)
+      synthGraphOpt.foreach { graph0 =>
+        val graph = mkGraph(graph0)
+        val x     = MkGraphSource(graph)
         println(x)
       }
     }

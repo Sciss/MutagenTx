@@ -486,7 +486,7 @@ object SOMQuadTree {
     val bs = Transport.makeButtonStrip(Seq(Transport.Stop(stopSynth()), Transport.Play(playSynth())))
     val ggPrint = Button("Print") {
       synthGraphOpt.foreach { graph =>
-        val x = impl.ChromosomeImpl.graphToString(graph)
+        val x = MkGraphSource(graph)
         println(x)
       }
     }

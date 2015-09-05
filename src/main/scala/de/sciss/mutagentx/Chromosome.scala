@@ -6,9 +6,18 @@ import de.sciss.lucre.stm.impl.ObjSerializer
 import de.sciss.lucre.stm.{NoSys, Obj, Sys}
 import de.sciss.mutagentx.impl.ChromosomeImpl
 import de.sciss.serial.{DataInput, Serializer}
+import de.sciss.synth.GE
+import impl.{ChromosomeImpl => Impl}
 
 object Chromosome extends Obj.Type {
   final val typeID = 0x40000
+
+  def getRoots[S <: Sys[S]](top: Chromosome[S])(implicit tx: S#Tx): Vec[Vertex.UGen[S]] = Impl.getRoots(top)
+
+  def findIncompleteUGenInputs[S <: Sys[S]](c: Chromosome[S], v: Vertex.UGen[S])(implicit tx: S#Tx): Vec[String] =
+    Impl.findIncompleteUGenInputs(c, v)
+
+  def elemName(in: GE): String = Impl.elemName(in)
 
   def readIdentifiedObj[S <: Sys[S]](in: DataInput, access: S#Acc)(implicit tx: S#Tx): Obj[S] = {
     val cookie      = in.readByte()

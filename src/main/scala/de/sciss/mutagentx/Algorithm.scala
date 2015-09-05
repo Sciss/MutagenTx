@@ -124,7 +124,7 @@ object Algorithm {
     (old zip fit).foreach { case (c, fit0) =>
       if (!eliteSet.contains(c)) {
         if (store && fit0 > thresh /* 0.4f */) {
-          val graph = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true, ranges = false)
+          val graph = MkSynthGraph(c, mono = true, removeNaNs = false, config = true, ranges = false)
           val input = SOMGenerator.Input(graph, iter = iter, fitness = fit0)
           SOMGenerator.Input.serializer.write(input, out)
         }

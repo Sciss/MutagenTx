@@ -194,7 +194,7 @@ object SOMGenerator extends App {
         println(s"No. of chromosomes fit enough: ${sel0.size}")
         val sel   = sel0 // .take(50) // for now
         val res0 = ((hashes, Vec.empty[Input]) /: sel) { case ((hashesIn, inputsIn), (c, f)) =>
-          val gr    = impl.ChromosomeImpl.mkSynthGraph(c, mono = true, removeNaNs = false, config = true, ranges = true)
+          val gr    = MkSynthGraph(c, mono = true, removeNaNs = false, config = true, ranges = true)
           val hash  = gr.hashCode()
           if (hashesIn.contains(hash)) (hashesIn, inputsIn) else {
             val input = new Input(gr, iter = iter, fitness = f)
