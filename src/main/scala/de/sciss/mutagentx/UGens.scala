@@ -1,7 +1,7 @@
 package de.sciss.mutagentx
 
 import de.sciss.synth.ugen.{EnvGen_Perc, EnvGen_Sine, EnvGen_Triangle, EnvGen_Linen, EnvGen_CutOff, EnvGen_DADSR, EnvGen_ASR, EnvGen_ADSR, UnaryOpUGen, BinaryOpUGen}
-import de.sciss.synth.{UndefinedRate, UGenSpec, audio, demand}
+import de.sciss.synth.{scalar, UndefinedRate, UGenSpec, audio, demand}
 
 import scala.collection.breakOut
 
@@ -109,7 +109,15 @@ object UGens {
       args = args, inputs = inputs, outputs = Vec(out), doc = None)
   }
 
-  private val seq0: Vec[UGenSpec] = ugens0 ++ binUGens ++ unaryUGens ++ envUGens ++ sumUGens
+  private val moreUGens: Vec[UGenSpec] = {
+    val out   = UGenSpec.Output(name = None, shape = UGenSpec.SignalShape.Generic, variadic = None)
+    val rate  = UGenSpec.Rates.Implied(scalar, UGenSpec.RateMethod.Custom("apply"))
+    val spec  = UGenSpec(name = "Nyquist", attr = Set.empty, rates = rate, inputs = Vector.empty,
+      outputs = Vector(out), doc = None, args = Vector.empty)
+    Vector(spec)
+  }
+
+  private val seq0: Vec[UGenSpec] = ugens0 ++ binUGens ++ unaryUGens ++ envUGens ++ sumUGens ++ moreUGens
   private val map0: Map[String, UGenSpec] = seq0.map(s => s.name -> s)(breakOut)
 
   private val ugens1: Vec[UGenSpec] = ParamRanges.map.keysIterator.map(

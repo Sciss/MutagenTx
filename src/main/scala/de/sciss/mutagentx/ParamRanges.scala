@@ -197,7 +197,7 @@ object ParamRanges {
     )),
     "PitchShift" -> Info(dynamic = true, params = Map(
       "in"            -> Spec(dynamic = true),
-      "winSize"         -> Spec(lo = 0.0, hi = 2.0, scalar = true),  // arbitrary hi
+      "winSize"         -> Spec(lo = 0.001, hi = 2.0, scalar = true),  // arbitrary hi, !! lo > 0 !!
       "pitchRatio"      -> Spec(lo = 0.0, hi = 4.0),
       "pitchDispersion" -> Spec(lo = 0.0, hi = 1.0), // XXX TODO - hi ?
       "timeDispersion"  -> Spec(lo = 0.0, lessThan = "winSize")

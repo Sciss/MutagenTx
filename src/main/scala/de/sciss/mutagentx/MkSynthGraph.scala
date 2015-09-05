@@ -92,12 +92,16 @@ object MkSynthGraph {
                         val hiOk      = inHiOpt.exists(_ <= hiThresh)
 
                         val inGE1: GE = (loOk, hiOk) match {
-                          case (true , true ) => inGE0
-                          case (false, true ) => inGE0.max(loThresh)
-                          case (true , false) => inGE0.min(hiThresh)
-                          case (false, false) => inGE0.clip(loThresh, hiThresh)
+                          case (false, _ ) if !loThresh.isInfinity && (hiOk || hiThresh.isInfinity) =>
+                            inGE0.max(loThresh)
+                          case (_ , false) if !hiThresh.isInfinity && (loOk || loThresh.isInfinity) =>
+                            inGE0.min(hiThresh)
+                          case (false, false) if !hiThresh.isInfinity && !loThresh.isInfinity =>
+                            inGE0.clip(loThresh, hiThresh)
+                          case _ => inGE0
                         }
                         // XXX TODO -- `lessThan`
+                        ???
 
                         val inGE2: GE = if (!pSpec.dynamic || isDynamic(inGE1)) inGE1 else LeakDC.ar(inGE1)
 
