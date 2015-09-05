@@ -73,7 +73,7 @@ object MkSynthGraph {
                     if (e.inlet == arg.name) real.get(e.targetVertex) else None
                   } .headOption
 
-                  val inGEOpt: Option[GE] = inGEOpt0.map { inGE0 =>
+                  val inGEOpt: Option[GE] = if (!ranges) inGEOpt0 else inGEOpt0.map { inGE0 =>
                     ParamRanges.map.get(spec.name).fold(inGE0) { pInfo =>
                       pInfo.params.get(arg.name).fold(inGE0) { pSpec =>
                         val inInfoOpt = ParamRanges.map.get(Chromosome.elemName(inGE0))
