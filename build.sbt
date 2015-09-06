@@ -61,7 +61,7 @@ libraryDependencies ++= Seq(
   "de.sciss"      %% "scalacollider"            % scalaColliderVersion,
   "de.sciss"      %% "scalacolliderswing-core"  % scalaColliderSwingVersion,
   "de.sciss"      %% "scalacolliderswing-plotting" % scalaColliderSwingVersion,
-  "de.sciss"      %% "audiowidgets"             % audioWidgetsVersion,
+  "de.sciss"      %% "audiowidgets-swing"       % audioWidgetsVersion,
   // Test
   "org.scalatest" %% "scalatest"                % scalaTestVersion % "test",
   "de.sciss"      %% "topology"                 % topologyVersion  % "test"
