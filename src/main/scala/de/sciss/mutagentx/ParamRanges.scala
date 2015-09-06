@@ -97,15 +97,15 @@ object ParamRanges {
       "xi" -> Spec(scalar = true),
       "yi" -> Spec(scalar = true)
     )),
-    "LinCongN" -> Info(dynamic = ifOver("freq"), outLo = -1.0, outHi = 1.0, params = Map(
+    "LinCongN" -> Info(dynamic = ifOver("freq"), /* outLo = -1.0, outHi = 1.0, */ params = Map(  // outLo/Hi is a LIE
       "freq" -> Spec(),
       "xi" -> Spec(scalar = true)
     )),
-    "LinCongL" -> Info(dynamic = ifOver("freq"), outLo = -1.0, outHi = 1.0, params = Map(
+    "LinCongL" -> Info(dynamic = ifOver("freq"), /* outLo = -1.0, outHi = 1.0, */ params = Map(
       "freq" -> Spec(),
       "xi" -> Spec(scalar = true)
     )),
-    "LinCongC" -> Info(dynamic = ifOver("freq"), outLo = -1.0, outHi = 1.0, params = Map(
+    "LinCongC" -> Info(dynamic = ifOver("freq"), /* outLo = -1.0, outHi = 1.0, */ params = Map(
       "freq" -> Spec(),
       "xi" -> Spec(scalar = true)
     )),
@@ -220,7 +220,7 @@ object ParamRanges {
     )),
     // ---- FFT2 ----
     "RunningSum" -> Info(params = Map(
-      "length" -> Spec(lo = 0.0, hi = 44100.0, scalar = true) // arbitrary hi
+      "length" -> Spec(lo = 1.0, hi = 44100.0, scalar = true) // arbitrary hi, !!!! lo !!!!
     )),
     // ---- FFT ----
     // ---- Filter ----
@@ -277,7 +277,7 @@ object ParamRanges {
       "in" -> Spec(dynamic = true),
       "time" -> Spec(lo = 0.0, hi = 30.0) // hi arbitrary
     )),
-    "Decay2" -> Info(dynamic = ifUnder("time", 1.0), params = Map(
+    "Decay2" -> Info(dynamic = Dynamic.And(Dynamic.IfUnder("attack", 1.0), Dynamic.IfUnder("release", 1.0)), params = Map(
       "in" -> Spec(dynamic = true),
       "attack" -> Spec(lo = 0.0, hi = 30.0), // hi arbitrary
       "release" -> Spec(lo = 0.0, hi = 30.0)  // hi arbitrary
@@ -1296,7 +1296,7 @@ object ParamRanges {
       "freq"  -> Spec(lo = 0.01, hi = 20000.0),
       "iphase" -> Spec(lo = 0.0, hi = 4.0, scalar = true)
     )),
-    "LFGauss" -> Info(dynamic = ifOver("freq"), params = Map(
+    "LFGauss" -> Info(dynamic = ifUnder("dur", 0.1), params = Map(
       "dur"     -> Spec(lo = 5.0e-5, hi = 100.0),
       "width"   -> Spec(lo = 0.0, hi = 1.0),
       "phase"   -> Spec(lo = 0.0, hi = 1.0)  // XXX TODO -- hi correct?

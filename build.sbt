@@ -34,6 +34,7 @@ lazy val fileCacheVersion           = "0.3.3"
 lazy val kollFlitzVersion           = "0.2.0"
 lazy val webLaFVersion              = "1.28"
 lazy val scissDSPVersion            = "1.2.2"
+lazy val audioWidgetsVersion        = "1.9.1"
 
 // ---- test dependencies ----
 
@@ -60,6 +61,7 @@ libraryDependencies ++= Seq(
   "de.sciss"      %% "scalacollider"            % scalaColliderVersion,
   "de.sciss"      %% "scalacolliderswing-core"  % scalaColliderSwingVersion,
   "de.sciss"      %% "scalacolliderswing-plotting" % scalaColliderSwingVersion,
+  "de.sciss"      %% "audiowidgets"             % audioWidgetsVersion,
   // Test
   "org.scalatest" %% "scalatest"                % scalaTestVersion % "test",
   "de.sciss"      %% "topology"                 % topologyVersion  % "test"

@@ -15,10 +15,10 @@ package de.sciss.mutagentx
 
 import javax.swing.event.TableModelListener
 import javax.swing.table.TableModel
-import javax.swing.{JTable, SpinnerNumberModel}
+import javax.swing.{DefaultBoundedRangeModel, JTable, SpinnerNumberModel}
 
 import com.alee.laf.WebLookAndFeel
-import de.sciss.audiowidgets.Transport
+import de.sciss.audiowidgets.{RotaryKnob, Transport}
 import de.sciss.desktop.{DialogSource, FileDialog, FocusType, KeyStrokes, OptionPane}
 import de.sciss.file._
 import de.sciss.lucre.stm.InMemory
@@ -31,12 +31,12 @@ import de.sciss.synth.io.{AudioFile, AudioFileSpec}
 import de.sciss.synth.swing.ServerStatusPanel
 import de.sciss.synth.ugen.ConfigOut
 import de.sciss.synth.{Server, ServerConnection, Synth, SynthDef, SynthGraph}
-import de.sciss.{desktop, kollflitz, numbers, pdflitz, processor}
+import de.sciss.{synth, desktop, kollflitz, numbers, pdflitz, processor}
 import org.jfree.chart.ChartPanel
 
 import scala.collection.breakOut
 import scala.concurrent.{Future, blocking}
-import scala.swing.event.Key
+import scala.swing.event.{ValueChanged, Key}
 import scala.swing.{BorderPanel, Button, Component, FlowPanel, Frame, Label, MainFrame, ScrollPane, Swing, Table}
 import scala.util.{Failure, Success, Try}
 
@@ -94,6 +94,18 @@ object IterPlayback {
       override lazy val peer: JTable = new JTable /* with Table.JTableMixin */ with SuperMixin
     }
     val ggScroll  = new ScrollPane(ggTable)
+
+    val mAmp    = new DefaultBoundedRangeModel(-6, 1, -36, 0)
+    val ggAmp   = new RotaryKnob(mAmp) {
+      listenTo(this)
+      reactions += {
+        case ValueChanged(_) =>
+          import synth.Ops._
+          import numbers.Implicits._
+          val amp = mAmp.getValue.dbamp
+          synthOpt.foreach(_.set("amp" -> amp))
+      }
+    }
 
     val hideUGens = Set[String]("RandSeed", "Mix", "Mix$Mono", "ConfigOut")
 
@@ -157,7 +169,12 @@ object IterPlayback {
 
     import de.sciss.synth.Ops._
 
-    def selectedGraphs(): List[SynthGraph] = ggTable.selection.rows.map { row => graphs(row).graph } (breakOut)
+    def selectedGraphs(): List[SynthGraph] = {
+      ggTable.selection.rows.map { rowVis =>
+        val row = ggTable.peer.convertRowIndexToModel(rowVis)
+        graphs(row).graph
+      } (breakOut)
+    }
 
     def stopSynth(): Unit = {
       synthOpt.foreach { synth =>
@@ -170,10 +187,10 @@ object IterPlayback {
     type I        = InMemory
 
     // apply 'ranges'
-    def mkGraph(in: SynthGraph): SynthGraph =
+    def mkGraph(in: SynthGraph, mono: Boolean): SynthGraph =
       inMemory.step { implicit tx =>
         val c0 = impl.ChromosomeImpl.mkChromosome[I](in)
-        MkSynthGraph[I](c0, mono = false, removeNaNs = true, config = true, ranges = true)
+        MkSynthGraph[I](c0, mono = mono, removeNaNs = true, config = true, ranges = true)
       }
 
     def playSynth(): Unit = {
@@ -181,11 +198,13 @@ object IterPlayback {
       Try(Server.default).toOption.foreach { s =>
         val graphs = selectedGraphs()
         synthGraphOpt = graphs.headOption
-        val amp    = 1.0 / graphs.size
-        val synths = graphs.map { graph0 =>
-          val graph = mkGraph(graph0)
+        import numbers.Implicits._
+        val amp     = mAmp.getValue.dbamp // 1.0 / graphs.size
+        val mono    = graphs.size > 1
+        val synths  = graphs.zipWithIndex.map { case (graph0, idx) =>
+          val graph = mkGraph(graph0, mono = mono)
           val df    = SynthDef("test", graph.expand(DefaultUGenGraphBuilderFactory))
-          val syn   = df.play(s, args = Seq("amp" -> amp))
+          val syn   = df.play(s, args = Seq("amp" -> amp, "out" -> idx))
           syn
         }
         synthOpt = synths
@@ -195,7 +214,10 @@ object IterPlayback {
     val pStatus = new ServerStatusPanel
     def boot(): Unit = {
       val cfg = Server.Config()
+      cfg.deviceName = Some("EisK-18")  // aha
       cfg.memorySize = 256 * 1024
+      cfg.outputBusChannels = 16
+      cfg.inputBusChannels  = 0
       cfg.pickPort()
       val connect = Server.boot(config = cfg) {
         case ServerConnection.Running(s) =>
@@ -214,7 +236,7 @@ object IterPlayback {
     val bs = Transport.makeButtonStrip(Seq(Transport.Stop(stopSynth()), Transport.Play(playSynth())))
     val ggPrint = Button("Print") {
       synthGraphOpt.foreach { graph0 =>
-        val graph = mkGraph(graph0)
+        val graph = mkGraph(graph0, mono = false)
         val x     = MkGraphSource(graph)
         println(x)
       }
@@ -316,7 +338,7 @@ object IterPlayback {
     acPlay.accelerator = Some(KeyStrokes.menu1 + Key.Enter)
     ggPlay.addAction("click", acPlay, FocusType.Window)
 
-    val tp = new FlowPanel(ggOpen, pStatus, butKill, bs, ggPrint, ggBounce, ggSimilarity, ggSimHisto)
+    val tp = new FlowPanel(ggOpen, pStatus, butKill, ggAmp, bs, ggPrint, ggBounce, ggSimilarity, ggSimHisto)
 
     new MainFrame {
       contents = new BorderPanel {

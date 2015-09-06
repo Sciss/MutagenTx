@@ -54,6 +54,13 @@ object MkSynthGraph {
             }
         }
 
+        lazy val lastE = top.targets(last)
+
+        def getReal(name: String): Option[GE] =
+          lastE.flatMap { e =>
+            if (e.inlet == name) real.get(e.targetVertex) else None
+          } .headOption
+
         val value: GE = last match {
           case vf: Vertex.Constant[S] => ugen.Constant(vf.f)
           case u: Vertex.UGen[S] =>
@@ -68,10 +75,7 @@ object MkSynthGraph {
                   (v.asInstanceOf[AnyRef], classOf[Int])
 
                 case UGenSpec.ArgumentType.GE(_, _) =>
-                  val lastE   = top.targets(last) // top.edgeMap.get(last)
-                  val inGEOpt0 = lastE.flatMap { e =>
-                    if (e.inlet == arg.name) real.get(e.targetVertex) else None
-                  } .headOption
+                  val inGEOpt0 = getReal(arg.name)
 
                   val inGEOpt: Option[GE] = if (!ranges) inGEOpt0 else inGEOpt0.map { inGE0 =>
                     ParamRanges.map.get(spec.name).fold(inGE0) { pInfo =>
@@ -97,11 +101,12 @@ object MkSynthGraph {
                           case (_ , false) if !hiThresh.isInfinity && (loOk || loThresh.isInfinity) =>
                             inGE0.min(hiThresh)
                           case (false, false) if !hiThresh.isInfinity && !loThresh.isInfinity =>
-                            inGE0.clip(loThresh, hiThresh)
+                            // N.B. Clip.ar seems to be broken
+                            // inGE0.clip(loThresh, hiThresh)
+                            inGE0.max(loThresh).min(hiThresh)
                           case _ => inGE0
                         }
-                        // XXX TODO -- `lessThan`
-                        ???
+                        // `lessThan` -> see below
 
                         val inGE2: GE = if (!pSpec.dynamic || isDynamic(inGE1)) inGE1 else LeakDC.ar(inGE1)
 
@@ -133,8 +138,29 @@ object MkSynthGraph {
               }
               res
             }
+            // now solve `lessThan`
+            val ins1 = ParamRanges.map.get(spec.name).fold(ins) { info =>
+              val opt = info.params.collectFirst {
+                case (param, spec0) if spec0.lessThan.isDefined => (param, spec0.lessThan.get)
+              }
+              opt.fold(ins) { case (param, ref) =>
+                val paramIdx  = spec.args.indexWhere(_.name == param)
+                val refIdx    = spec.args.indexWhere(_.name == ref  )
+                val paramIn   = ins(paramIdx)
+                val refIn     = ins(refIdx)
 
-            u.instantiate(ins)
+                (paramIn._1, refIn._1) match {
+                  case (Constant(paramC), Constant(refC)) =>
+                    if (paramC <= refC) ins else ins.updated(paramIdx, refIn)
+                  // case (ge, Constant(refC)) if findOutHi(ge) <= refC => ins  // too much effort, drop it
+                  case (paramGE: GE, refGE: GE) =>
+                    ins.updated(paramIdx, (paramGE min refGE, classOf[GE]))
+                  case _ => ins
+                }
+              }
+            }
+
+            u.instantiate(ins1)
         }
 
         loop(init, real + (last -> value))
