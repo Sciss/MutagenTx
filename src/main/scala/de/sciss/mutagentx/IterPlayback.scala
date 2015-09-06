@@ -44,9 +44,10 @@ object IterPlayback {
   case class Config(targetFile: File = file(""))
 
   def main(args: Array[String]): Unit = {
-    ConfigOut.PAN2 = true
-    ConfigOut.LIMITER /* CLIP */ = true
-    ConfigOut.AMP = true
+    ConfigOut.PAN2      = true
+    ConfigOut.LIMITER   = true
+    ConfigOut.AMP       = true
+    ConfigOut.FADEIN    = true
 
     val parser = new scopt.OptionParser[Config]("IterPlayback") {
       opt[File]('t', "target") required() text "target audio file" action { (x, c) => c.copy(targetFile = x) }
@@ -196,7 +197,7 @@ object IterPlayback {
     def playSynth(): Unit = {
       stopSynth()
       Try(Server.default).toOption.foreach { s =>
-        val graphs = selectedGraphs()
+        val graphs = selectedGraphs().take(s.config.outputBusChannels)
         synthGraphOpt = graphs.headOption
         import numbers.Implicits._
         val amp     = mAmp.getValue.dbamp // 1.0 / graphs.size
