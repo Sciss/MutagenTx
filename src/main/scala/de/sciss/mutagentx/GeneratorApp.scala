@@ -15,7 +15,6 @@ import de.sciss.lucre.swing.defer
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
 import de.sciss.synth.ugen.ConfigOut
-import scopt.OptionParser
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, blocking}
@@ -60,6 +59,8 @@ object GeneratorApp extends SwingApplication {
         case (v, c) => c.copy(maxNumVertices = v) }
       opt[Double]("non-default-prob").text("Probability (0 to 1) of filling in default inlets").action {
         case (v, c) => c.copy(nonDefaultProb = v) }
+      opt[Seq[String]]("ugens").text("Restrict UGens to given list").action {
+        case (v, c) => c.copy(allowedUGens = v.toSet) }
       opt[Int]('c', "num-mfcc").text("Number of MFCC coefficients").action { case (v, c) => c.copy(numMFCC = v) }
       opt[Unit]('n', "norm-mfcc").text("Normalize MFCC coefficients").action {
         case (v, c) => c.copy(normalizeMFCC = true) }
@@ -92,6 +93,12 @@ object GeneratorApp extends SwingApplication {
     }
 
     parser.parse(args, Algorithm.Config()).fold(sys.exit(1)) { config =>
+      import config.allowedUGens
+      if (allowedUGens.nonEmpty) {
+        UGens.seq = UGens.seq.filter(spec => allowedUGens.contains(spec.name))
+        UGens.map = UGens.map.filterKeys    (allowedUGens.contains)
+        println(s"Number of UGens: ${UGens.seq.size}")
+      }
       config.tpe match {
         case SysType.InMemory =>
           new InMemoryApp(config)

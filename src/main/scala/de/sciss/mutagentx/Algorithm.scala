@@ -53,6 +53,7 @@ object Algorithm {
     minNumVertices  : Int     = 64,
     maxNumVertices  : Int     = 256,
     nonDefaultProb  : Double  = 0.95,
+    allowedUGens    : Set[String] = Set.empty,
     // ---- evaluation ----
     numMFCC         : Int     = 42,
     normalizeMFCC   : Boolean = false,

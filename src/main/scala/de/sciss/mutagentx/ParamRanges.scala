@@ -1656,6 +1656,7 @@ object ParamRanges {
 
     s"Bin_${BinaryOpUGen.Plus     .id}" -> Info(dynamic = binOrDyn),
     s"Bin_${BinaryOpUGen.Minus    .id}" -> Info(dynamic = binOrDyn),
+    s"Bin_${BinaryOpUGen.Times    .id}" -> Info(dynamic = binOrDyn),
     s"Bin_${BinaryOpUGen.Mod      .id}" -> Info(dynamic = binAndDyn),
     s"Bin_${BinaryOpUGen.Eq       .id}" -> Info(outLo = 0.0, outHi = 1.0),
     s"Bin_${BinaryOpUGen.Neq      .id}" -> Info(outLo = 0.0, outHi = 1.0),
@@ -1692,6 +1693,36 @@ object ParamRanges {
     s"Bin_${BinaryOpUGen.Fold2    .id}" -> Info(dynamic = binOrDyn),
     s"Bin_${BinaryOpUGen.Wrap2    .id}" -> Info(dynamic = binOrDyn),
     // Div,
+
+    // ---- OSC ----
+    // DegreeToKey, Select, TWindex, Index, IndexL, FoldIndex, WrapIndex,
+    // IndexInBetween, DetectIndex, Shaper,
+    // FSinOsc, SinOscFB, VOsc, VOsc3, Osc, OscN, COsc,
+    // Klang, Klank
+
+    // XXX TODO: Blip, Saw
+
+    "SinOsc" -> Info(dynamic = ifOver("freq"), outLo = -1.0, outHi = +1.0, params = Map(
+      "freq"  -> Spec(lo = 0.01, hi = 20000.0),
+      "phase" -> Spec()  // wraps around 2pi
+    )),
+//    "Formant" -> Info(dynamic = true, params = Map(
+//      "fundFreq"  -> Spec(lo = 10.0, hi = 18000.0), // XXX TODO -- not sure this accepts very low frequencies
+//      "formFreq"  -> Spec(lo = 10.0, hi = 18000.0),
+//      "bw"        -> Spec(lo = 10.0, hi =  4000.0, greaterThan = "fundFreq")
+//    )),
+
+    "Blip" -> Info(dynamic = true, outLo = -1.0, outHi = +1.0, params = Map(
+      "freq"    -> Spec(lo = 10.0, hi = 20000.0),
+      "numHarm" -> Spec(lo = 1.0)
+    )),
+    "Saw" -> Info(dynamic = true, params = Map( // Unfortunately can seriously exceed outLo = -1.0, outHi = +1.0
+      "freq"    -> Spec(lo = 10.0, hi = 20000.0)
+    )),
+    "Pulse" -> Info(dynamic = true, params = Map( // Unfortunately can seriously exceed outLo = -1.0, outHi = +1.0
+      "freq"  -> Spec(lo = 10.0, hi = 20000.0),
+      "width" -> Spec(lo = 0.0, hi = 1.0)
+    )),
 
     "GVerb" -> Info(dynamic = true, params = Map(
       "in"            -> Spec(dynamic = true),

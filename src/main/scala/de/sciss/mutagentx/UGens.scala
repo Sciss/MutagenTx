@@ -123,8 +123,8 @@ object UGens {
   private val ugens1: Vec[UGenSpec] = ParamRanges.map.keysIterator.map(
     name => map0(name)).toIndexedSeq
 
-  val seq: Vec[UGenSpec] = ugens1
-  val map: Map[String, UGenSpec] = seq.map(s => s.name -> s)(breakOut)
+  var seq: Vec[UGenSpec] = ugens1
+  var map: Map[String, UGenSpec] = seq.map(s => s.name -> s)(breakOut)
 
   val mapAll: Map[String, UGenSpec] = map0
 
