@@ -1,3 +1,16 @@
+/*
+ *  MkGraphSource.scala
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 
 import java.util
@@ -46,7 +59,7 @@ object MkGraphSource {
         //          case other =>
         //        }
 
-        val ins = argVals.map(new ArgAssign(None, UGenSpec.SignalShape.Generic, _))
+        val ins = argVals.map(ArgAssign(None, UGenSpec.SignalShape.Generic, _))
 
         new GraphLine(elemName = elemName, constructor = "apply", args = ins)
       } { spec =>
@@ -84,7 +97,7 @@ object MkGraphSource {
             case UGenSpec.ArgumentType.GE(sh, _) => sh
             case _ => UGenSpec.SignalShape.Generic
           }
-          new ArgAssign(Some(arg.name), shape, argVal)
+          ArgAssign(Some(arg.name), shape, argVal)
         }
         // b.append(ins.mkString(s"$valName = $elemName$methodCall(", ", ", ")\n"))
         new GraphLine(elemName = elemName, constructor = rateMethodName, args = ins)

@@ -2,7 +2,7 @@
  *  AlgorithmImpl.scala
  *  (MutagenTx)
  *
- *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU General Public License v3+
  *
@@ -28,14 +28,16 @@ import scala.concurrent.{Await, Future, blocking}
 
 trait AlgorithmImpl[S <: Sys[S]] extends Algorithm[S] { algo =>
   import Algorithm.DEBUG
-  import config._
+  import config.generation._
+  import config.penalty._
+  import config.breeding._
   import Util.{choose, coin, exprand, rrand}
   import global.rng
 
   /** Creates the initial population of size `n`. */
   def initialize()(implicit tx: S#Tx): Processor[Unit] = {
     import Algorithm.executionContext
-    val res = new Initializer(config.population)
+    val res = new Initializer(config.generation.population)
     res.start()
     res
   }

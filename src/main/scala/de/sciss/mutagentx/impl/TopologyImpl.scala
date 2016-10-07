@@ -1,3 +1,16 @@
+/*
+ *  TopologyImpl.scala
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 package impl
 
@@ -110,7 +123,7 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
         val s0  = m0.getOrElse(v, Set.empty)
         val s1  = s0 + e
         val m1  = m0 + (v -> s1)
-        map.add(key, m1)
+        map.add(key -> m1)
       }
       insert(source, sourceEdgeMap)
       insert(target, targetEdgeMap)
@@ -207,7 +220,7 @@ trait TopologyImpl[S <: Sys[S], V, E <: Topology.Edge[V]] extends Topology[S, V,
     val s0      = m0.getOrElse(v, throw new IllegalStateException(s"Edge $e is not in $v's map"))
     val s1      = s0 - e
     val m1      = if (s1.isEmpty) m0 - v else m0 + (v -> s1)
-    if (m1.isEmpty) map.remove(key) else map.add(key, m1)
+    if (m1.isEmpty) map.remove(key) else map.add(key -> m1)
     s1.isEmpty
   }
 

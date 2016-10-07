@@ -2,7 +2,7 @@
  *  CopyingAlgorithm.scala
  *  (MutagenTx)
  *
- *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU General Public License v3+
  *
@@ -127,7 +127,7 @@ object CopyingAlgorithm {
                                        (implicit val ord: data.Ordering[S#Tx, Vertex[S]])
     extends AlgorithmImpl[S] { algo =>
 
-    import config._
+    import config.breeding._
 
     override def toString = s"CopyingAlgorithm(input = $input)@${hashCode().toHexString}"
 

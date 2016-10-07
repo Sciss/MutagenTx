@@ -2,7 +2,7 @@
  *  Visual.scala
  *  (MutagenTx)
  *
- *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU General Public License v3+
  *
@@ -130,7 +130,7 @@ object Visual {
 
     private def insertChromosome(c: Chromosome[S])(implicit tx: S#Tx): Unit = {
       c.vertices.iterator.foreach { v =>
-        if (v.isUGen || c.edges.iterator.filter(_.targetVertex == v).nonEmpty) {
+        if (v.isUGen || c.edges.iterator.exists(_.targetVertex == v)) {
           checkOrInsertVertex(v)
         }
       }
@@ -276,10 +276,10 @@ object Visual {
         var csi     = 0
         val ancestors = cs.filter { c =>
           val vs = c.vertices
-          val res = vs.iterator.filter { v =>
+          val res = vs.iterator.exists { v =>
             val vid = v.id
             map.contains(vid)
-          } .nonEmpty
+          }
           csi += 1
           val prog = csi * 100 / csSz
           while (lastProg < prog) {

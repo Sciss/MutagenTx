@@ -1,20 +1,31 @@
+/*
+ *  GeneratorApp.scala
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 
 import java.awt.Color
 
-import com.alee.laf.WebLookAndFeel
-import com.alee.laf.checkbox.WebCheckBoxStyle
-import com.alee.laf.progressbar.WebProgressBarStyle
 import de.sciss.desktop.OptionPane
 import de.sciss.file._
-import de.sciss.mutagentx.Algorithm.SysType
-import de.sciss.{mutagentx, kollflitz}
 import de.sciss.lucre.confluent
-import de.sciss.lucre.stm.{Sys, Durable, InMemory}
+import de.sciss.lucre.stm.{Durable, InMemory, Sys}
 import de.sciss.lucre.swing.defer
+import de.sciss.mutagentx.Algorithm.SysType
 import de.sciss.processor.Processor
 import de.sciss.processor.impl.ProcessorImpl
+import de.sciss.submin.Submin
 import de.sciss.synth.ugen.ConfigOut
+import de.sciss.{kollflitz, mutagentx}
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, blocking}
@@ -26,13 +37,7 @@ object GeneratorApp extends SwingApplication {
   def startup(args: Array[String]): Unit = {
     mutagentx.init()
 
-    WebLookAndFeel.install()
-    WebCheckBoxStyle   .animated            = false
-    WebProgressBarStyle.progressTopColor    = Color.lightGray
-    WebProgressBarStyle.progressBottomColor = Color.gray
-    // XXX TODO: how to really turn off animation?
-    WebProgressBarStyle.highlightWhite      = new Color(255, 255, 255, 0)
-    WebProgressBarStyle.highlightDarkWhite  = new Color(255, 255, 255, 0)
+    Submin.install(true)
 
     // ConfigOut.CLIP = true
     ConfigOut.LIMITER = true
@@ -50,50 +55,55 @@ object GeneratorApp extends SwingApplication {
         case (v, c) => c.copy(tpe = SysType.Hybrid) }
       opt[Unit]("confluent").text("Select confluent system type").action {
         case (v, c) => c.copy(tpe = SysType.Confluent) }
-      opt[Int]('p', "population").text("Population size").action { case (v, c) => c.copy(population = v) }
+      opt[Int]('p', "population").text("Population size").action { case (v, c) =>
+        c.copy(generation = c.generation.copy(population = v)) }
       opt[Double]("const-prob").text("Probability (0 to 1) of constants over UGen creation").action {
-        case (v, c) => c.copy(constProb = v) }
+        case (v, c) => c.copy(generation = c.generation.copy(constProb = v)) }
       opt[Int]('m', "min-vertices").text("Minimum number of vertices").action {
-        case (v, c) => c.copy(minNumVertices = v) }
+        case (v, c) => c.copy(generation = c.generation.copy(minNumVertices = v)) }
       opt[Int]('x', "max-vertices").text("Maximum number of vertices").action {
-        case (v, c) => c.copy(maxNumVertices = v) }
+        case (v, c) => c.copy(generation = c.generation.copy(maxNumVertices = v)) }
       opt[Double]("non-default-prob").text("Probability (0 to 1) of filling in default inlets").action {
-        case (v, c) => c.copy(nonDefaultProb = v) }
+        case (v, c) => c.copy(generation = c.generation.copy(nonDefaultProb = v)) }
       opt[Seq[String]]("ugens").text("Restrict UGens to given list").action {
-        case (v, c) => c.copy(allowedUGens = v.toSet) }
-      opt[Int]('c', "num-mfcc").text("Number of MFCC coefficients").action { case (v, c) => c.copy(numMFCC = v) }
-      opt[Unit]('n', "norm-mfcc").text("Normalize MFCC coefficients").action {
-        case (v, c) => c.copy(normalizeMFCC = true) }
+        case (v, c) => c.copy(generation = c.generation.copy(allowedUGens = v.toSet)) }
       opt[Double]("non-default-prob").text("Probability (0 to 1) of filling in default inlets").action {
-        case (v, c) => c.copy(nonDefaultProb = v) }
+        case (v, c) => c.copy(generation = c.generation.copy(nonDefaultProb = v)) }
+      opt[Int]('c', "num-mfcc").text("Number of MFCC coefficients").action { case (v, c) =>
+        c.copy(evaluation = c.evaluation.copy(numMFCC = v)) }
+      opt[Unit]('n', "norm-mfcc").text("Normalize MFCC coefficients").action {
+        case (v, c) => c.copy(evaluation = c.evaluation.copy(normalizeMFCC = true)) }
       opt[Double]("max-boost").text("Maximum amplitude boost allowed during cross-correlation").action {
-        case (v, c) => c.copy(maxBoost = v) }
+        case (v, c) => c.copy(evaluation = c.evaluation.copy(maxBoost = v)) }
       opt[Double]('w', "temporal-weight")
         .text("Weighting between purely spectral (0) and purely temporal (1) features").action {
-        case (v, c) => c.copy(temporalWeight = v) }
+        case (v, c) => c.copy(evaluation = c.evaluation.copy(temporalWeight = v)) }
       opt[Double]("vertex-penalty").text("Penalty (0 to 1) for high number of vertices").action {
-        case (v, c) => c.copy(vertexPenalty = v) }
+        case (v, c) => c.copy(penalty = c.penalty.copy(vertexPenalty = v)) }
       opt[Double]("graph-penalty").text("Amount of penalty for two graphs with maximum similarity").action {
-        case (v, c) => c.copy(graphPenaltyAmt = v) }
+        case (v, c) => c.copy(penalty = c.penalty.copy(graphPenaltyAmt = v)) }
       opt[Int]("graph-penalty-iter").text("Number of iterations between graph penalty application").action {
-        case (v, c) => c.copy(graphPenaltyIter = v) }
+        case (v, c) => c.copy(penalty = c.penalty.copy(graphPenaltyIter = v)) }
       opt[Double]("graph-penalty-ceil").text("Maximum expected (clipped) inter-graph similarity").action {
-        case (v, c) => c.copy(graphPenaltyCeil = v) }
+        case (v, c) => c.copy(penalty = c.penalty.copy(graphPenaltyCeil = v)) }
       opt[Double]("graph-penalty-prob").text("Probability (0 to 1) of subjecting graph to similarity test").action {
-        case (v, c) => c.copy(graphPenaltyCoin = v) }
+        case (v, c) => c.copy(penalty = c.penalty.copy(graphPenaltyCoin = v)) }
       opt[Double]('s', "selection-frac").text("Fraction (0 to 1) of individuals selected for breeding").action {
-        case (v, c) => c.copy(selectionFrac = v) }
-      opt[Int]('e', "elitism").text("Number of elite individuals").action { case (v, c) => c.copy(numElitism = v) }
-      opt[Int]("min-mut").text("Minimum mutations per individual").action { case (v, c) => c.copy(mutMin = v) }
-      opt[Int]("max-mut").text("Maximum mutations per individual").action { case (v, c) => c.copy(mutMax = v) }
+        case (v, c) => c.copy(breeding = c.breeding.copy(selectionFrac = v)) }
+      opt[Int]('e', "elitism").text("Number of elite individuals").action { case (v, c) =>
+        c.copy(breeding = c.breeding.copy(numElitism = v)) }
+      opt[Int]("min-mut").text("Minimum mutations per individual").action { case (v, c) =>
+        c.copy(breeding = c.breeding.copy(mutMin = v)) }
+      opt[Int]("max-mut").text("Maximum mutations per individual").action { case (v, c) =>
+        c.copy(breeding = c.breeding.copy(mutMax = v)) }
       opt[Double]('u', "mutation-prob").text("Probability (0 to 1) of mutation over crossover").action {
-        case (v, c) => c.copy(mutationProb = v) }
+        case (v, c) => c.copy(breeding = c.breeding.copy(mutationProb = v)) }
       opt[Int]('g', "golem").text("Number of newborn individuals per iteration").action {
-        case (v, c) => c.copy(numGolem = v) }
+        case (v, c) => c.copy(breeding = c.breeding.copy(numGolem = v)) }
     }
 
     parser.parse(args, Algorithm.Config()).fold(sys.exit(1)) { config =>
-      import config.allowedUGens
+      import config.generation.allowedUGens
       if (allowedUGens.nonEmpty) {
         UGens.seq = UGens.seq.filter(spec => allowedUGens.contains(spec.name))
         UGens.map = UGens.map.filterKeys    (allowedUGens.contains)
@@ -236,9 +246,9 @@ object GeneratorApp extends SwingApplication {
 
     private final class Init extends ProcessorImpl[A, Processor[A]] with Processor[A] {
       protected def body(): A = {
-        import config._
-        val dir = databaseFile // file("database"  ) / (if (args.length > 0) args(0) else "betanovuss")
-        val in  = audioFile // file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
+        // import config._
+        // val dir = databaseFile // file("database"  ) / (if (args.length > 0) args(0) else "betanovuss")
+        // val in  = audioFile // file("audio_work") / (if (args.length > 1) args(1) else "Betanovuss150410_1Cut.aif")
         val algorithm = blocking(Algorithm.confluent(config)) // , dir = dir, input = in))
 
         val cursor = algorithm.global.cursor
@@ -370,8 +380,8 @@ trait GenApp[S <: Sys[S]] {
       case p @ Processor.Progress(_, _) => defer { ggProgress.value = p.toInt }
     }
 
-    fut.onComplete {
-      case _ => defer {
+    fut.onComplete { _ =>
+      defer {
         busy = None
         ggAbort.enabled = false
       }

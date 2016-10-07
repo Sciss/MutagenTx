@@ -1,9 +1,22 @@
+/*
+ *  MkSynthGraph.scala
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 
 import de.sciss.lucre.stm.Sys
 import de.sciss.mutagentx.ParamRanges.Dynamic
-import de.sciss.synth.ugen.{LeakDC, Constant}
-import de.sciss.synth.{UndefinedRate, UGenSpec, ugen, GE, SynthGraph}
+import de.sciss.synth.ugen.{Constant, LeakDC}
+import de.sciss.synth.{GE, SynthGraph, UGenSource, UGenSpec, UndefinedRate, ugen}
 
 import scala.annotation.tailrec
 
@@ -131,7 +144,7 @@ object MkSynthGraph {
                       case UGenSpec.ArgumentValue.Inf           => ugen.Constant(Float.PositiveInfinity)
                       case UGenSpec.ArgumentValue.Int(v)        => ugen.Constant(v)
                       case UGenSpec.ArgumentValue.Nyquist       => ugen.Nyquist()
-                      case UGenSpec.ArgumentValue.String(v)     => ugen.Escape.stringToGE(v)
+                      case UGenSpec.ArgumentValue.String(v)     => UGenSource.stringArg(v)
                     }
                   }
                   (inGE, classOf[GE])

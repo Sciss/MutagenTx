@@ -2,7 +2,7 @@
  *  MutationImpl.scala
  *  (MutagenTx)
  *
- *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU General Public License v3+
  *
@@ -64,7 +64,7 @@ object MutationImpl {
     // var res = Vector.empty[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)]
 
     import algorithm.config
-    import config.{mutMin, mutMax}
+    import config.breeding.{mutMin, mutMax}
 
     // while (res.size < n) {
       // val chosenH = sq(res.size % sq.size)
@@ -119,7 +119,7 @@ object MutationImpl {
 
   private def addVertex[S <: Sys[S]](config: Algorithm.Config, c: Chromosome[S])
                                     (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
-    import config._
+    import config.generation._
     val numVertices = c.vertices.size
     if (numVertices >= maxNumVertices) false else {
       ChromosomeImpl.addVertex[S](config, c)
@@ -131,7 +131,7 @@ object MutationImpl {
 
   private def removeVertex[S <: Sys[S]](config: Algorithm.Config, c: Chromosome[S])
                                        (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
-    import config._
+    import config.generation._
     val vertices    = c.vertices
     val numVertices = vertices.size
     if (numVertices <= minNumVertices) false else {
@@ -252,7 +252,7 @@ object MutationImpl {
   // the higher the out degree).
   private def splitVertex[S <: Sys[S]](config: Algorithm.Config, top: Chromosome[S])
                                       (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
-    import config._
+    import config.generation._
     val verticesIn  = top.vertices
     val numVertices = verticesIn.size
     if (numVertices >= maxNumVertices) return false
@@ -294,7 +294,7 @@ object MutationImpl {
   // merges two vertices of the same type
   private def mergeVertex[S <: Sys[S]](config: Algorithm.Config, top: Chromosome[S])
                                       (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
-    import config._
+    import config.generation._
     val verticesIn  = top.vertices.iterator.toIndexedSeq
     val numVertices = verticesIn.size
     if (numVertices <= minNumVertices) return false

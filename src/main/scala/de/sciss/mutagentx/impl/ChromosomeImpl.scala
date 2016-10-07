@@ -2,7 +2,7 @@
  *  ChromosomeImpl.scala
  *  (MutagenTx)
  *
- *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU General Public License v3+
  *
@@ -135,7 +135,7 @@ object ChromosomeImpl {
   def addVertex[S <: Sys[S]](config: Algorithm.Config, c: Chromosome[S])
                             (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Vertex[S] = {
     import Util.coin
-    import config.constProb
+    import config.generation.constProb
 
     if (coin(constProb)) {
       val _v = mkConstant()
@@ -153,7 +153,7 @@ object ChromosomeImpl {
   def completeUGenInputs[S <: Sys[S]](config: Algorithm.Config, c: Chromosome[S], v: Vertex.UGen[S])
                                     (implicit tx: S#Tx, random: TxnRandom[S#Tx]): Boolean = {
     import Util.{choose, coin}
-    import config.nonDefaultProb
+    import config.generation.nonDefaultProb
 
     val spec    = v.info
     // An edge's source is the consuming UGen, i.e. the one whose inlet is occupied!

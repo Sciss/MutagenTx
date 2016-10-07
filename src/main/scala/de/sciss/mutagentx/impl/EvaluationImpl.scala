@@ -2,7 +2,7 @@
  *  EvaluationImpl.scala
  *  (MutagenTx)
  *
- *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU General Public License v3+
  *
@@ -26,7 +26,7 @@ import de.sciss.serial.{DataInput, DataOutput, ImmutableSerializer}
 import de.sciss.span.Span
 import de.sciss.strugatzki.{FeatureCorrelation, FeatureExtraction, Strugatzki}
 import de.sciss.synth.io.{AudioFile, AudioFileSpec}
-import de.sciss.synth.proc.{Bounce, Proc, Timeline, WorkspaceHandle}
+import de.sciss.synth.proc.{Bounce, Proc, TimeRef, WorkspaceHandle}
 import de.sciss.synth.ugen.{BinaryOpUGen, ConfigOut, Constant, Mix, RandSeed, UnaryOpUGen}
 import de.sciss.synth.{GE, SynthGraph}
 import de.sciss.{filecache, numbers}
@@ -92,7 +92,7 @@ object EvaluationImpl {
   }
 
   def getInputSpec(config: Algorithm.Config, input: File)(implicit tx: TxnLike): Future[(File, AudioFileSpec)] = {
-    import config._
+    import config.evaluation._
     val key       = input -> numMFCC
     val futMeta   = cache.acquire(key)(tx.peer)
     val res       = futMeta.map { v =>
@@ -100,7 +100,7 @@ object EvaluationImpl {
       val inputSpec = blocking(AudioFile.readSpec(input))
       (inputExtr, inputSpec)
     }
-    res.onComplete { case _ => TxnExecutor.defaultAtomic { implicit tx => cache.release(key) }}
+    res.onComplete(_ => TxnExecutor.defaultAtomic { implicit tx => cache.release(key) })
     res
   }
 
@@ -171,7 +171,7 @@ object EvaluationImpl {
     sCfg.blockSize          = 64   // keep it compatible to real-time
     sCfg.sampleRate         = inputSpec.sampleRate.toInt
     // bc.init : (S#Tx, Server) => Unit
-    bncCfg.span             = Span(0L, (duration * Timeline.SampleRate).toLong)
+    bncCfg.span             = Span(0L, (duration * TimeRef.SampleRate).toLong)
     val bnc0                = Bounce[I, I].apply(bncCfg)
     // tx.afterCommit {
       bnc0.start()
@@ -205,7 +205,8 @@ object EvaluationImpl {
 
   private def evaluateFut(config: Algorithm.Config, graph: SynthGraph, inputSpec: AudioFileSpec,
                           inputExtr: File, numVertices: Int): Future[Float] = {
-    import config._
+    import config.penalty._
+    import config.generation._
     val audioF  = File.createTemp(prefix = "muta_bnc", suffix = ".aif")
     val bnc0    = bounce(graph, audioF = audioF, inputSpec = inputSpec)
     val simFut  = eval1(config, wait = Some(bnc0), bounceF = audioF, inputSpec = inputSpec, inputExtr = inputExtr)
@@ -219,15 +220,15 @@ object EvaluationImpl {
         sim0 - numVertices.linlin(minNumVertices, maxNumVertices, 0, pen)
       sim.toFloat // new Evaluated(cH, sim)
     }
-    res.onComplete { case _ =>
-      audioF.delete()
-    }
+    res.onComplete(_ =>
+      audioF.delete())
     res
   }
 
   private def eval1(config: Algorithm.Config, wait: Option[Processor[Any]], bounceF: File, inputSpec: AudioFileSpec,
                     inputExtr: File): Future[Double] = {
-    import config.{wait => _, _}
+    import config.evaluation.{wait => _, _}
+
     val bnc = Future {
       wait.foreach { bnc0 =>
         Await.result(bnc0, Duration(4.0, TimeUnit.SECONDS))
@@ -341,12 +342,12 @@ object EvaluationImpl {
 
     val res = simFut
 
-    res.onComplete { case _ =>
+    res.onComplete { _ =>
       if (normalizeMFCC) normF.delete()
-      featF     .delete()
+      featF.delete()
       // audioF    .delete()
-      genExtr   .delete()
-      genFolder .delete()
+      genExtr.delete()
+      genFolder.delete()
     }
     res
   }

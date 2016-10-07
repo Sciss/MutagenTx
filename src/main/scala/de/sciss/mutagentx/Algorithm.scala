@@ -2,7 +2,7 @@
  *  Algorithm.scala
  *  (MutagenTx)
  *
- *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU General Public License v3+
  *
@@ -41,37 +41,49 @@ object Algorithm {
   }
   sealed trait SysType
 
+  final case class GenerationConfig(
+                               population      : Int     = 500,
+                               constProb       : Double  = 0.5,
+                               minNumVertices  : Int     = 64,
+                               maxNumVertices  : Int     = 256,
+                               nonDefaultProb  : Double  = 0.95,
+                               allowedUGens    : Set[String] = Set.empty
+                             )
+
+  final case class EvaluationConfig(
+                               numMFCC         : Int     = 42,
+                               normalizeMFCC   : Boolean = false,
+                               maxBoost        : Double  = 10.0,
+                               temporalWeight  : Double  = 0.3
+                             )
+
+  final case class PenaltyConfig(
+                            vertexPenalty   : Double  = 0.02,
+                            graphPenaltyIter: Int     = 10,
+                            graphPenaltyCeil: Double  = 0.275,
+                            graphPenaltyAmt : Double  = 0.2,
+                            graphPenaltyCoin: Double  = 0.25
+                          )
+
+  final case class BreedingConfig(
+                             selectionFrac   : Double  = 0.33,
+                             numElitism      : Int     = 3,
+                             mutMin          : Int     = 2,
+                             mutMax          : Int     = 4,
+                             mutationProb    : Double  = 0.75,
+                             numGolem        : Int     = 15
+                           )
+
   // N.B. sample rate is taken from audioFile!
-  case class Config(
+  final case class Config(
     // ---- files and type ----
-    audioFile       : File    = file("target.aif"),
-    databaseFile    : File    = file("output.db"),
-    tpe             : SysType = SysType.Hybrid,
-    // ---- generation ----
-    population      : Int     = 500,
-    constProb       : Double  = 0.5,
-    minNumVertices  : Int     = 64,
-    maxNumVertices  : Int     = 256,
-    nonDefaultProb  : Double  = 0.95,
-    allowedUGens    : Set[String] = Set.empty,
-    // ---- evaluation ----
-    numMFCC         : Int     = 42,
-    normalizeMFCC   : Boolean = false,
-    maxBoost        : Double  = 10.0,
-    temporalWeight  : Double  = 0.3,
-    // ---- graph penalty ----
-    vertexPenalty   : Double  = 0.02,
-    graphPenaltyIter: Int     = 10,
-    graphPenaltyCeil: Double  = 0.275,
-    graphPenaltyAmt : Double  = 0.2,
-    graphPenaltyCoin: Double  = 0.25,
-    // ---- breeding ----
-    selectionFrac   : Double  = 0.33,
-    numElitism      : Int     = 3,
-    mutMin          : Int     = 2,
-    mutMax          : Int     = 4,
-    mutationProb    : Double  = 0.75,
-    numGolem        : Int     = 15
+    audioFile       : File              = file("target.aif"),
+    databaseFile    : File              = file("output.db"),
+    tpe             : SysType           = SysType.Hybrid,
+    generation      : GenerationConfig  = GenerationConfig(),
+    evaluation      : EvaluationConfig  = EvaluationConfig(),
+    penalty         : PenaltyConfig     = PenaltyConfig(),
+    breeding        : BreedingConfig    = BreedingConfig()
   )
 
   implicit val executionContext: ExecutionContext = {

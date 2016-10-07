@@ -1,8 +1,21 @@
-package de.sciss.synth.ugen
+/*
+ *  ConfigOut.scala
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
 
-import de.sciss.synth._
+package de.sciss.synth
+package ugen
 
-import scala.collection.immutable.{IndexedSeq => Vec}
+import de.sciss.synth.Ops.stringToControl
+import de.sciss.synth.UGenSource._
 
 object ConfigOut {
   var CLIP          = false
@@ -14,9 +27,9 @@ object ConfigOut {
   var FADEIN        = false
 }
 final case class ConfigOut(in: GE) extends UGenSource.ZeroOut with WritesBus {
-  protected def makeUGens: Unit = unwrap(in.expand.outputs)
+  protected def makeUGens: Unit = unwrap(this, in.expand.outputs)
 
-  protected def makeUGen(ins: Vec[UGenIn]): Unit = {
+  private[synth] def makeUGen(ins: Vec[UGenIn]): Unit = {
     val sig0  = ins: GE
     val isOk  = CheckBadValues.ar(sig0, post = 0) sig_== 0
     val sig1  = Gate.ar(sig0, isOk)

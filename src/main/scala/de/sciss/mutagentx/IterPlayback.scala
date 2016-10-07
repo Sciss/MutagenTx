@@ -2,7 +2,7 @@
  *  IterPlayback.scala
  *  (MutagenTx)
  *
- *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU General Public License v3+
  *
@@ -120,7 +120,9 @@ object IterPlayback {
           import Algorithm.executionContext
           val fut = Future(blocking(open(f)))
           busy    = Some(fut)
-          fut.onComplete { case _ => defer { busy = None }}
+          fut.onComplete(_ => defer {
+            busy = None
+          })
           fut.onFailure {
             case ex => defer {
               DialogSource.Exception(ex -> "Open SynthGraph File").show(None)
@@ -327,8 +329,8 @@ object IterPlayback {
             contents = p
             new pdflitz.SaveAction(List(p)).setupMenu(this)
             pack().centerOnScreen()
-            open()
           }
+          f.open()
         }
       }
     }

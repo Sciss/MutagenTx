@@ -2,7 +2,7 @@
  *  Genome.scala
  *  (MutagenTx)
  *
- *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU General Public License v3+
  *
@@ -16,7 +16,7 @@ package de.sciss.mutagentx
 import de.sciss.file._
 import de.sciss.lucre.stm
 import de.sciss.lucre.stm.InMemoryLike.{ID, Txn}
-import de.sciss.lucre.stm.{Copy, Mutable, MutableSerializer, NoSys, Sys}
+import de.sciss.lucre.stm.{Mutable, MutableSerializer, NoSys, Sys}
 import de.sciss.serial.{DataInput, DataOutput, Serializer}
 
 import scala.concurrent.stm.Ref

@@ -1,3 +1,16 @@
+/*
+ *  CrossoverImpl.scala
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 package impl
 
@@ -13,7 +26,7 @@ object CrossoverImpl {
   def apply[S <: Sys[S]](algorithm: Algorithm[S], chosen1: Chromosome[S], chosen2: Chromosome[S])
                         (implicit tx: S#Tx, ord: data.Ordering[S#Tx, Vertex[S]]): Unit = {
     import algorithm.global.{rng => random}
-    import algorithm.config._
+    import algorithm.config.generation._
 //    var res = Vector.empty[(S#Acc, stm.Source[S#Tx, Chromosome[S]] /* confluent.Source[S, Chromosome[S]] */)]
 //    while (res.size < n) {
 //      val idx0      = res.size << 1

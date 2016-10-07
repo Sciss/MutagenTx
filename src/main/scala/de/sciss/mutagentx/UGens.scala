@@ -1,3 +1,16 @@
+/*
+ *  UGens.scala
+ *  (MutagenTx)
+ *
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
+ *
+ *  This software is published under the GNU General Public License v3+
+ *
+ *
+ *  For further information, please contact Hanns Holger Rutz at
+ *  contact@sciss.de
+ */
+
 package de.sciss.mutagentx
 
 import de.sciss.synth.ugen.{EnvGen_Perc, EnvGen_Sine, EnvGen_Triangle, EnvGen_Linen, EnvGen_CutOff, EnvGen_DADSR, EnvGen_ASR, EnvGen_ADSR, UnaryOpUGen, BinaryOpUGen}

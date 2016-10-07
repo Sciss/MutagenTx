@@ -2,7 +2,7 @@
  *  ConfluentAlgorithm.scala
  *  (MutagenTx)
  *
- *  Copyright (c) 2015 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2015-2016 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU General Public License v3+
  *
@@ -15,7 +15,7 @@ package de.sciss.mutagentx
 package impl
 
 import de.sciss.file._
-import de.sciss.lucre.stm.{Sys, DataStore}
+import de.sciss.lucre.stm.DataStore
 import de.sciss.lucre.stm.store.BerkeleyDB
 import de.sciss.lucre.{confluent, data, stm}
 import de.sciss.processor.Processor
@@ -65,7 +65,7 @@ object ConfluentAlgorithm {
                            val input: File, val inputExtr: File, val inputSpec: AudioFileSpec)
     extends AlgorithmImpl[S] /* with Algorithm.Confluent */ { algo =>
 
-    import config._
+    import config.breeding._
 
     type Global = GlobalState.Confluent
 
@@ -112,7 +112,7 @@ object ConfluentAlgorithm {
 
         val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
         if (Algorithm.DEBUG) println(s"$hs - $pos")
-        hs.foreach(h => res :+= (pos, h))
+        hs.foreach(h => res :+= (pos -> h))
       }
       res
     }
@@ -140,7 +140,7 @@ object ConfluentAlgorithm {
         hOpt.foreach { h =>
           val pos = csr.step { implicit tx => implicit val dtx = tx.durable; csr.position }
           if (Algorithm.DEBUG) println(s"$h - $pos")
-          res :+=(pos, h)
+          res :+= (pos -> h)
         }
       }
       res
